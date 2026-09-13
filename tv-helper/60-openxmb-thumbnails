@@ -1,0 +1,10 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The Python helper holds the lifetime flock; no daemon restart loop or listener.
+set -eu
+helper=/var/lib/openxmb-c5/thumbnail-cache.py
+[ -f "$helper" ] && [ ! -L "$helper" ] || exit 0
+# /usr/bin/python3 3.10.13 verified on this C5.
+[ -x /usr/bin/python3 ] || exit 0
+/usr/bin/python3 "$helper" --allow-home-preview --process-controls </dev/null >/dev/null 2>&1 &
+exit 0

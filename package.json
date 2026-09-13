@@ -1,0 +1,21 @@
+{
+  "name": "openxmb-c5-web-port",
+  "version": "0.1.11",
+  "private": true,
+  "description": "A webOS web-app adaptation of OpenXMB's interface and wave shader",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "preview": "node tools/preview.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "test:browser": "node tools/browser-check.cjs",
+    "package": "node tools/package.mjs",
+    "verify:package": "node tools/package.mjs --verify-only"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@webos-tools/cli": "3.2.6",
+    "playwright": "1.62.1"
+  }
+}

@@ -1,0 +1,90 @@
+// Start npm run preview first. Uses installed Edge, or PLAYWRIGHT_CHANNEL.
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+(async()=>{
+ const browser=await chromium.launch({channel:process.env.PLAYWRIGHT_CHANNEL||'msedge',headless:true});
+ const dir=path.resolve(__dirname,'../qa');fs.mkdirSync(dir,{recursive:true});
+ const checks=[],errors=[],requests=[];
+ try{
+ const page=await browser.newPage({viewport:{width:1920,height:1080}});
+ page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
+ await page.goto('http://127.0.0.1:8765');await page.waitForFunction(()=>window.C5App&&!['pending','compiling'].includes(C5App.getState().waveMode));
+ let state=await page.evaluate(()=>C5App.getState());assert.equal(state.category,'watch');assert.equal(state.waveMode,'webgl');assert.equal(state.waveError,null);checks.push('Rich WebGL shader initializes after menu startup');
+ const homeLocations=await page.evaluate(()=>C5Catalog.flatMap(category=>category.items.filter(item=>['com.webos.app.homeconnect','com.webos.app.home'].includes(item.id)).map(item=>({id:item.id,category:category.id}))).sort((a,b)=>a.id.localeCompare(b.id)));
+ assert.deepEqual(homeLocations,[{id:'com.webos.app.home',category:'settings'},{id:'com.webos.app.homeconnect',category:'apps'}]);checks.push('Home Hub appears exactly once under Apps, and LG Home remains under Settings');
+ assert.doesNotMatch(await page.locator('body').innerText(),/OpenXMB|C5/);assert.equal(await page.title(),'Home');checks.push('Clean main screen has no visible project/device branding');
+ await page.waitForTimeout(600);await page.screenshot({path:path.join(dir,'midnight-1080.png')});
+ await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowDown');
+ assert.equal((await page.evaluate(()=>C5App.getState())).item,'com.webos.app.mediadiscovery');
+ await page.keyboard.press('ArrowLeft');assert.equal((await page.evaluate(()=>C5App.getState())).item,'com.webos.app.hdmi1');
+ await page.keyboard.press('ArrowLeft');assert.equal((await page.evaluate(()=>C5App.getState())).category,'inputs');
+ assert.equal((await page.evaluate(()=>C5App.getState())).preferences.previewMode,'cached');assert.equal((await page.evaluate(()=>C5App.getState())).inputPreview.status,'idle');await page.waitForTimeout(450);assert.equal(await page.locator('video').count(),0);assert.equal(await page.locator('#inputPreview').isVisible(),false);assert.equal(await page.locator('#previewPanel').isVisible(),true);assert.equal(await page.locator('#thumbnailFallback').isVisible(),true);assert.ok((await page.locator('#detailDescription').boundingBox()).y<1080);await page.screenshot({path:path.join(dir,'inputs-1080.png')});checks.push('Default Cached mode shows an HDMI still-image slot with an icon fallback and no automatic external source');
+ await page.keyboard.press('ArrowRight');assert.equal((await page.evaluate(()=>C5App.getState())).item,'com.webos.app.mediadiscovery');checks.push('Category/item bounds and per-category selection memory');
+ await page.evaluate(()=>{window.repeatTestBridge=C5TV;window.repeatLaunches=0;window.C5TV=Object.assign({},C5TV,{launch:id=>{window.repeatLaunches++;return window.repeatTestBridge.launch(id);}});});
+ await page.keyboard.down('Enter');await page.waitForFunction(()=>!C5App.getState().busy);assert.match(await page.locator('#toast').innerText(),/Preview/);checks.push('Browser launch is explicitly preview-only');
+ await page.keyboard.down('Enter');await page.waitForFunction(()=>!C5App.getState().busy);assert.equal(await page.evaluate(()=>window.repeatLaunches),1);await page.keyboard.up('Enter');
+ await page.evaluate(()=>{window.C5TV=window.repeatTestBridge;delete window.repeatTestBridge;delete window.repeatLaunches;});checks.push('Holding OK launches once even after the first launch request settles');
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'appearance');
+ await page.getByRole('button',{name:'Ocean',exact:true}).click();assert.equal((await page.evaluate(()=>C5App.getState())).preferences.theme,'ocean');
+ assert.equal(await page.locator('#modal').evaluate(el=>el.contains(document.activeElement)),true);
+ await page.keyboard.press('Tab');assert.equal(await page.locator('#modal').evaluate(el=>el.contains(document.activeElement)),true);
+ await page.evaluate(()=>{document.getElementById('items').focus();document.dispatchEvent(new Event('visibilitychange'));});
+ assert.equal(await page.locator('#modal').evaluate(el=>el.contains(document.activeElement)),true);checks.push('Returning to a visible app restores focus inside its open dialog');
+ const beforeRelaunch=await page.evaluate(()=>C5App.getState());
+ assert.equal(await page.locator('#toast').evaluate(el=>el.classList.contains('show')),false);
+ await page.evaluate(()=>{document.getElementById('time').textContent='stale clock';document.dispatchEvent(new CustomEvent('webOSRelaunch',{detail:{source:'home'}}));});
+ const afterRelaunch=await page.evaluate(()=>C5App.getState());
+ assert.equal(afterRelaunch.modal,null);assert.equal(afterRelaunch.category,beforeRelaunch.category);assert.equal(afterRelaunch.item,beforeRelaunch.item);
+ assert.equal(await page.locator('#modalBackdrop').isVisible(),false);assert.equal(await page.locator('.screen').getAttribute('aria-hidden'),null);
+ assert.equal(await page.locator('#toast').innerText(),'');assert.equal(await page.locator('#toast').evaluate(el=>el.classList.contains('show')),false);
+ assert.notEqual(await page.locator('#time').innerText(),'stale clock');assert.equal(await page.evaluate(()=>document.activeElement.id),'items');
+ await page.evaluate(()=>document.dispatchEvent(new Event('webOSRelaunch')));
+ assert.equal((await page.evaluate(()=>C5App.getState())).item,beforeRelaunch.item);assert.equal(await page.evaluate(()=>document.activeElement.id),'items');
+ checks.push('Home relaunch closes a visible dialog, clears stale toast, refreshes clock/focus and preserves selection');
+ await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'appearance');
+ await page.evaluate(()=>{window.repeatTestBridge=C5TV;window.repeatStockLaunches=0;window.C5TV=Object.assign({},C5TV,{exitToStockHome:()=>{window.repeatStockLaunches++;return window.repeatTestBridge.exitToStockHome();}});});
+ await page.keyboard.down('Escape');assert.equal((await page.evaluate(()=>C5App.getState())).modal,null);await page.keyboard.down('Escape');
+ await page.evaluate(()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Unidentified',keyCode:461,repeat:true,bubbles:true,cancelable:true})));
+ assert.equal(await page.evaluate(()=>window.repeatStockLaunches),0);assert.equal(await page.locator('#toast').evaluate(el=>el.classList.contains('show')),false);await page.keyboard.up('Escape');
+ await page.evaluate(()=>{window.C5TV=window.repeatTestBridge;delete window.repeatTestBridge;delete window.repeatStockLaunches;});checks.push('Holding Back closes one dialog without subsequently launching stock Home');
+ await page.reload();await page.waitForFunction(()=>window.C5App);assert.equal((await page.evaluate(()=>C5App.getState())).preferences.theme,'ocean');checks.push('Theme persists locally; dialog focus stays contained; Back closes it');
+ await page.waitForTimeout(500);await page.screenshot({path:path.join(dir,'ocean-1080.png')});
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
+ await page.getByRole('button',{name:'Off',exact:true}).click();assert.equal((await page.evaluate(()=>C5App.getState())).preferences.motion,'reduced');await page.keyboard.press('Escape');checks.push('Background animation can be disabled');
+ await page.setViewportSize({width:1280,height:720});await page.waitForTimeout(200);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ assert.equal(await page.locator('footer,#appearanceButton,#categoryCaption').count(),0);const modal=page.locator('#modalBackdrop');assert.equal(await modal.isVisible(),false);checks.push('720p layout fits; captions and both bottom overlays are absent');
+ await page.screenshot({path:path.join(dir,'settings-720.png')});
+ await page.evaluate(()=>{window.mainBackBridge=C5TV;window.mainBackCalls=[];window.C5TV=Object.assign({},C5TV,{
+   exitToStockHome:()=>{window.mainBackCalls.push('stock');return window.mainBackBridge.exitToStockHome();},
+   launch:id=>{window.mainBackCalls.push(id);return window.mainBackBridge.launch(id);},
+   openInput:id=>{window.mainBackCalls.push(id);return window.mainBackBridge.openInput(id);}
+ });});
+ const beforeMainBack=await page.evaluate(()=>({state:C5App.getState(),toast:document.getElementById('toast').textContent,toastVisible:document.getElementById('toast').classList.contains('show')}));
+ await page.keyboard.press('Escape');await page.keyboard.press('Backspace');
+ assert.equal(await page.evaluate(()=>{const event=new KeyboardEvent('keydown',{key:'Unidentified',keyCode:461,bubbles:true,cancelable:true});document.dispatchEvent(event);return event.defaultPrevented;}),true);
+ const afterMainBack=await page.evaluate(()=>({state:C5App.getState(),toast:document.getElementById('toast').textContent,toastVisible:document.getElementById('toast').classList.contains('show')}));
+ assert.deepEqual(await page.evaluate(()=>window.mainBackCalls),[]);assert.equal(afterMainBack.state.category,beforeMainBack.state.category);assert.equal(afterMainBack.state.item,beforeMainBack.state.item);assert.equal(afterMainBack.state.busy,false);
+ assert.equal(afterMainBack.toast,beforeMainBack.toast);assert.equal(afterMainBack.toastVisible,beforeMainBack.toastVisible);checks.push('Back on the main menu stays in place without launching an app or showing a toast, including TV keycode 461');
+ for(let i=0;i<8&&(await page.evaluate(()=>C5App.getState())).item!=='com.webos.app.home';i++)await page.keyboard.press('ArrowDown');
+ assert.equal((await page.evaluate(()=>C5App.getState())).item,'com.webos.app.home');await page.keyboard.press('Enter');await page.waitForFunction(()=>!C5App.getState().busy);
+ assert.deepEqual(await page.evaluate(()=>window.mainBackCalls),['stock']);assert.match(await page.locator('#toast').innerText(),/LG Home/);
+ await page.evaluate(()=>{window.C5TV=window.mainBackBridge;delete window.mainBackBridge;delete window.mainBackCalls;});checks.push('The Settings LG Home shortcut explicitly opens the original launcher');
+ for(let i=0;i<8&&(await page.evaluate(()=>C5App.getState())).item!=='about';i++)await page.keyboard.press('ArrowDown');
+ assert.equal((await page.evaluate(()=>C5App.getState())).item,'about');await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'about');assert.match(await page.locator('#modalIntro').innerText(),/\b0\.1\.11\b/);await page.keyboard.press('Escape');checks.push('About identifies version 0.1.11');
+ const prefs=await page.evaluate(()=>JSON.parse(localStorage.getItem('openxmb-c5-preferences-v1')));assert.deepEqual(Object.keys(prefs).sort(),['backBehavior','motion','previewMode','sound','theme','waveBrightness','waveSpeed']);checks.push('Only appearance, wave, sound, preview and Back preferences stored; no usage history');
+ assert.ok(requests.every(url=>url.startsWith('http://127.0.0.1:8765/')));assert.deepEqual(errors,[]);checks.push('No external requests or JavaScript errors');
+ const fallback=await browser.newPage({viewport:{width:1920,height:1080}});
+ await fallback.addInitScript(()=>{window.webglRequests=0;const old=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){if(/webgl/i.test(type)){window.webglRequests++;return null;}return old.call(this,type,...args);};});
+ fallback.on('pageerror',e=>errors.push(e.message));await fallback.goto('http://127.0.0.1:8765');await fallback.waitForFunction(()=>window.C5App&&!['pending','compiling'].includes(C5App.getState().waveMode));
+ assert.equal((await fallback.evaluate(()=>C5App.getState())).waveMode,'canvas2d');assert.ok(await fallback.evaluate(()=>window.webglRequests)>0);await fallback.waitForTimeout(300);await fallback.screenshot({path:path.join(dir,'fallback-1080.png')});assert.deepEqual(errors,[]);checks.push('Canvas compatibility fallback renders when WebGL is unavailable');
+ await require('../tests/input-preview-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ await require('../tests/launch-return-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ await require('../tests/background-settings-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ await require('../tests/settings-appearance-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ await require('../tests/remote-settings-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ fs.writeFileSync(path.join(dir,'browser-check.json'),JSON.stringify({passed:checks.length,checks,browser:await browser.version(),testedOnTV:false},null,2));console.log(JSON.stringify({passed:checks.length,checks},null,2));
+ }finally{await browser.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

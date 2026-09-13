@@ -1,0 +1,25 @@
+{
+  "id": "org.local.openxmb.c5",
+  "version": "0.1.11",
+  "vendor": "OpenXMB C5 contributors",
+  "type": "web",
+  "main": "index.html",
+  "title": "Home",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "appDescription": "TV app launcher.",
+  "resolution": "1920x1080",
+  "appCategory": [
+    "home"
+  ],
+  "requiredACG": [
+    "application.launcher",
+    "application.query"
+  ],
+  "disableBackHistoryAPI": true,
+  "handlesRelaunch": false,
+  "iconColor": "#10182b",
+  "accessibility": {
+    "supportsAudioGuidance": true
+  }
+}

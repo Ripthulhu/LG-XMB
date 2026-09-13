@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src ext:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Home</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="wave" aria-hidden="true"></canvas>
+  <div class="ambient" aria-hidden="true"></div>
+  <div class="screen" id="screen">
+    <header>
+      <div class="clock"><time id="time"></time><span id="date"></span></div>
+    </header>
+    <main aria-label="TV launcher">
+      <nav id="categories" aria-label="Categories"></nav>
+      <section class="cross-content">
+        <div id="items" role="listbox" aria-label="Watch" tabindex="0"></div>
+        <aside class="detail" aria-labelledby="detailTitle">
+          <div class="detail-eyebrow" id="detailType">TV</div>
+          <div class="detail-emblem" id="detailEmblem" aria-hidden="true"></div>
+          <div class="preview-panel" id="previewPanel" hidden>
+            <img id="inputThumbnail" class="input-thumbnail" alt="" draggable="false" hidden>
+            <div id="thumbnailFallback" class="thumbnail-fallback" aria-hidden="true"><span class="thumbnail-symbol"></span></div>
+            <div class="input-preview" id="inputPreview" aria-hidden="true" hidden>
+              <div class="input-preview-media"></div>
+              <div class="input-preview-placeholder"><span class="input-preview-symbol"></span><span class="input-preview-message"></span></div>
+            </div>
+            <button id="previewButton" class="preview-button" type="button" aria-label="Open HDMI input full-screen"></button>
+          </div>
+          <h1 id="detailTitle">Live TV</h1>
+          <p id="detailDescription">Watch television channels.</p>
+        </aside>
+      </section>
+    </main>
+    <div class="selection-live sr-only" aria-live="polite" id="selectionLive"></div>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="modalBackdrop" class="modal-backdrop" hidden>
+    <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">
+      <div class="modal-top"><button id="closeModal" aria-label="Close dialog">×</button></div>
+      <h2 id="modalTitle">Appearance</h2>
+      <p class="modal-intro" id="modalIntro"></p>
+      <div id="modalContent"></div>
+    </section>
+  </div>
+  <script src="icons.js"></script>
+  <script src="catalog.js"></script>
+  <script src="tv-bridge.js"></script>
+  <script src="process-control.js"></script>
+  <script src="process-transport.js"></script>
+  <script src="background-settings.js"></script>
+  <script src="remote-control.js"></script>
+  <script src="remote-settings.js"></script>
+  <script src="wave.js"></script>
+  <script src="input-preview.js"></script>
+  <script src="thumbnail.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

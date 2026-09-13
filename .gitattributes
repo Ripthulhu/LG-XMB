@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.png binary
+*.ipk binary
+app/licenses/UPSTREAM* -text whitespace=cr-at-eol
