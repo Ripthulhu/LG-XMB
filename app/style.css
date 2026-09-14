@@ -37,7 +37,6 @@ body{transition:background 1s ease}button{font:inherit;color:inherit;border:0;cu
   }
 }
 
-/* Previous items occupy the upper arm of the XMB; only their icons remain. */
+/* Previous items keep their icons and labels in the upper arm of the XMB. */
 #categories{z-index:2;pointer-events:none}.category{pointer-events:auto}
-.cross-content{overflow:visible}.item.above-bar{width:7vw}
-.item.above-bar .item-text{visibility:hidden}
+.cross-content{overflow:visible}
