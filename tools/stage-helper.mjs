@@ -26,7 +26,11 @@ export function stageHelper(projectDir, appDir) {
     fs.writeFileSync(path.join(destination, name), bytes, {mode: 0o644});
     manifest.files[name] = sha256(bytes);
   }
-  fs.writeFileSync(path.join(destination, 'bundle.json'), JSON.stringify(manifest, null, 2) + '\n', {mode: 0o644});
+  const bundle = JSON.stringify(manifest, null, 2) + '\n';
+  fs.writeFileSync(path.join(destination, 'bundle.json'), bundle, {mode: 0o644});
+  const startup = fs.readFileSync(path.join(projectDir, 'app/helper-startup.py'), 'utf8');
+  if (startup.split('@BUNDLE_SHA256@').length !== 2) throw new Error('Expected one startup bundle pin.');
+  fs.writeFileSync(path.join(appDir, 'helper-startup.py'), startup.replace('@BUNDLE_SHA256@', sha256(bundle)));
   fs.chmodSync(path.join(appDir, 'helper-startup.py'), 0o755);
   return manifest;
 }

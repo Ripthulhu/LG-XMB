@@ -60,7 +60,7 @@ class SetupFixture(unittest.TestCase):
         os_view.geteuid = lambda: 0
         self.patches = patch.multiple(startup, os=os_view, APP_DIR=str(self.app), BASE=str(self.base),
             LEGACY_BASE=str(self.legacy), CACHE=self.cache, LEGACY_CACHE=self.old_cache,
-            LOG_DIR=str(self.log))
+            LOG_DIR=str(self.log), BUNDLE_SHA256="")
         self.patches.start()
         self.addCleanup(self.patches.stop)
         # Real file metadata and byte checks; no TV services or processes.
@@ -98,7 +98,9 @@ class SetupFixture(unittest.TestCase):
         self.control.PIN_APPINFO_SHA256 = digest((self.app / 'appinfo.json').read_bytes())
         manifest = {'schema': 1, 'appinfoSha256': self.control.PIN_APPINFO_SHA256,
                     'files': {name: digest((self.bundle / name).read_bytes()) for name in startup.FILES}}
-        (self.bundle / 'bundle.json').write_text(json.dumps(manifest))
+        raw = json.dumps(manifest).encode()
+        (self.bundle / 'bundle.json').write_bytes(raw)
+        startup.BUNDLE_SHA256 = digest(raw)
 
     def modules(self, name, raw, path):
         return self.control if name == 'lg_xmb_control' else self.recovery
@@ -227,15 +229,181 @@ class SetupFixture(unittest.TestCase):
         with self.assertRaises(OSError):
             self.run_setup()
 
-    def test_hardlinked_or_writable_bundle_member_is_rejected(self):
+    def test_hardlinked_bundle_member_is_rejected(self):
         member = self.bundle / 'process_control.py'
         os.link(member, self.root / 'extra-link')
         with self.assertRaises(startup.SetupError):
             self.run_setup()
-        (self.root / 'extra-link').unlink()
-        member.chmod(0o666)
+
+    def test_writable_helper_directory_is_verified_then_repaired(self):
+        self.bundle.chmod(0o777)
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o755)
+
+    def test_writable_packaged_files_are_repaired_without_touching_ancestors(self):
+        paths = [self.bundle / name for name in ('bundle.json',) + startup.FILES]
+        for path in paths:
+            path.chmod(0o777)
+        self.bundle.chmod(0o777)
+        self.app.chmod(0o777)
+        extra = self.bundle / 'not-in-bundle'; extra.write_text('untouched'); extra.chmod(0o666)
+        before = {path: path.read_bytes() for path in paths}
+        with patch.object(startup, 'load_module', side_effect=self.modules):
+            startup.load_bundle()
+        for path in paths:
+            self.assertEqual(path.read_bytes(), before[path])
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o644)
+        self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE(self.app.stat().st_mode), 0o777)
+        self.assertEqual(stat.S_IMODE(extra.stat().st_mode), 0o666)
+
+    def test_real_bundled_controller_loads_after_reset_packaged_modes(self):
+        (self.app / 'appinfo.json').write_bytes((ROOT / 'app/appinfo.json').read_bytes())
+        sources = {'process_control.py': 'tv-helper/process_control.py',
+                   'thumbnail_cache.py': 'tv-helper/thumbnail_cache.py',
+                   'stop_thumbnail_helper.py': 'tv-helper/recovery/stop_thumbnail_helper.py'}
+        for name, relative in sources.items():
+            (self.bundle / name).write_bytes((ROOT / relative).read_bytes())
+        self.update_manifest()
+        for path in (self.app, self.bundle, self.app / 'appinfo.json',
+                     self.bundle / 'bundle.json', *(self.bundle / name for name in sources)):
+            path.chmod(0o777)
+        original = startup.load_module
+        def fixture_module(name, raw, path):
+            module = original(name, raw, path)
+            if name == 'lg_xmb_control':
+                module.os = startup.os
+                module.APPINFO = str(self.app / 'appinfo.json')
+            return module
+        with patch.object(startup, 'load_module', side_effect=fixture_module):
+            control, recovery, pin = startup.load_bundle()
+        self.assertEqual(pin, startup.BUNDLE_SHA256)
+        self.assertFalse(any(control.default_config()['enabled'].values()))
+        for path in (self.app, self.bundle):
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE((self.app / 'appinfo.json').stat().st_mode), 0o644)
+        for name in sources:
+            self.assertEqual(stat.S_IMODE((self.bundle / name).stat().st_mode), 0o644)
+        self.assertFalse(self.base.exists())
+
+    def test_changed_writable_code_is_not_repaired_or_executed(self):
+        member = self.bundle / 'process_control.py'
+        member.write_text('raise RuntimeError("untrusted code")')
+        member.chmod(0o777); self.bundle.chmod(0o777)
+        with patch.object(startup, 'load_module') as load, patch.object(startup.os, 'fchmod') as chmod:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
+                startup.load_bundle()
+        load.assert_not_called(); chmod.assert_not_called()
+
+    def test_writable_bundle_cannot_approve_its_own_changed_code(self):
+        member = self.bundle / 'process_control.py'; member.write_text('# changed code')
+        manifest = self.bundle / 'bundle.json'
+        value = json.loads(manifest.read_text()); value['files'][member.name] = digest(member.read_bytes())
+        manifest.write_text(json.dumps(value)); manifest.chmod(0o777); self.bundle.chmod(0o777)
+        with patch.object(startup, 'load_module') as load, patch.object(startup.os, 'fchmod') as chmod:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
+                startup.load_bundle()
+        load.assert_not_called(); chmod.assert_not_called()
+
+    def test_foreign_owner_is_never_claimed_or_repaired(self):
+        original = startup.os.fstat
+        for target in (self.bundle, self.bundle / 'process_control.py'):
+            def metadata(fd):
+                info = original(fd)
+                if Path(os.readlink('/proc/self/fd/' + str(fd))) == target:
+                    info.st_uid = 1000
+                return info
+            with self.subTest(target=target), patch.object(startup.os, 'fstat', side_effect=metadata), \
+                 patch.object(startup.os, 'fchmod') as chmod, patch.object(startup, 'load_module') as load:
+                with self.assertRaisesRegex(startup.SetupError, 'helper_owner_mismatch'):
+                    startup.load_bundle()
+                chmod.assert_not_called(); load.assert_not_called()
+
+    def test_symlinked_helper_directory_is_not_followed(self):
+        moved = self.app / 'moved'; self.bundle.rename(moved); self.bundle.symlink_to(moved)
+        with patch.object(startup, 'load_module') as load:
+            with self.assertRaises(OSError):
+                startup.load_bundle()
+        load.assert_not_called()
+
+    def test_fifo_in_bundle_is_rejected_without_blocking(self):
+        member = self.bundle / 'process_control.py'; member.unlink(); os.mkfifo(member)
         with self.assertRaises(startup.SetupError):
-            self.run_setup()
+            startup.checked_bundle()
+
+    def test_replaced_member_during_repair_is_detected_before_execution(self):
+        self.bundle.chmod(0o777)
+        member = self.bundle / 'process_control.py'
+        original = startup.os.fchmod
+        def changed(fd, mode):
+            original(fd, mode)
+            member.rename(self.root / 'old-member')
+            member.write_text('# fixture\n')
+        with patch.object(startup.os, 'fchmod', side_effect=changed), patch.object(startup, 'load_module') as load:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_path_changed'):
+                startup.load_bundle()
+        load.assert_not_called()
+
+    def test_preexisting_writer_cannot_change_bytes_during_repair(self):
+        member = self.bundle / 'process_control.py'; member.chmod(0o777)
+        original = startup.os.fchmod
+        with member.open('r+b') as writer:
+            def changed(fd, mode):
+                original(fd, mode)
+                writer.write(b'# tampered'); writer.flush()
+            with patch.object(startup.os, 'fchmod', side_effect=changed), patch.object(startup, 'load_module') as load:
+                with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_changed'):
+                    startup.load_bundle()
+        load.assert_not_called()
+
+    def test_failed_permission_repair_never_executes_modules(self):
+        self.bundle.chmod(0o777)
+        with patch.object(startup.os, 'fchmod'), patch.object(startup, 'load_module') as load:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_permissions_failed'):
+                startup.load_bundle()
+        load.assert_not_called()
+
+    def test_clean_permissions_need_no_chmod(self):
+        with patch.object(startup.os, 'fchmod') as chmod:
+            startup.checked_bundle()
+        chmod.assert_not_called()
+
+    def test_early_setup_error_is_logged_without_worker_launch(self):
+        (self.bundle / 'process_control.py').write_text('# changed code')
+        with patch.object(startup.sys, 'argv', ['helper-startup.py', 'ensure']), \
+             patch.object(startup, 'launch_worker') as launch, patch('builtins.print'):
+            self.assertEqual(startup.main(), 2)
+        record = json.loads((self.log / startup.SETUP_LOG_NAME).read_text())
+        self.assertEqual(record['errorCode'], 'helper_bundle_mismatch')
+        self.assertEqual(record['exception'], 'SetupError')
+        self.assertTrue(record['frames'])
+        self.assertFalse(self.base.exists()); launch.assert_not_called()
+
+    def test_setup_log_is_replaced_not_appended_and_omits_exception_messages(self):
+        with patch.object(startup, 'start', side_effect=ValueError('private configuration')), \
+             patch.object(startup.sys, 'argv', ['helper-startup.py']), patch('builtins.print'):
+            startup.main()
+        path = self.log / startup.SETUP_LOG_NAME
+        self.assertNotIn('private configuration', path.read_text())
+        self.assertEqual(json.loads(path.read_text())['exception'], 'ValueError')
+        with patch.object(startup, 'start', return_value={'returnValue': True, 'ready': True}), \
+             patch.object(startup.sys, 'argv', ['helper-startup.py']), patch('builtins.print'):
+            startup.main()
+        self.assertNotIn('exception', json.loads(path.read_text()))
+        self.assertLess(path.stat().st_size, 4096)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_unsafe_setup_log_is_not_overwritten_or_followed(self):
+        target = self.root / 'foreign-log'; target.write_text('keep')
+        path = self.log / startup.SETUP_LOG_NAME; path.symlink_to(target)
+        with patch.object(startup, 'start', side_effect=startup.SetupError('unsafe_helper_path')), \
+             patch.object(startup.sys, 'argv', ['helper-startup.py']), patch('builtins.print') as output:
+            self.assertEqual(startup.main(), 2)
+        self.assertEqual(target.read_text(), 'keep')
+        reply = json.loads(output.call_args.args[0])
+        self.assertEqual(reply['errorCode'], 'unsafe_helper_path')
+        self.assertFalse(reply['logWritten'])
 
     def test_non_root_reply_is_explicit_and_makes_no_files(self):
         with patch.object(startup.os, 'geteuid', return_value=1000), \

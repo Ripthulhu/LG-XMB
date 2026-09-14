@@ -12,12 +12,13 @@
     ROOT_REQUIRED:'Homebrew ran the helper without root privileges. Check its root status, then retry setup.',
     PYTHON_MISSING:'The TV has no usable Python 3 interpreter for the helper.',
     PYTHON_TOO_OLD:'The helper needs Python 3.7 or newer on the TV.',
+    OWNER_MISMATCH:'The installed helper is not owned by root. Setup did not change its owner. See lg-xmb-setup.log.',
     BUNDLE_INCOMPLETE:'The installed helper is incomplete. Reinstall the lg-xmb IPK.',
     BUNDLE_MISMATCH:'The installed app and helper do not match. Reinstall the lg-xmb IPK.',
     CONFIG_CONFLICT:'Old and new helper settings differ. Both were preserved; resolve the migration before continuing.',
     BUSY:'Another helper setup is running. Wait for it to finish before retrying.',
     TIMEOUT:'Helper setup was not confirmed. It may still be running; no retry was sent.',
-    SETUP_FAILED:'Helper setup failed. Existing settings were preserved. Check the helper files before retrying.'
+    SETUP_FAILED:'Helper setup failed. Check /var/lib/webosbrew/lg-xmb-setup.log for the failing check.'
   };
   function problem(code){var e=new Error(messages[code]||messages.SETUP_FAILED);e.code=code;return e;}
   function object(value){return !!value&&typeof value==='object'&&!Array.isArray(value);}
@@ -34,7 +35,8 @@
     if(value.returnValue===false){
       var codes={python_missing:'PYTHON_MISSING',python_too_old:'PYTHON_TOO_OLD',
         bundle_incomplete:'BUNDLE_INCOMPLETE',invalid_helper_bundle:'BUNDLE_MISMATCH',
-        helper_bundle_mismatch:'BUNDLE_MISMATCH',untrusted_app_manifest:'BUNDLE_MISMATCH',
+        helper_bundle_mismatch:'BUNDLE_MISMATCH',helper_bundle_changed:'BUNDLE_MISMATCH',
+        helper_owner_mismatch:'OWNER_MISMATCH',untrusted_app_manifest:'BUNDLE_MISMATCH',
         legacy_config_conflict:'CONFIG_CONFLICT',helper_busy:'BUSY'};
       if(value.errorCode==='root_required'&&Number.isInteger(value.effectiveUid)&&value.effectiveUid>0)throw problem('ROOT_REQUIRED');
       throw problem(codes[value.errorCode]||'SETUP_FAILED');

@@ -31,6 +31,8 @@ test('only an explicit non-root effective UID is reported as missing root privil
     [{returnValue:false,errorCode:'root_required',effectiveUid:1000},'ROOT_REQUIRED'],
     [{returnValue:false,errorCode:'root_required'},'SETUP_FAILED'],
     [{returnValue:false,errorCode:'bundle_incomplete'},'BUNDLE_INCOMPLETE'],
+    [{returnValue:false,errorCode:'helper_owner_mismatch'},'OWNER_MISMATCH'],
+    [{returnValue:false,errorCode:'helper_bundle_changed'},'BUNDLE_MISMATCH'],
     [{returnValue:false,errorCode:'python_missing'},'PYTHON_MISSING'],
     [{returnValue:false,errorCode:'legacy_config_conflict'},'CONFIG_CONFLICT']
   ]){
