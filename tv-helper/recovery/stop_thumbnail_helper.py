@@ -13,7 +13,8 @@ HELPER = b"/var/lib/openxmb-c5/thumbnail-cache.py"
 PYTHON = "/usr/bin/python3"
 HOOK_DIR = "/var/lib/webosbrew/init.d"
 HOOK_NAME = "60-openxmb-thumbnails"
-# Filled by the staging builder from the reviewed wrapper (LF normalized).
+HOOK_TARGET = "/media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-startup.py"
+# Reviewed copies from earlier installs; never accept an arbitrary regular file.
 HOOK_HASHES = {'c23680117ea88b6932215150683bdde735eb4476fcace0f7dc2a96d9deb88ca8', '855eab9fbcea192ae82c33cf0b3398ab06559a965c44beb24254388fc4399576', '373ca1934619a4887b3bc07ba2859dbb79e91145ee31efa08a359d47b8b0fa81'}
 
 
@@ -42,27 +43,55 @@ def inspect_hook():
         require(os.fstat(descriptor).st_ino == info.st_ino
                 and os.fstat(descriptor).st_dev == info.st_dev,
                 "Thumbnail startup directory changed")
-        try:
-            entry = os.stat(HOOK_NAME, dir_fd=descriptor, follow_symlinks=False)
-        except FileNotFoundError:
-            return descriptor, None
+        return descriptor, read_hook(descriptor)
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def hook_identity(entry):
+    return (entry.st_dev, entry.st_ino, entry.st_mode, entry.st_uid, entry.st_nlink,
+            entry.st_size, entry.st_mtime_ns, entry.st_ctime_ns)
+
+
+def read_hook(directory):
+    """Inspect our link itself, even after uninstall; never follow its target."""
+    try:
+        entry = os.stat(HOOK_NAME, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    target = None
+    if stat.S_ISLNK(entry.st_mode):
+        require(entry.st_uid == 0 and entry.st_nlink == 1,
+                "Refusing an unsafe thumbnail startup link")
+        target = os.readlink(HOOK_NAME, dir_fd=directory)
+        require(target == HOOK_TARGET,
+                "Thumbnail startup link targets another file; leaving it untouched")
+    else:
         require(regular_owned(entry) and entry.st_size <= 8192,
                 "Refusing an unsafe thumbnail startup hook")
-        hook = os.open(HOOK_NAME, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+        hook = os.open(HOOK_NAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                       dir_fd=directory)
         try:
             opened = os.fstat(hook)
-            require(regular_owned(opened) and (opened.st_dev, opened.st_ino)
-                    == (entry.st_dev, entry.st_ino), "Thumbnail startup hook changed")
+            require(regular_owned(opened) and hook_identity(opened) == hook_identity(entry),
+                    "Thumbnail startup hook changed")
             content = os.read(hook, 8193)
         finally:
             os.close(hook)
         require(hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest() in HOOK_HASHES,
                 "Thumbnail startup hook contents differ; leaving it untouched")
-        return descriptor, (entry.st_dev, entry.st_ino, entry.st_size,
-                            entry.st_mtime_ns, entry.st_ctime_ns)
-    except BaseException:
-        os.close(descriptor)
-        raise
+    current = os.stat(HOOK_NAME, dir_fd=directory, follow_symlinks=False)
+    require(hook_identity(current) == hook_identity(entry), "Thumbnail startup hook changed")
+    return hook_identity(entry), target
+
+
+def remove_hook(directory, expected):
+    if expected is None:
+        return
+    require(read_hook(directory) == expected,
+            "Thumbnail startup hook changed; refusing to remove it")
+    os.unlink(HOOK_NAME, dir_fd=directory)
 
 
 def process_identity(pid):
@@ -139,12 +168,7 @@ def main():
     try:
         processes = find_helpers()
         # Remove only the reviewed own hook first, preventing its next startup.
-        if hook is not None:
-            current = os.stat(HOOK_NAME, dir_fd=directory, follow_symlinks=False)
-            require(regular_owned(current) and (current.st_dev, current.st_ino, current.st_size,
-                    current.st_mtime_ns, current.st_ctime_ns) == hook,
-                    "Thumbnail startup hook changed; refusing to remove it")
-            os.unlink(HOOK_NAME, dir_fd=directory)
+        remove_hook(directory, hook)
         signalled = sum(stop_one(identity) for identity in processes)
         deadline = time.monotonic() + 40
         while any(process_identity(identity[0]) == identity for identity in processes):

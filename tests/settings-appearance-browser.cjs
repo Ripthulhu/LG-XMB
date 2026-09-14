@@ -20,6 +20,23 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     await page.waitForFunction(() => window.C5App && C5App.getState().waveMode === 'webgl');
     const defaultWave = await page.evaluate(() => C5App.getState().waveDiagnostics);
     assert.equal(defaultWave.speed,1.5); assert.equal(defaultWave.brightness,1);
+    await page.evaluate(() => {
+      // Adaptive quality may change between UI actions on a software renderer.
+      // Check each settings call synchronously, without disabling adaptation.
+      window.styleTransitions = [];
+      const setStyle = C5Wave.prototype.setStyle;
+      function geometry(wave) {
+        const state = wave.getDiagnostics();
+        return {quality:state.quality,targetFps:state.targetFps,adaptive:state.adaptive,
+          width:wave.canvas.width,height:wave.canvas.height};
+      }
+      C5Wave.prototype.setStyle = function(style) {
+        const before = geometry(this);
+        const result = setStyle.call(this,style);
+        window.styleTransitions.push({before,after:geometry(this)});
+        return result;
+      };
+    });
     await open('appearance');
     assert.equal(await page.locator('.theme-options .option').count(),9);
     await page.getByRole('button',{name:'Forest',exact:true}).click();
@@ -58,8 +75,13 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     await page.getByRole('group',{name:'Animation',exact:true}).getByRole('button',{name:'Off',exact:true}).click();
     const custom = await page.evaluate(() => C5App.getState().waveDiagnostics);
     assert.equal(custom.speed,2.25); assert.equal(custom.brightness,1.5); assert.equal(custom.reducedMotion,true);
-    assert.equal(custom.targetFps,defaultWave.targetFps); assert.equal(custom.quality,defaultWave.quality);
+    assert.equal(custom.targetFps,defaultWave.targetFps);
     assert.equal(custom.adaptive,defaultWave.adaptive);
+    const transitions = await page.evaluate(() => window.styleTransitions);
+    assert.ok(transitions.length >= 2, 'UI settings must exercise the renderer');
+    for (const transition of transitions) {
+      assert.deepEqual(transition.after,transition.before,'A style change must preserve quality, backing size and frame cap');
+    }
     await page.screenshot({path:path.join(__dirname,'../qa/settings-waves-rose-1080.png')});
     await page.reload(); await page.waitForFunction(() => window.C5App && C5App.getState().waveMode === 'webgl');
     const restored = await page.evaluate(() => C5App.getState());

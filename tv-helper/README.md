@@ -1,17 +1,33 @@
 # TV helper
 
-The helper adds cached HDMI pictures, background controls and Home-button assignment to the web app. It uses an existing rooted Homebrew Channel environment; it creates no listener, root shell endpoint, service ACL change or firmware modification. See [installation and recovery](../docs/INSTALLATION.md).
+The helper adds cached HDMI pictures, background controls and Home-button assignment to the web app. It uses an existing rooted Homebrew Channel environment; it creates no listener, root shell endpoint, service ACL change or firmware modification. The IPK includes the helper; use **Settings → TV integration** to install or repair it. See [installation and recovery](../docs/INSTALLATION.md).
 
 ## Components
 
 | Source | Installed path |
 | --- | --- |
+| `setup.py` | Packaged as `helper-setup.py`; fixed status/install/stop actions |
 | `thumbnail_cache.py` | `/var/lib/openxmb-c5/thumbnail-cache.py` |
 | `process_control.py` | `/var/lib/openxmb-c5/process-control.py` |
-| `60-openxmb-thumbnails` | `/var/lib/webosbrew/init.d/60-openxmb-thumbnails` |
-| `recovery/stop_thumbnail_helper.py` | Recovery utility; run before replacing helper files |
+| `../app/helper-startup.py` | App container; `init.d/60-openxmb-thumbnails` symlinks to it |
+| `recovery/stop_thumbnail_helper.py` | `/var/lib/openxmb-c5/stop-helper.py` |
 
-The startup hook launches one Python process with `--allow-home-preview --process-controls`. A lifetime lock refuses duplicate workers. SIGTERM stops the worker cleanly; the hook has no automatic restart loop.
+The packaged startup entry starts one detached Python worker with
+`--allow-home-preview --process-controls`, then exits without blocking boot.
+It checks app presence and helper ownership before launching. The worker retains
+its existing exact-manifest checks and lifetime lock. SIGTERM stops it cleanly;
+there is no automatic restart loop.
+
+Only the symlink belongs in `/var/lib/webosbrew/init.d`. Removing the app breaks
+that link, preventing subsequent boot starts. The updated recovery utility
+handles both the exact link (including a broken one) and reviewed legacy copies;
+it never follows the link to remove the packaged script. Unrecognized hooks are
+left alone. Restore settings before uninstalling; see the removal instructions.
+
+`/var/lib/webosbrew/lg-xmb-startup.log` records the last launch request or spawn
+failure. A new start replaces the small record; a duplicate start does not erase
+it. Runtime status remains in the bounded JSON files under `/tmp/openxmb-c5-*`.
+The startup log alone does not confirm that the worker initialized successfully.
 
 ## Pictures
 
@@ -56,10 +72,10 @@ Back behavior stays in the web app. It either keeps the main menu open or invoke
 
 The controller verifies root ownership, anchored paths, file type, link count and exact app-manifest bytes. Its `PIN_APPINFO_SHA256` must match the packaged `app/appinfo.json`. If webOS resets this app directory and manifest to writable modes at boot, the helper repairs only those two verified entries to 0755/0644. Changed metadata or unsafe paths fail closed; shared ancestors are never modified.
 
-A temporarily missing app gets up to 90 seconds to become available. The same checks run on subsequent polls. An ordinary full-system restart verified automatic startup of this repair mechanism. Physical power removal and broad cross-model compatibility have not been established.
+A temporarily missing app gets up to 90 seconds to become available. The same checks run on subsequent polls. An ordinary full-system restart verified automatic startup of this repair mechanism in 0.1.11. The new packaged startup entry still needs a C5 reboot/removal test. Physical power removal and broad cross-model compatibility have not been established.
 
 ## Maintenance
 
 Stop the helper before replacing either module or the app. Review any manifest change and update its pin together with the release. Keep old user configurations and saved restoration values. Run the unit tests and verify actual helper status, input pictures and Home routing on the target firmware before enabling startup.
 
-The legacy default initializer supports earlier installs that already managed LG Home. The documented fresh-install procedure creates an explicit all-Allowed configuration instead, so a new installation does not assume those legacy preload settings.
+The legacy default initializer supports earlier installs that already managed LG Home. The in-app installer creates an explicit all-Allowed configuration instead, so a new installation does not assume those legacy preload settings.

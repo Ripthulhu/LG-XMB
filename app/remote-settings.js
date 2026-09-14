@@ -16,6 +16,7 @@ function render(key,initial){
   var note=pending?'Saving…':!state?'Checking the TV’s current setting…':state.home==='other'?'Another app is assigned to the Home button.':'Choosing LG Home also allows it in Background activity. Other background choices stay as they are.';
   home.appendChild(element('p','remote-note',note));
   if(!state&&errorMessage){var retry=element('button','option','Try again');retry.type='button';retry.addEventListener('click',function(){load(generation);});root.appendChild(retry);}
+  if(!state&&errorMessage&&options.setup){var setup=element('button','option','Set up TV features');setup.type='button';setup.addEventListener('click',options.setup);root.appendChild(setup);}
   var back=group('Back button',[['stay','Stay in Home'],['lg','LG behavior']],options.getBack(),false,function(value){
     errorMessage='';try{options.setBack(value);}catch(error){errorMessage=error.message||'Could not save the Back button setting.';}render('Back button:'+value,false);
   });

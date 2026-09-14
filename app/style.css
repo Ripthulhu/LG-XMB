@@ -27,3 +27,12 @@ body{transition:background 1s ease}button{font:inherit;color:inherit;border:0;cu
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 @media(max-aspect-ratio:4/3){.modal{width:61vw;margin-right:5vw;padding-left:3vw;min-width:0}.modal-intro,.about-copy{max-width:none}.background-option-copy{max-width:40vw}.modal-backdrop{background:linear-gradient(90deg,rgba(var(--background-rgb),.4),rgba(var(--background-rgb),.97) 48%)}}
 .remote-note{margin:1.6vh 1.3vw 0;font-size:clamp(13px,.88vw,20px);line-height:1.55;color:rgba(255,255,255,.65)}
+
+/* webOS 22 uses Chromium 87, before CSS aspect-ratio support. */
+@supports not (aspect-ratio: 16 / 9) {
+  .preview-panel::before {
+    content: "";
+    display: block;
+    padding-top: 56.25%;
+  }
+}

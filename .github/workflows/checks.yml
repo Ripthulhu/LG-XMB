@@ -1,0 +1,86 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.10'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Unit tests
+        run: |
+          npm test
+          python3 -B -m unittest discover -s tests -p 'test_*.py'
+          python3 -B -m unittest discover -s tv-helper -p 'test_*.py'
+          python3 -B -m unittest discover -s tv-helper/recovery -p 'test_*.py'
+      - name: Install test browsers
+        run: npx playwright install --with-deps chromium msedge
+      - name: Isolated compatibility layout
+        run: npm run test:compat
+      - name: Full browser regression suite
+        shell: bash
+        run: |
+          node tools/preview.cjs > "$RUNNER_TEMP/lg-xmb-preview.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in {1..30}; do
+            kill -0 "$preview_pid" || { cat "$RUNNER_TEMP/lg-xmb-preview.log"; exit 1; }
+            if curl -fsS http://127.0.0.1:8765/ > /dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          npm run test:browser
+          node tests/wave-retention-browser.cjs
+      - name: Build candidate (no TV deployment)
+        run: |
+          npm run package
+          npm run verify:package
+          git archive --format=zip --output=dist/source.zip HEAD
+      - name: Verify bundled helper and app-owned startup entry
+        run: python3 tools/verify-helper-package.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lg-xmb-candidate
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  homebrew-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Download and verify Homebrew CLI
+        run: node tools/dev-tools.cjs
+      - name: Check the downloaded packager
+        run: |
+          tar -xzf .tools/ares-cli-rs-v0.7.0-linux-x86_64.tar.gz -C .tools
+          .tools/ares-cli-rs-v0.7.0-linux-x86_64/ares-package --help

@@ -160,7 +160,7 @@ test('HDMI and stock Home helpers use ordinary app launch with no settings', asy
     assert.equal((await result).id, expected);
   }
   assert.ok(h.calls.every(call => /\/(getAppLoadStatus|launch)$/.test(call.uri)));
-  assert.equal(Object.keys(h.tv).sort().join(','), 'exitToStockHome,getInputPreviewStatus,isTV,launch,listApps,openInput,platformBack');
+  assert.equal(Object.keys(h.tv).sort().join(','), 'exitToStockHome,getInputPreviewStatus,isTV,launch,listApps,listInputLabels,openInput,platformBack');
 });
 
 function previewEntry(overrides = {}) {

@@ -5,9 +5,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { stageHelper } from './helper-bundle.mjs';
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const appDir = path.join(projectDir, 'app');
+const sourceAppDir = path.join(projectDir, 'app');
+const appDir = path.join(projectDir, '.build', 'package-app');
 const outputDir = path.join(projectDir, 'dist');
 const cliStateDir = path.join(projectDir, '.build', 'cli-state');
 const cliDir = path.join(projectDir, 'node_modules', '@webos-tools', 'cli');
@@ -41,6 +43,9 @@ try {
   requireCondition(fs.existsSync(cli), 'Install local dependencies first: npm ci --ignore-scripts --no-audit --no-fund');
   const cliPackage = JSON.parse(fs.readFileSync(path.join(cliDir, 'package.json'), 'utf8'));
   requireCondition(cliPackage.version === '3.2.6', 'Expected pinned @webos-tools/cli 3.2.6. Run npm ci.');
+  fs.rmSync(appDir, {recursive: true, force: true});
+  fs.cpSync(sourceAppDir, appDir, {recursive: true, dereference: false});
+  stageHelper(projectDir, appDir);
   const appinfo = JSON.parse(fs.readFileSync(path.join(appDir, 'appinfo.json'), 'utf8'));
   requireCondition(appinfo.id === expectedId, `App ID must be ${expectedId}`);
   requireCondition(appinfo.version === expectedVersion, `App version must be ${expectedVersion}`);

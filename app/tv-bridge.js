@@ -1,7 +1,7 @@
 /* OpenXMB C5: limited local webOS application/media-status bridge. No network or root helpers.
  * Native transport verified against LG webOSTV.js 1.2.13 (PalmServiceBridge).
  * https://webostv.developer.lge.com/develop/references/application-manager
- * listApps is a firmware API, not a guaranteed third-party webOS TV API.
+ * listApps and inputStatus are firmware APIs, not guaranteed third-party APIs.
  */
 (function (root) {
   'use strict';
@@ -10,7 +10,8 @@
   var TIMEOUT_MS = 5000;
   var METHODS = Object.freeze({
     listApps: SERVICE + 'listApps', getAppLoadStatus: SERVICE + 'getAppLoadStatus',
-    launch: SERVICE + 'launch', previewStatus: 'luna://com.webos.service.videooutput/getStatus'
+    launch: SERVICE + 'launch', previewStatus: 'luna://com.webos.service.videooutput/getStatus',
+    inputStatus: 'luna://com.webos.service.eim/getAllInputStatus'
   });
   var INPUTS = Object.freeze({
     HDMI_1: 'com.webos.app.hdmi1', HDMI_2: 'com.webos.app.hdmi2',
@@ -170,6 +171,41 @@
     });
   }
 
+  function listInputLabels() {
+    if (!isTV()) return Promise.resolve({ ok: true, preview: true, inputs: [] });
+    var read = request('inputStatus', {});
+    var result = read.then(function (response) {
+      if (!Array.isArray(response.devices) || response.devices.length > 128) {
+        throw error('INVALID_RESPONSE', 'The TV did not return a valid input list.');
+      }
+      var seen = Object.create(null), duplicates = Object.create(null), inputs = [];
+      response.devices.forEach(function (device) {
+        if (!device || typeof device !== 'object' || Array.isArray(device)) return;
+        var match = typeof device.appId === 'string' && /^com\.webos\.app\.hdmi([1-4])$/.exec(device.appId);
+        if (!match) return;
+        // EIM also exposes virtual sources. Never use a label to choose a target,
+        // or pick the first of multiple records claiming the same HDMI app.
+        if (seen[device.appId]) { duplicates[device.appId] = true; return; }
+        seen[device.appId] = true;
+        var port = Number(match[1]);
+        if ((device.id !== undefined && device.id !== 'HDMI_' + port) ||
+            (device.port !== undefined && device.port !== port) ||
+            (device.label != null && typeof device.label !== 'string')) return;
+        var label = (device.label || '').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '')
+          .replace(/\s+/g, ' ').trim();
+        label = Array.from(label).slice(0, 120).join('');
+        // A disconnected port is still usable. Names, not connection state or
+        // subList metadata, are all this read exports. No native icon paths.
+        inputs.push({ id: device.appId, port: port, label: label || 'HDMI ' + port });
+      });
+      return { ok: true, preview: false, inputs: inputs.filter(function (input) {
+        return !duplicates[input.id];
+      }) };
+    });
+    result.cancel = function () { read.cancel(); };
+    return result;
+  }
+
   function launch(id) {
     if (!validId(id)) return Promise.reject(error('INVALID_APP_ID', 'Choose a valid installed TV application.'));
     if (!isTV()) return Promise.resolve(previewResult('launch', id));
@@ -208,6 +244,7 @@
   root.C5TV = Object.freeze({
     isTV: isTV,
     listApps: listApps,
+    listInputLabels: listInputLabels,
     launch: launch,
     openInput: openInput,
     getInputPreviewStatus: getInputPreviewStatus,
