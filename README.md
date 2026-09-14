@@ -29,15 +29,16 @@ integrations are still C5-specific; a working menu is not a compatibility test.
 
 ## Install
 
-Follow [Installation](docs/INSTALLATION.md) to install an IPK with **webOS Dev
+Download the `.ipk` from [Releases](https://github.com/Ripthulhu/LG-XMB/releases),
+then follow [Installation](docs/INSTALLATION.md) to install it with **webOS Dev
 Manager**. Installing the launcher alone does not change the Home button.
 Rooted installations prepare their helper on first launch. Recovery is covered in
 the same guide.
 
-Development packages are available only after the **Checks** workflow succeeds:
-open its run in GitHub Actions and download `lg-xmb-candidate`. It contains the
-IPK, checksums and source. These are test builds, not stable releases or evidence
-of TV compatibility. Building locally is also supported below.
+Releases include the installable IPK, SHA-256 checksums and matching source.
+**0.1.12 is a C5 prerelease**, not a stable or broadly compatible release; read its
+known limitations before installing. Unpublished development builds remain in
+GitHub Actions as `lg-xmb-candidate` after **Checks** succeeds.
 
 ## Develop
 

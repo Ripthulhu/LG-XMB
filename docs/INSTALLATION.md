@@ -2,8 +2,9 @@
 
 ## Install
 
-1. Download `lg-xmb-candidate` from a successful **Checks** run and extract the ZIP.
-   These are test builds, not stable releases.
+1. Download the `.ipk` asset from [Releases](https://github.com/Ripthulhu/LG-XMB/releases).
+   Read that release's requirements and limitations. Prereleases are test builds;
+   the source-code ZIP is not installable on the TV.
 2. In [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop/releases),
    connect to your TV using its existing Developer Mode or rooted connection.
 3. Install the IPK and open **Home**. Test navigation and launching an app.

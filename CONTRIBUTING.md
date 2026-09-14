@@ -61,3 +61,12 @@ Follow the [Homebrew publishing rules](https://www.webosbrew.org/develop/guides/
 Disclose AI assistance in review or submission; a maintainer must understand and
 review the code. Do not replace missing validation with generated descriptions
 or compatibility claims.
+
+### Publish a prerelease
+
+Add notes in `docs/releases/<app-version>.md`, including known limitations.
+In GitHub Actions, run **Publish prerelease** on `main` with the successful
+**Checks** push run ID and its full source commit SHA. The workflow promotes
+that exact IPK and matching source, verifies the files before and after upload,
+and publishes a prerelease with SHA-256 checksums. It does not rebuild the app,
+replace an existing release or tag, or publish automatically on normal pushes.
