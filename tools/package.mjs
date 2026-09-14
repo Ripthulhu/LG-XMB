@@ -14,7 +14,7 @@ const cliStateDir = path.join(projectDir, '.build', 'cli-state');
 const cliDir = path.join(projectDir, 'node_modules', '@webos-tools', 'cli');
 const cli = path.join(cliDir, 'bin', 'ares-package.js');
 const expectedId = 'org.local.openxmb.c5';
-const expectedVersion = '0.1.12';
+const expectedVersion = '0.1.13';
 const packagePath = path.join(outputDir, `${expectedId}_${expectedVersion}_all.ipk`);
 const verifyOnly = process.argv.includes('--verify-only');
 
@@ -36,6 +36,15 @@ function runCli(args) {
   const transcript = [result.stdout, result.stderr].filter(Boolean).join('\n');
   requireCondition(result.status === 0, `ares-package failed (${result.status}):\n${transcript}`);
   return transcript;
+}
+
+function runPython(script, args) {
+  const result = spawnSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+    [path.join(projectDir, 'tools', script), ...args],
+    {encoding: 'utf8', timeout: 30000, windowsHide: true});
+  if (result.error) throw new Error(`Packaging requires Python 3.10 or newer: ${result.error.message}`);
+  requireCondition(result.status === 0, `${script} failed:\n${result.stderr}`);
+  process.stdout.write(result.stdout);
 }
 
 try {
@@ -68,10 +77,14 @@ try {
     fs.cpSync(appDir, stagedApp, {recursive: true});
     stageHelper(projectDir, stagedApp);
     process.stdout.write(runCli(['--no-minify', '--outdir', outputDir, stagedApp]));
+    // The pinned CLI recreates directories with mode 0777. Normalize the IPK,
+    // not just the staging folder, without changing shared TV ancestor entries.
+    runPython('ipk_archive.py', [packagePath]);
   }
   requireCondition(fs.existsSync(packagePath), `Package was not produced: ${packagePath}`);
   const packageBytes = fs.readFileSync(packagePath);
   requireCondition(packageBytes.subarray(0, 8).toString('ascii') === '!<arch>\n', 'IPK is not an ar archive.');
+  runPython('verify-helper-package.py', [packagePath]);
   const info = runCli(['--info-detail', packagePath]);
   requireCondition(info.includes(expectedId), 'IPK inspection did not report the expected app ID.');
   fs.writeFileSync(path.join(outputDir, 'package-info.txt'), info, 'utf8');

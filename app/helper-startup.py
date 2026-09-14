@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import types
+import traceback
 
 # Retained as the upgrade identifier; runtime files use the project name.
 APP_DIR = "/media/developer/apps/usr/palm/applications/org.local.openxmb.c5"
@@ -20,17 +21,21 @@ CACHE = "/tmp/lg-xmb-thumbnails"
 LEGACY_CACHE = "/tmp/openxmb-c5-thumbnails"
 LOG_DIR = "/var/lib/webosbrew"
 LOG_NAME = "lg-xmb-startup.log"
+WORKER_LOCK_NAME = "lg-xmb-worker.lock"
+LOG_LIMIT = 16384
 PYTHON = "/usr/bin/python3"
 FILES = ("process_control.py", "thumbnail_cache.py", "stop_thumbnail_helper.py")
 
 
 class SetupError(Exception):
-    pass
+    def __init__(self, code, **details):
+        super().__init__(code)
+        self.details = details
 
 
-def require(condition, code="unsafe_helper_path"):
+def require(condition, code="unsafe_helper_path", **details):
     if not condition:
-        raise SetupError(code)
+        raise SetupError(code, **details)
 
 
 def open_directory(path, app_path=False):
@@ -132,7 +137,10 @@ def load_bundle():
                             dir_fd=app)
         try:
             meta = os.fstat(directory)
-            require(meta.st_uid == 0 and not meta.st_mode & 0o022)
+            require(meta.st_uid == 0, "helper_owner_mismatch",
+                    path="helper/", uid=meta.st_uid, mode=oct(stat.S_IMODE(meta.st_mode)))
+            require(not meta.st_mode & 0o022, "helper_directory_writable",
+                    path="helper/", uid=meta.st_uid, mode=oct(stat.S_IMODE(meta.st_mode)))
             raw = read_file(directory, "bundle.json", 4096)
             manifest = json.loads(raw)
             require(isinstance(manifest, dict) and manifest.get("schema") == 1,
@@ -228,37 +236,90 @@ def startup_link(recovery):
         os.close(directory)
 
 
+def record_startup(event, error=None, **details):
+    """Bounded local diagnostics, independent of bundle loading and worker locks."""
+    if os.geteuid() != 0:
+        return False
+    directory = log = None
+    try:
+        parent = open_directory(os.path.dirname(LOG_DIR))
+        try:
+            directory = make_directory(parent, os.path.basename(LOG_DIR))
+        finally:
+            os.close(parent)
+        log = os.open(LOG_NAME, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                      0o600, dir_fd=directory)
+        regular_file(os.fstat(log))
+        fcntl.flock(log, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.fchmod(log, 0o600)
+        value = {"time": int(time.time()), "event": event, **details}
+        if error is not None:
+            value["exception"] = type(error).__name__
+            value["frames"] = [{"file": os.path.basename(f.filename), "line": f.lineno,
+                                "function": f.name} for f in traceback.extract_tb(error.__traceback__)[-8:]]
+            if isinstance(error, SetupError):
+                value["code"] = str(error)
+                value.update(error.details)
+            elif isinstance(error, OSError):
+                value["errno"] = error.errno
+        # No raw native replies, config contents or exception messages in logs.
+        line = (json.dumps(value, ensure_ascii=True, separators=(",", ":")) + "\n").encode()
+        if len(line) > LOG_LIMIT // 2:
+            return False
+        size = os.fstat(log).st_size
+        os.lseek(log, max(0, size - (LOG_LIMIT - len(line))), os.SEEK_SET)
+        tail = os.read(log, LOG_LIMIT - len(line))
+        if size > len(tail):
+            tail = tail.partition(b"\n")[2]
+        data = tail + line
+        os.lseek(log, 0, os.SEEK_SET)
+        os.ftruncate(log, 0)
+        while data:
+            written = os.write(log, data)
+            if written == 0:
+                raise OSError("Short log write")
+            data = data[written:]
+        return True
+    except Exception:
+        # A foreign/unsafe log path must not be repaired or mask the setup error.
+        return False
+    finally:
+        if log is not None:
+            os.close(log)
+        if directory is not None:
+            os.close(directory)
+
+
 def launch_worker(recovery):
     directory = open_directory(LOG_DIR)
     try:
-        log = os.open(LOG_NAME, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
-                      0o600, dir_fd=directory)
+        lock = os.open(WORKER_LOCK_NAME, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                       0o600, dir_fd=directory)
     finally:
         os.close(directory)
     try:
-        regular_file(os.fstat(log))
+        regular_file(os.fstat(lock))
         try:
-            fcntl.flock(log, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise SetupError("helper_busy") from None
-        os.ftruncate(log, 0)
-        os.write(log, b"lg-xmb: starting bundled worker; capture status: /tmp/lg-xmb-thumbnails/status.json\n")
+        record_startup("worker_start")
         child = subprocess.Popen([PYTHON, "-I", "-B", APP_DIR + "/helper/thumbnail_cache.py",
                                   "--allow-home-preview", "--process-controls"],
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL, pass_fds=(log,),
+                                 stderr=subprocess.DEVNULL, pass_fds=(lock,),
                                  start_new_session=True, close_fds=True)
-        # Catch immediate interpreter/import failures. This does not assert that
-        # a signal is present or the TV's capture API will allow a picture.
+        # Catch immediate interpreter/import failures. Capture diagnostics remain
+        # in /tmp/lg-xmb-thumbnails/status.json, not an unbounded output stream.
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline:
             if child.poll() is not None:
-                os.write(log, b"lg-xmb: worker exited during startup\n")
+                record_startup("worker_exited", returnCode=child.returncode)
                 return False
             time.sleep(.05)
         return recovery.process_identity(child.pid) is not None
     finally:
-        os.close(log)
+        os.close(lock)
 
 
 def start():
@@ -310,17 +371,22 @@ def main():
     if sys.argv[1:] not in ([], ["ensure"]):
         print(json.dumps({"returnValue": False, "errorCode": "invalid_command"}))
         return 2
+    record_startup("setup_start")
     try:
         result = start()
     except SetupError as error:
         result = {"returnValue": False, "errorCode": str(error)}
         if str(error) == "root_required":
             result["effectiveUid"] = os.geteuid()
-    except (FileNotFoundError, ImportError):
-        result = {"returnValue": False, "errorCode": "bundle_incomplete"}
-    except Exception:
-        # Native command and filesystem errors must not leak raw data to the UI.
-        result = {"returnValue": False, "errorCode": "setup_failed"}
+        result["logWritten"] = record_startup("setup_failed", error)
+    except (FileNotFoundError, ImportError) as error:
+        result = {"returnValue": False, "errorCode": "bundle_incomplete",
+                  "logWritten": record_startup("setup_failed", error)}
+    except Exception as error:
+        result = {"returnValue": False, "errorCode": "setup_failed",
+                  "logWritten": record_startup("setup_failed", error)}
+    else:
+        record_startup("setup_ready", captureRunning=result["captureRunning"])
     print(json.dumps(result), flush=True)
     return 0 if result["returnValue"] else 2
 
