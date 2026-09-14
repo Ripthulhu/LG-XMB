@@ -109,18 +109,26 @@ module.exports = async function checkLaunchReturn(browser, checks, errors) {
         await complete(page, a, staleFailure);
         assert.deepEqual(await snapshot(page), beforeOldCompletion, 'obsolete completion must not alter the current launch or detail');
         assert.equal(await page.locator('#items').getAttribute('aria-busy'), 'true');
-        await complete(page, b, 'Current B failure');
-        await page.waitForFunction(() => !C5App.getState().busy);
-        assert.match(await page.locator('#toast').innerText(), /Current B failure/);
-        assert.equal(await page.locator('#toast').evaluate(el => el.classList.contains('show')), true);
-        assert.equal(await page.evaluate(() => returnTest.toastMessages.some(text => /Obsolete A|Opening /.test(text))), false);
-        const hiddenToast = await page.evaluate(() => {
+        // Capture the transient toast before automation round trips can outlast
+        // its normal 4.2-second lifetime on a busy software-rendering worker.
+        const failureState = await page.evaluate(async index => {
+          returnTest.launches[index].reject(new Error('Current B failure'));
+          await Promise.resolve();
+          await Promise.resolve();
+          const toast = document.getElementById('toast');
+          const result = {busy: C5App.getState().busy, text: toast.textContent,
+            visible: toast.classList.contains('show'),
+            obsoleteMessages: returnTest.toastMessages.some(text => /Obsolete A|Opening /.test(text))};
           Object.defineProperty(document, 'hidden', {configurable: true, value: true});
           document.dispatchEvent(new Event('visibilitychange'));
-          const toast = document.getElementById('toast');
-          return {text: toast.textContent, visible: toast.classList.contains('show')};
-        });
-        assert.deepEqual(hiddenToast, {text: '', visible: false}, 'hiding clears the existing fresh error immediately without a Home event');
+          result.afterHide = {text: toast.textContent, visible: toast.classList.contains('show')};
+          return result;
+        }, b);
+        assert.equal(failureState.busy, false);
+        assert.match(failureState.text, /Current B failure/);
+        assert.equal(failureState.visible, true);
+        assert.equal(failureState.obsoleteMessages, false);
+        assert.deepEqual(failureState.afterHide, {text: '', visible: false}, 'hiding clears the existing fresh error immediately without a Home event');
         await page.evaluate(() => {
           Object.defineProperty(document, 'hidden', {configurable: true, value: false});
           document.dispatchEvent(new Event('visibilitychange'));
