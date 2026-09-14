@@ -30,3 +30,20 @@ That library, LG native runtimes and firmware are not bundled. Product names ide
 ## Development tools
 
 `@webos-tools/cli` 3.2.6 builds and inspects IPKs. Playwright runs browser checks. These development dependencies are not bundled in the TV app and retain their own licenses in their installed packages.
+
+## PlayStation 3 XMB wave reconstruction
+
+Source: https://github.com/linkev/PlayStation-3-XMB
+
+Revision: `1ec453a9dddec5448d615116ff428349f42d454e`.
+Copyright (c) 2025 Mart. MIT License; the full permission and disclaimer are
+included in `app/licenses/PS3-XMB-MIT.txt`.
+
+`app/ps3-wave.js` adapts the synthetic spline displacement, parameter values,
+mesh rendering and Fresnel-style shading from `ps3xmbwave/spline-reverse.js`,
+`spline.js` and `spline-settings.js`. The WebGL 1 port uses reusable CPU mesh
+buffers, time-based smoothing, smooth normals and a soft RGBA8 composite.
+The combined app remains GPL version 3; the MIT notice is preserved in this file
+and the package. The reference credits Alphardex's CodePen as its starting point.
+No Sony firmware code, extracted DDS assets or PlayStation logos are included.
+See `WAVE-PROVENANCE.md` for scope and differences from the reference.

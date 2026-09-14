@@ -155,6 +155,11 @@
     this.renderer = options && options.renderer === 'canvas2d' ? 'canvas2d' : 'webgl';
     this.qualityIndex = options && options.quality === '720p' ? 1 : options && options.quality === '540p' ? 2 : 0;
     this.adaptive = !(options && options.adaptive === false);
+    this.ps3Surface = null;
+    this.ps3Disabled = !!(options && options.pattern === 'classic');
+    this.pattern = 'classic';
+    this.patternFallback = null;
+    this.position = null;
     this.capabilities = null;
     this.qualityChanges = [];
     this.pendingShaders = null;
@@ -184,6 +189,8 @@
     this._restoredBound = function () {
       if (this.destroyed) return;
       this.contextLost = false;
+      if (this.ps3Surface) this.ps3Surface.destroy(true);
+      this.ps3Surface = null;
       this.program = null; this.buffer = null;
       this.pendingShaders = null;
       this.initialized = false; this.mode = 'pending'; this._resume();
@@ -248,8 +255,13 @@
       this.parallelCompile = gl.getExtension('KHR_parallel_shader_compile');
       this.compileStarted = nowMs();
       var precision = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+      var shaderPrecision = precision && precision.precision ? 'highp' : 'mediump';
+      var ps3 = !this.ps3Disabled && global.LGXMBPS3Wave;
+      this.pattern = ps3 ? 'ps3' : 'classic';
+      if (this.pattern === 'ps3') this.ps3Surface = ps3.create(gl,shaderPrecision);
       vertex = this._shader(gl.VERTEX_SHADER, VERTEX);
-      fragment = this._shader(gl.FRAGMENT_SHADER, FRAGMENT.replace('PRECISION', precision && precision.precision ? 'highp' : 'mediump'));
+      fragment = this._shader(gl.FRAGMENT_SHADER,
+        (this.ps3Surface ? ps3.backdrop : FRAGMENT).replace('PRECISION', shaderPrecision));
       this.program = gl.createProgram();
       gl.attachShader(this.program, vertex); gl.attachShader(this.program, fragment);
       this.pendingShaders = [vertex,fragment];
@@ -291,7 +303,10 @@
       this.compileRaf = 0;
       if (this.destroyed || this.paused || document.hidden || this.contextLost) return;
       try {
-        if (this.gl.getProgramParameter(this.program,this.parallelCompile.COMPLETION_STATUS_KHR)) this._finishCompile();
+        if (this.gl.getProgramParameter(this.program,this.parallelCompile.COMPLETION_STATUS_KHR) &&
+            (!this.ps3Surface || this.ps3Surface.programs.every(function (program) {
+              return this.gl.getProgramParameter(program,this.parallelCompile.COMPLETION_STATUS_KHR);
+            },this))) this._finishCompile();
         else if (nowMs()-this.compileStarted > 15000) throw new Error('Wave shader compilation exceeded 15 seconds');
         else this._scheduleCompilePoll();
       } catch (e) { this._failGpu(e); }
@@ -307,6 +322,7 @@
       });
       throw new Error(log);
     }
+    if (this.ps3Surface) this.ps3Surface.finish();
     this.compileMs = Math.round(nowMs()-this.compileStarted);
     (this.pendingShaders || []).forEach(function (shader) { gl.deleteShader(shader); });
     this.pendingShaders = null;
@@ -314,7 +330,7 @@
     this.buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER,this.buffer);
     gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
-    var position = gl.getAttribLocation(this.program,'aPosition');
+    var position = this.position = gl.getAttribLocation(this.program,'aPosition');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position,2,gl.FLOAT,false,0,0);
     this.uniforms = {
@@ -328,6 +344,9 @@
   };
 
   C5Wave.prototype._failGpu = function (error) {
+    var retryClassic = this.pattern === 'ps3' && !this.ps3Disabled;
+    if (this.ps3Surface) this.ps3Surface.destroy(this.contextLost);
+    this.ps3Surface = null;
     this.error = String(error.message || error);
     var gl = this.gl;
     if (gl && !this.contextLost) {
@@ -336,6 +355,10 @@
       if (this.buffer) gl.deleteBuffer(this.buffer);
     }
     this.pendingShaders = null; this.program = null; this.buffer = null;
+    if (retryClassic) {
+      this.ps3Disabled = true; this.patternFallback = this.error;
+      this._initialize(); return;
+    }
     this._fallback(); this._resize(); this._resume();
   };
 
@@ -435,6 +458,8 @@
     // Local diagnostic data only. Scheduling gaps are not GPU execution time.
     return {
       mode:this.mode,requestedRenderer:this.renderer,capabilities:this.capabilities,
+      pattern:this.mode === 'webgl' ? this.pattern : 'classic',patternFallback:this.patternFallback,
+      surface:this.ps3Surface ? this.ps3Surface.diagnostics() : null,
       parallelShaderCompile:!!this.parallelCompile,compileMs:this.compileMs,
       quality:this.mode === 'canvas2d' ? '540p' : QUALITY[this.qualityIndex].name,
       backingWidth:this.canvas.width,backingHeight:this.canvas.height,
@@ -453,12 +478,20 @@
       var gl = this.gl;
       gl.viewport(0,0,this.canvas.width,this.canvas.height);
       gl.useProgram(this.program);
+      // The mesh pass shares this context; restore the background vertex binding.
+      gl.bindBuffer(gl.ARRAY_BUFFER,this.buffer);
+      gl.enableVertexAttribArray(this.position);
+      gl.vertexAttribPointer(this.position,2,gl.FLOAT,false,0,0);
       gl.uniform2f(this.uniforms.resolution,this.canvas.width,this.canvas.height);
       gl.uniform1f(this.uniforms.time,this.time);
       gl.uniform1f(this.uniforms.brightness,this.brightness);
       gl.uniform3fv(this.uniforms.background,this.background);
       gl.uniform3fv(this.uniforms.wave,this.wave);
       gl.drawArrays(gl.TRIANGLES,0,3);
+      if (this.ps3Surface) {
+        try { this.ps3Surface.draw(this.time,this.wave,this.brightness,this.canvas.width,this.canvas.height); }
+        catch (error) { this._cancel(); this._failGpu(error); }
+      }
     } else if (this.ctx) this._draw2d();
   };
 
@@ -543,7 +576,7 @@
       this.lastFrame = now;
       this._draw();
     }
-    this.raf = global.requestAnimationFrame(this._tickBound);
+    if (!this.raf) this.raf = global.requestAnimationFrame(this._tickBound);
   };
 
   C5Wave.prototype._visibility = function () {
@@ -602,6 +635,8 @@
       if (this.media.removeEventListener) this.media.removeEventListener('change',this._motionBound);
       else if (this.media.removeListener) this.media.removeListener(this._motionBound);
     }
+    if (this.ps3Surface) this.ps3Surface.destroy(this.contextLost);
+    this.ps3Surface = null;
     if (this.gl && !this.contextLost) {
       (this.pendingShaders || []).forEach(function (shader) { this.gl.deleteShader(shader); },this);
       if (this.buffer) this.gl.deleteBuffer(this.buffer);

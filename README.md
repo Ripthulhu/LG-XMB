@@ -71,3 +71,6 @@ GNU GPL v3; files permitting later versions retain that permission. Upstream
 copyright and license notices are retained in [LICENSE](LICENSE),
 [third-party notices](THIRD-PARTY-NOTICES.md), and [wave provenance](WAVE-PROVENANCE.md).
 This project is not affiliated with LG or Sony.
+
+The wave background uses a PS3-style spline surface with an OpenXMB/Canvas fallback.
+See [renderer provenance](WAVE-PROVENANCE.md) for sources and limitations.
