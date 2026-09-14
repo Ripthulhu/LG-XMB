@@ -59,7 +59,9 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
       assert.deepEqual(await page.locator('#wave').screenshot(),still,'Brightness changes preserve shape/time');
       await page.screenshot({path:path.join(dir,`ps3-waves-${width}.png`)});
       const before=await page.evaluate(()=>ps3TestWave.time);
-      await page.evaluate(()=>ps3TestWave.setReducedMotion(false));await page.waitForTimeout(300);
+      await page.evaluate(()=>ps3TestWave.setReducedMotion(false));
+      // Observe resumed animation instead of assuming CI can draw within 300 ms.
+      await page.waitForFunction(previous=>ps3TestWave.time>previous,before,{timeout:10000});
       assert.ok(await page.evaluate(()=>ps3TestWave.time)>before);
       await page.evaluate(()=>ps3TestWave.setPaused(true));
       const paused=await page.locator('#wave').screenshot(),at=await page.evaluate(()=>ps3TestWave.time);
