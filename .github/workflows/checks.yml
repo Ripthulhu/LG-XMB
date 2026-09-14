@@ -81,4 +81,4 @@ jobs:
       - name: Check the downloaded packager
         run: |
           tar -xzf .tools/ares-cli-rs-v0.7.0-linux-x86_64.tar.gz -C .tools
-          .tools/ares-cli-rs-v0.7.0-linux-x86_64/ares-package --version
+          .tools/ares-cli-rs-v0.7.0-linux-x86_64/ares-package --help
