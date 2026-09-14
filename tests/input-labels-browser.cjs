@@ -147,7 +147,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     assert.equal((await state()).modal, 'appearance');
     assert.equal(await page.evaluate(() => labelTest.dialogFocus === document.activeElement), true);
     await page.keyboard.press('Escape');
-    await page.getByRole('button', {name: 'Inputs', exact: true}).click();
+    for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
     assert.equal((await state()).item, 'com.webos.app.hdmi2');
     assert.equal(await title(), 'New console');
     checks.push('A pending label read never blocks a launch or steals dialog focus, and category selection survives the update');
@@ -167,7 +167,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     await page.keyboard.press('Enter');
     await page.getByRole('button', {name: 'Live', exact: true}).click();
     await page.keyboard.press('Escape');
-    await page.getByRole('button', {name: 'Inputs', exact: true}).click();
+    for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
     await page.waitForFunction(() => C5App.getState().inputPreview.status === 'playing');
     await home();
     const before = await page.evaluate(() => ({videos: labelTest.videos, releases: labelTest.releases,
@@ -179,6 +179,21 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     assert.equal(await page.evaluate(() => labelTest.video === document.querySelector('video')), true);
     assert.deepEqual(await page.evaluate(() => ({videos: labelTest.videos, releases: labelTest.releases,
       images: labelTest.images})), before);
+    await home();
+    const afterLaunchRead = (await count()) - 1;
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !C5App.getState().busy && labelTest.launches.length === 2);
+    assert.equal((await state()).inputPreview.status, 'idle');
+    const stopped = await page.evaluate(() => ({videos: labelTest.videos, releases: labelTest.releases,
+      images: labelTest.images}));
+    await reply(afterLaunchRead, 'PC after launch');
+    assert.equal(await title(), 'PC after launch');
+    // The native launch reply can arrive before the platform hides Home.
+    await page.waitForTimeout(700);
+    assert.equal((await state()).inputPreview.status, 'idle');
+    assert.deepEqual(await page.evaluate(() => ({videos: labelTest.videos, releases: labelTest.releases,
+      images: labelTest.images})), stopped);
+    checks.push('A late label update cannot restart an input preview between launch confirmation and page hide');
     const settled = await count();
     await page.waitForTimeout(300);
     assert.equal(await count(), settled, 'label reads have no background polling loop');
