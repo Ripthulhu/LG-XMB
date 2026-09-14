@@ -3,7 +3,7 @@ on:
   push:
     branches: [work/lg-xmb-bundled-helper]
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: lg-xmb-helper-integration
   cancel-in-progress: true
@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
@@ -44,10 +46,12 @@ jobs:
           node tools/preview.cjs > "$RUNNER_TEMP/preview.log" 2>&1 &
           preview=$!
           trap 'kill "$preview" 2>/dev/null || true' EXIT
+          ready=0
           for attempt in {1..30}; do
-            if curl -fsS http://127.0.0.1:8765/ >/dev/null; then break; fi
+            if curl -fsS http://127.0.0.1:8765/ >/dev/null; then ready=1; break; fi
             sleep 1
           done
+          test "$ready" = 1
           npm run test:compat
           npm run test:browser
           node tests/wave-retention-browser.cjs
@@ -56,12 +60,18 @@ jobs:
           npm run package
           npm run verify:package
           python3 tools/verify-helper-package.py dist/org.local.openxmb.c5_0.1.12_all.ipk
-      - name: Save validated source on the temporary branch
+      - name: Archive validated source
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'Validate bundled lg-xmb helper setup and XMB upper icons'
-          git push origin HEAD:refs/heads/work/lg-xmb-bundled-helper
-          git rev-parse HEAD
-          git rev-parse HEAD^{tree}
+          git rev-parse HEAD > dist/validated-commit.txt
+          git rev-parse HEAD^{tree} > dist/validated-tree.txt
+          git archive --format=zip --output=dist/source.zip HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lg-xmb-integration-source
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
