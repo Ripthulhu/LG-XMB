@@ -216,13 +216,16 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     await page.waitForTimeout(450); await assertIdle();
     checks.push('Live playback releases on hidden/pagehide and returns only with the selected mode; category departure removes the native source');
 
+    // Live mode may already have made its legitimate delayed signal check.
+    // Cached must add no requests, rather than erase earlier Live requests.
+    const statusBeforeCached = await page.evaluate(() => inputTest.statusRequests);
     await setMode('cached');
     await selectCategory('Inputs'); await page.waitForTimeout(450); await assertIdle();
     const createdBeforeCached = await page.evaluate(() => inputTest.created);
     await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowDown'); await home();
     await page.waitForTimeout(450); await assertIdle();
     assert.equal(await page.evaluate(() => inputTest.created), createdBeforeCached);
-    const statusBeforeCached = await page.evaluate(() => inputTest.statusRequests);
+    assert.equal(await page.evaluate(() => inputTest.statusRequests), statusBeforeCached);
     assert.equal(await page.evaluate(() => inputTest.maxAttached), 1);
     assert.ok(await page.evaluate(() => inputTest.releases.every(r => r.paused && r.children === 0 && r.src === null)));
     await reload();
@@ -230,7 +233,6 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     await selectCategory('Inputs'); await page.waitForTimeout(450); await assertIdle();
     assert.equal(await page.evaluate(() => inputTest.created), 0);
     assert.equal(await page.evaluate(() => inputTest.statusRequests), 0);
-    assert.equal(statusBeforeCached, 0);
     checks.push('Choosing Cached stops Live, saves the mode, and keeps navigation, Home return and reload free of media or status requests');
 
     await setMode('live'); await reload();
