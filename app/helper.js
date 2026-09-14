@@ -14,6 +14,8 @@
     PYTHON_TOO_OLD:'The helper needs Python 3.7 or newer on the TV.',
     BUNDLE_INCOMPLETE:'The installed helper is incomplete. Reinstall the lg-xmb IPK.',
     BUNDLE_MISMATCH:'The installed app and helper do not match. Reinstall the lg-xmb IPK.',
+    HELPER_PERMISSIONS:'The installed helper directory is writable by other users. Install a corrected lg-xmb IPK.',
+    HELPER_OWNER:'The installed helper directory is not owned by root. Its ownership was not changed.',
     CONFIG_CONFLICT:'Old and new helper settings differ. Both were preserved; resolve the migration before continuing.',
     BUSY:'Another helper setup is running. Wait for it to finish before retrying.',
     TIMEOUT:'Helper setup was not confirmed. It may still be running; no retry was sent.',
@@ -35,9 +37,12 @@
       var codes={python_missing:'PYTHON_MISSING',python_too_old:'PYTHON_TOO_OLD',
         bundle_incomplete:'BUNDLE_INCOMPLETE',invalid_helper_bundle:'BUNDLE_MISMATCH',
         helper_bundle_mismatch:'BUNDLE_MISMATCH',untrusted_app_manifest:'BUNDLE_MISMATCH',
+        helper_directory_writable:'HELPER_PERMISSIONS',helper_owner_mismatch:'HELPER_OWNER',
         legacy_config_conflict:'CONFIG_CONFLICT',helper_busy:'BUSY'};
       if(value.errorCode==='root_required'&&Number.isInteger(value.effectiveUid)&&value.effectiveUid>0)throw problem('ROOT_REQUIRED');
-      throw problem(codes[value.errorCode]||'SETUP_FAILED');
+      var error=problem(codes[value.errorCode]||'SETUP_FAILED');
+      if(value.logWritten===true)error.message+=' Log: /var/lib/webosbrew/lg-xmb-startup.log';
+      throw error;
     }
     if(outer.returnValue!==true||[outer.errorCode,outer.returnCode,outer.exitCode].some(function(code){return code!==undefined&&code!==0&&code!=='0';})||
        (outer.error!==undefined&&outer.error!==null&&outer.error!=='')||outer.stderrString||

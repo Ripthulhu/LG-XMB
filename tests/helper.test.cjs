@@ -63,3 +63,15 @@ test('malformed and oversized execution replies cannot enable the helper',async(
     assert.equal(h.helper.isReady(),false);assert.equal(h.timers.size,0);
   }
 });
+
+test('directory permission errors show the log only when the helper wrote it',async()=>{
+  for(const [errorCode,code] of [['helper_directory_writable','HELPER_PERMISSIONS'],['helper_owner_mismatch','HELPER_OWNER']]){
+    for(const logWritten of [true,false,undefined]){
+      const h=setup(),p=h.helper.ensure();
+      h.reply(0,{returnValue:false,errorCode,logWritten},{returnValue:false,error:'Command failed'});
+      await assert.rejects(p,e=>e.code===code && e.message.includes('/var/lib/webosbrew/lg-xmb-startup.log')===(logWritten===true));
+      assert.equal(h.helper.isReady(),false);
+      assert.equal(h.calls.length,1,'No permission bypass or automatic retry');
+    }
+  }
+});

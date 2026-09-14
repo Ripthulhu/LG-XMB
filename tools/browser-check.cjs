@@ -73,7 +73,7 @@ const path=require('node:path');
  assert.deepEqual(await page.evaluate(()=>window.mainBackCalls),['stock']);assert.match(await page.locator('#toast').innerText(),/LG Home/);
  await page.evaluate(()=>{window.C5TV=window.mainBackBridge;delete window.mainBackBridge;delete window.mainBackCalls;});checks.push('The Settings LG Home shortcut explicitly opens the original launcher');
  for(let i=0;i<8&&(await page.evaluate(()=>C5App.getState())).item!=='about';i++)await page.keyboard.press('ArrowDown');
- assert.equal((await page.evaluate(()=>C5App.getState())).item,'about');await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'about');assert.match(await page.locator('#modalIntro').innerText(),/\b0\.1\.12\b/);await page.keyboard.press('Escape');checks.push('About identifies version 0.1.12');
+ assert.equal((await page.evaluate(()=>C5App.getState())).item,'about');await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'about');assert.match(await page.locator('#modalIntro').innerText(),/\b0\.1\.13\b/);await page.keyboard.press('Escape');checks.push('About identifies version 0.1.13');
  const prefs=await page.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')));assert.deepEqual(Object.keys(prefs).sort(),['backBehavior','motion','previewMode','sound','theme','waveBrightness','waveSpeed']);checks.push('Only appearance, wave, sound, preview and Back preferences stored; no usage history');
  assert.ok(requests.every(url=>url.startsWith('http://127.0.0.1:8765/')));assert.deepEqual(errors,[]);checks.push('No external requests or JavaScript errors');
  const fallback=await browser.newPage({viewport:{width:1920,height:1080}});
