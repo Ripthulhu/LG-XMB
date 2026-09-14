@@ -124,6 +124,7 @@ Inspect `/tmp/openxmb-c5-thumbnails/status.json`. With an eligible HDMI input di
 startup=/media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-startup.py
 hook=/var/lib/webosbrew/init.d/60-openxmb-thumbnails
 test -f "$startup" && test ! -L "$startup" && test -x "$startup" && \
+    test ! -e "$hook" && test ! -L "$hook" && \
     ln -s "$startup" "$hook" && "$hook"
 /usr/bin/python3 /var/lib/openxmb-c5/process-control.py get
 ```
