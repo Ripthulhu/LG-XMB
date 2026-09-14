@@ -60,10 +60,10 @@ test('Independent spline instances and an explicit rewind are deterministic',()=
   for(const time of [14,14.035,14.07,15]){a.update(time);b.update(time);assert.deepEqual(a.vertices,b.vertices);}
   a.update(0);const fresh=api.createGeometry(32,16);fresh.update(0);assert.deepEqual(a.vertices,fresh.vertices);
 });
-test('Mesh uses RGBA8, bounded surfaces and uploads geometry only when time changes',()=>{
+test('Mesh renders full HD in RGBA8 and uploads geometry only when time changes',()=>{
   const h=fakeGL(),renderer=api.create(h.gl,'highp');renderer.finish();
   renderer.draw(14,[0.5,0.5,1],1,1920,1080);
-  const diag=renderer.diagnostics();assert.equal(diag.surfaceWidth,1280);assert.equal(diag.surfaceHeight,720);
+  const diag=renderer.diagnostics();assert.equal(diag.surfaceWidth,1920);assert.equal(diag.surfaceHeight,1080);
   assert.equal(diag.floatTextures,false);
   renderer.draw(14,[1,0.5,0.5],0.6,1920,1080);
   assert.equal(h.calls.filter(c=>c[0]==='bufferSubData').length,1);
@@ -73,6 +73,19 @@ test('Mesh uses RGBA8, bounded surfaces and uploads geometry only when time chan
   assert.equal(renderer.diagnostics().surfaceWidth,960);
   assert.ok(h.calls.filter(c=>c[0]==='texImage2D').every(c=>c[3]==='RGBA'&&c[8]==='UNSIGNED_BYTE'));
   renderer.destroy(false);assert.equal(h.live.size,0);renderer.destroy(false);
+});
+test('Spline surface matches smaller viewports, caps 4K at 1080p and reuses unchanged allocations',()=>{
+  const h=fakeGL(),renderer=api.create(h.gl,'highp');renderer.finish();
+  for (const [width,height,expectedWidth,expectedHeight] of [
+    [1280,720,1280,720],[1920,1080,1920,1080],[3840,2160,1920,1080],[960,540,960,540]
+  ]) {
+    renderer.draw(14,[1,1,1],1,width,height);
+    const diag=renderer.diagnostics();
+    assert.equal(diag.surfaceWidth,expectedWidth);assert.equal(diag.surfaceHeight,expectedHeight);
+  }
+  assert.equal(h.calls.filter(c=>c[0]==='texImage2D').length,3,'A 4K request reuses the full-HD surface');
+  assert.equal(h.calls.filter(c=>c[0]==='bufferSubData').length,1,'Resolution changes do not advance the simulation');
+  renderer.destroy(false);assert.equal(h.live.size,0);
 });
 test('Compilation failure releases every allocated shader and program',()=>{
   const h=fakeGL({link:false}),renderer=api.create(h.gl,'mediump');

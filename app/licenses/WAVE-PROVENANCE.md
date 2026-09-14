@@ -23,7 +23,8 @@ Changes for LG-XMB:
   changing brightness or resizing cannot advance the spline simulation.
 - Move the surface below the selected item, tint it with the existing theme,
   and soften its edges through a bounded RGBA8 surface and a nine-tap composite.
-  The off-screen surface is at most 1280 by 720 (about 3.5 MiB).
+  The off-screen surface matches the drawing buffer up to 1920 by 1080
+  (about 7.9 MiB for RGBA8), without a separate 720p cap.
 - Share the existing 30 fps clock, speed/brightness controls, deferred shader
   compilation, hidden/paused suspension and reduced-motion still frame.
   GPU resources are released on destruction and rebuilt after context loss.
@@ -43,9 +44,11 @@ Copyright 2025–2026 Syndromatic Ltd.; designed by Kavish Krishnakumar in Manch
 The original GPL-3.0-or-later permission and source remain under `app/licenses/`.
 
 Its five ribbon equations, noise, crossing modulation and glow are retained in
-`app/wave.js`. Canvas2D approximates these curves at 540p/20 fps. The television
-starts with a 720p wave buffer below its 1080p interface; desktop starts at 1080p.
-Sustained scheduling pressure can reduce the backing surface to 720p, then 540p.
+`app/wave.js`. Canvas2D approximates these curves at 540p/20 fps. The application
+requests 1080p on both TV and desktop, with adaptive downscaling disabled.
+Smaller previews and actual GPU limits can still reduce the backing size;
+renderer and Canvas fallbacks remain available. The reusable renderer still
+supports lower quality caps and opt-in adaptive scaling for other callers.
 These are app-local resolutions, not TV display-mode changes.
 
 ## API

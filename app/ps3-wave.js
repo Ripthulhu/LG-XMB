@@ -265,7 +265,8 @@
       compositeProgram = program(COMPOSITE_VERTEX,COMPOSITE_FRAGMENT);
     } catch (error) { destroy(false); throw error; }
     function resize(targetWidth,targetHeight) {
-      var scale = Math.min(1,1280/targetWidth,720/targetHeight);
+      // Match the drawing buffer up to full HD, rather than upscaling a 720p surface.
+      var scale = Math.min(1,1920/targetWidth,1080/targetHeight);
       var w = Math.max(1,Math.round(targetWidth*scale)), h = Math.max(1,Math.round(targetHeight*scale));
       if (w === width && h === height) return;
       gl.bindTexture(gl.TEXTURE_2D,texture);
