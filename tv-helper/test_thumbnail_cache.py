@@ -410,7 +410,7 @@ class GuardTests(unittest.TestCase):
     def test_only_exact_approved_app_link(self):
         meta = self.metadata(stat.S_IFLNK | 0o777)
         tc.check_thumbnail_link(meta, tc.CACHE_DIR)
-        for target in ("/etc", "/tmp/other", "../../tmp/openxmb-c5-thumbnails"):
+        for target in ("/etc", "/tmp/other", "../../tmp/lg-xmb-thumbnails"):
             with self.assertRaises(tc.SafeError):
                 tc.check_thumbnail_link(meta, target)
         with self.assertRaises(tc.SafeError):

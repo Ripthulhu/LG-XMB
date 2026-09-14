@@ -16,10 +16,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 HOME = 'org.local.openxmb.c5'
-BASE = '/var/lib/openxmb-c5'
-RUNTIME = '/tmp/openxmb-c5-controls'
+BASE = '/var/lib/lg-xmb'
+RUNTIME = '/tmp/lg-xmb-controls'
 APPINFO = '/media/developer/apps/usr/palm/applications/' + HOME + '/appinfo.json'
-PIN_APPINFO_SHA256 = '0b436832058bdb9054036fe8d9fee8f2b454d101bdb4cbf4073ecd482b3d1dba'
+PIN_APPINFO_SHA256 = 'adc263a37d8594fac90435cec9eb235e015bbc0c5b7e106d3896fa96bce015cd'
 PRELOAD_FILE = '/var/preferences/webos-preload-manager-conf.json'
 ITEMS = {
  'home': {'title': 'LG Home', 'group': 'apps', 'app': 'com.webos.app.home', 'exe': '/usr/bin/flutter-client', 'description': 'Open it from Settings when needed. It closes again after you return.'},
@@ -178,9 +178,8 @@ def valid_config(c):
     return c
 
 def default_config():
-    # Stock Home was managed before this menu existed. Its original preload was enabled.
-    return {'schema': 1, 'revision': 0, 'enabled': {k: k == 'home' for k in ITEMS},
-            'saved': {'home': {'enabled': True, 'permanentRestore': True}}}
+    # A fresh installation must not invent preload or service rollback values.
+    return {'schema': 1, 'revision': 0, 'enabled': {k: False for k in ITEMS}, 'saved': {}}
 
 class Store:
     """Root-owned choices on disk; leases and live status only on tmpfs."""

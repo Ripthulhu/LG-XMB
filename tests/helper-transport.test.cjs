@@ -1,73 +1,46 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
 'use strict';
-const { test } = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
-const source = fs.readFileSync(path.join(__dirname, '../app/process-transport.js'), 'utf8');
-function setup(overrides = {}) {
-  const calls = [], bridges = [], timers = new Map(); let next = 0;
-  class PalmServiceBridge {
-    constructor() { bridges.push(this); }
-    call(uri, body) { calls.push({ uri, body: JSON.parse(body), bridge: this }); }
-    cancel() { this.cancelled = true; }
-  }
-  const window = {
-    C5TV: { isTV: () => true }, PalmServiceBridge,
-    setTimeout(fn, delay) { const id = ++next; timers.set(id, { fn, delay }); return id; },
-    clearTimeout(id) { timers.delete(id); }, ...overrides
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const source=fs.readFileSync(path.join(__dirname,'../app/process-transport.js'),'utf8');
+function setup(){
+  const calls=[];let ready=false,resolveSetup,rejectSetup,ensureCalls=0;
+  const setupPromise=new Promise((resolve,reject)=>{resolveSetup=()=>{ready=true;resolve();};rejectSetup=reject;});
+  const window={C5TV:{isTV:()=>true},setTimeout,clearTimeout,
+    LGXMBHelper:{isReady:()=>ready,ensure:()=>{ensureCalls++;return setupPromise;}},
+    PalmServiceBridge:class{call(uri,body){calls.push({uri,body:JSON.parse(body),bridge:this});}cancel(){}}
   };
-  vm.runInNewContext(source, { window, Promise });
-  function raw(index, value) { calls[index].bridge.onservicecallback(typeof value === 'string' ? value : JSON.stringify(value)); }
-  function reply(index, value = state(), outer = {}) {
-    raw(index, { returnValue: true, stdoutString: JSON.stringify(value), stderrString: '', ...outer });
-  }
-  return { adapter: window.C5ProcessAdapter, window, calls, bridges, timers, raw, reply };
+  vm.runInNewContext(source,{window,Promise});
+  return {calls,adapter:window.C5ProcessAdapter,remote:window.C5RemoteAdapter,resolveSetup,rejectSetup,
+    ensureCalls:()=>ensureCalls,reply(i,value,outer={}){calls[i].bridge.onservicecallback(JSON.stringify({returnValue:true,stdoutString:JSON.stringify(value),stderrString:'',...outer}));}};
 }
-function state(extra = {}) {
-  return { returnValue: true, available: true, revision: 3, items: [
-    { id: 'home', title: 'LG Home', group: 'apps', description: '', enabled: true, supported: true, status: 'Closed' },
-    { id: 'usage', title: 'Usage activity', group: 'privacy', description: '', enabled: false, supported: true, status: '' }
-  ], ...extra };
-}
-
-test('bundled helper setup exposes only fixed status/install commands and clear root failures', async () => {
-  const h = setup(), helper = h.window.C5HelperAdapter;
-  assert.deepEqual(Object.keys(helper).sort(), ['getState','install','stop']);
-  assert.equal(h.calls.length,0,'loading the adapter never installs anything');
-  for (const [method,action,timeout] of [['getState','status',10000],['install','install',65000]]) {
-    const index = h.calls.length, result = helper[method]('ignored; reboot');
-    assert.equal(h.calls[index].uri,'luna://org.webosbrew.hbchannel.service/exec');
-    assert.ok(h.calls[index].body.command.includes('/helper-setup.py '+action+';'));
-    assert.ok(!h.calls[index].body.command.includes('reboot'));
-    assert.ok(h.calls[index].body.command.includes('helper_python_required'));
-    assert.equal([...h.timers.values()][0].delay,timeout);
-    h.reply(index,{returnValue:true,state:action==='install'?'starting':'missing'});
-    assert.equal((await result).state,action==='install'?'starting':'missing');
-  }
-  const denied = helper.getState();
-  h.reply(2,{returnValue:false,errorCode:'helper_root_required'});
-  await assert.rejects(denied,error=>error.code==='helper_root_required'&&/root access/.test(error.message));
-  assert.equal(h.calls.length,3);
+test('Home reads wait for packaged helper setup; normal launch preparation does not',async()=>{
+  const h=setup(),read=h.remote.getState();
+  assert.equal(h.calls.length,0);
+  assert.equal((await h.adapter.prepareLaunch('com.webos.app.hdmi1')).prepared,false);
+  h.resolveSetup();await Promise.resolve();assert.equal(h.calls.length,1);
+  assert.match(h.calls[0].body.command,/\/helper\/process_control.py remote-get$/);
+  h.reply(0,{returnValue:true,available:true,revision:0,home:'stock',homeKeepClosed:false});
+  assert.equal((await read).home,'stock');
 });
-
-test('helper setup timeout is not retried and late success is ignored', async () => {
-  const h=setup(), result=h.window.C5HelperAdapter.install(), callback=h.bridges[0].onservicecallback;
-  [...h.timers.values()][0].fn();
-  await assert.rejects(result,error=>error.code==='TIMEOUT');
-  callback(JSON.stringify({returnValue:true,stdoutString:'{"returnValue":true,"state":"running"}'}));
-  assert.equal(h.calls.length,1); assert.equal(h.timers.size,0);
+test('cancelling while setup runs never sends a queued Home write',async()=>{
+  const h=setup(),write=h.remote.setHome('custom',0);write.cancel();
+  await assert.rejects(write,e=>e.code==='CANCELLED');
+  h.resolveSetup();await Promise.resolve();assert.equal(h.calls.length,0);
 });
-
-test('unavailable Homebrew setup stays an error even if stdout claims success', async () => {
-  const h=setup(), result=h.window.C5HelperAdapter.getState();
-  h.reply(0,{returnValue:true,state:'running'},{returnValue:false});
-  await assert.rejects(result,error=>error.code==='helper_unavailable');
-  assert.equal(h.calls.length,1);
+test('setup failure propagates without sending a controller command',async()=>{
+  const h=setup(),read=h.remote.getState();
+  h.rejectSetup(Object.assign(new Error('Bundled helper missing'),{code:'BUNDLE_INCOMPLETE'}));
+  await assert.rejects(read,e=>e.code==='BUNDLE_INCOMPLETE');assert.equal(h.calls.length,0);
 });
-
-test('desktop preview has no helper setup adapter', () => {
-  const h=setup({C5TV:{isTV:()=>false}});
-  assert.equal(h.window.C5HelperAdapter,undefined); assert.equal(h.calls.length,0);
+test('failed outer exec keeps a recognized helper error but can never grant success',async()=>{
+  const h=setup();h.resolveSetup();
+  const read=h.remote.getState();
+  h.reply(0,{returnValue:false,errorCode:'untrusted_app_manifest'},{returnValue:false,error:'Command failed'});
+  await assert.rejects(read,e=>e.code==='HELPER_MISMATCH');
+  const second=h.remote.getState();
+  h.reply(1,{returnValue:true,available:true,revision:0,home:'custom',homeKeepClosed:false},{returnValue:false,error:'Command failed'});
+  await assert.rejects(second,e=>e.code==='SERVICE_ERROR');
 });

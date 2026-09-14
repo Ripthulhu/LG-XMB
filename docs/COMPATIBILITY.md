@@ -60,17 +60,14 @@ Tests cover migration, dangling links, changed/foreign entries and app removal;
 CI also checks that the IPK contains the executable startup entry.
 
 Deleting the app breaks the link, not the TV's Home assignment. Restore settings
-before uninstalling; see [removal and leftovers](INSTALLATION.md#removal-and-leftovers).
+before uninstalling; see [removal and leftovers](INSTALLATION.md#return-to-lg-home-and-remove).
 The new startup/recovery path still needs an actual C5 install, reboot, upgrade
 and removal test before release. The earlier 0.1.11 test record does not cover it.
 
 ## Before broad distribution
 
-The IPK bundles the helper and offers in-app setup, repair and stopping for
-updates. Setup checks for a C5 on SDK 10.x and initializes new configurations
-to all-Allowed. This is not cross-model helper support. Per-feature profiles,
-controller-default cleanup, capture/controller isolation and geometry outside
-the C5 remain outstanding. Keep the helper C5-only until those changes are tested.
+Outstanding: per-feature helper profiles, capture/controller isolation, and
+verified geometry outside the C5. Keep the helper C5-only until those changes are tested.
 
 Before Homebrew submission, make the corresponding source publicly reachable
 and verify the package source URL. Do not submit a private source URL to the
@@ -81,3 +78,12 @@ installation method and whether root was used. Test cold start, remote/pointer
 navigation, app launch/return, helper absence, Home/Back behavior, standby/resume,
 upgrade and removal. Test live HDMI, capture, Home assignment and restoration
 only as separate, deliberate checks with an independent recovery route.
+
+## Clean-install test record
+
+Native input labels in build `edde24c` were confirmed working by the maintainer.
+Cached pictures and Home remapping failed when the old external helper was
+removed: that build did not bundle its helper modules. Version 0.1.12 packages
+them and adds automatic setup, migration and safe fresh defaults. These changes
+still need the same clean-install test on the TV; CI does not establish native
+API permissions or capture compatibility.

@@ -5,8 +5,7 @@
 (function (root) {
   'use strict';
   var URI = 'luna://org.webosbrew.hbchannel.service/exec';
-  var COMMAND = '/usr/bin/python3 /var/lib/openxmb-c5/process-control.py ';
-  var SETUP = '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-setup.py ';
+  var COMMAND = '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py ';
   var KEYS = ['home', 'browser', 'search', 'hdmi1', 'hdmi2', 'hdmi3', 'hdmi4', 'livetv', 'usage', 'ads', 'voice'];
   var APPS = ['com.webos.app.home', 'com.webos.app.browser', 'com.webos.app.voice',
     'com.webos.app.hdmi1', 'com.webos.app.hdmi2', 'com.webos.app.hdmi3', 'com.webos.app.hdmi4', 'com.webos.app.livetv'];
@@ -20,19 +19,8 @@
 
   function problem(code) {
     var messages = {
-      helper_unavailable: 'TV setup needs Homebrew Channel with Root status enabled. Developer Mode alone cannot run the helper.',
-      helper_root_required: 'Homebrew Channel is not running with root access. Enable its Root status before setting up TV features.',
-      helper_python_required: 'TV setup needs Python 3.7 or newer on the TV.',
-      helper_tv_unknown: 'The TV model could not be read. No helper was installed.',
-      helper_tv_unsupported: 'This helper currently supports LG C5 TVs on webOS 25 only. The launcher can still be used.',
-      helper_bundle_mismatch: 'The bundled helper is incomplete or changed. Reinstall the matching IPK.',
-      helper_manifest_mismatch: 'The installed app does not match the bundled helper. Reinstall the matching IPK.',
-      helper_unsafe_path: 'Setup found an unexpected file, link or permission. Existing files were left in place.',
-      helper_busy: 'TV setup is already running. Wait, then check its status.',
-      helper_start_failed: 'The helper did not start. Check status before trying setup again.',
-      helper_setup_failed: 'TV setup could not complete. Check status before trying again; saved choices were not reset.',
-      helper_recovery_refused: 'The existing helper could not be safely stopped. Setup did not replace its files.',
-      helper_invalid_config: 'Saved background settings are invalid. Setup will not overwrite them.',
+      HELPER_MISMATCH: 'The app and helper do not match. Reinstall the lg-xmb IPK.',
+      HELPER_REJECTED: 'The helper rejected an unsafe file or configuration. Existing settings were preserved.',
       INVALID_CHOICE: 'This background setting is unavailable.',
       INVALID_REVISION: 'Settings changed. Please refresh and try again.',
       CONFLICT: 'Settings changed. Please refresh and try again.',
@@ -58,6 +46,18 @@
     var outer;
     try { outer = JSON.parse(raw); } catch (ignored) { throw problem('INVALID_REPLY'); }
     if (!object(outer)) throw problem('INVALID_REPLY');
+    // A failed command can still return a bounded diagnostic from our helper.
+    // Never turn an outer execution failure into a successful settings reply.
+    if (typeof outer.stdoutString === 'string' && outer.stdoutString.length <= 32768) {
+      var diagnostic;
+      try { diagnostic = JSON.parse(outer.stdoutString); } catch (ignored) {}
+      if (object(diagnostic) && diagnostic.returnValue === false) {
+        var codes = {untrusted_app_manifest:'HELPER_MISMATCH',unsafe_app_path:'HELPER_REJECTED',
+          unsafe_file:'HELPER_REJECTED',unsafe_directory:'HELPER_REJECTED',invalid_config:'HELPER_REJECTED',
+          revision_conflict:'CONFLICT',home_mapping_requires_custom:'HOME_MAPPING_REQUIRES_CUSTOM',other_home_mapping:'OTHER_HOME_MAPPING'};
+        if (Object.prototype.hasOwnProperty.call(codes, diagnostic.errorCode)) throw problem(codes[diagnostic.errorCode]);
+      }
+    }
     // Homebrew exec does not normally return an exit code. Its returnValue is false
     // whenever child_process.exec reports a nonzero exit or another execution error.
     if (outer.returnValue !== true || nonzeroCode(outer.errorCode) ||
@@ -76,13 +76,12 @@
     if (!object(value)) throw problem('INVALID_REPLY');
     if (value.returnValue !== true || nonzeroCode(value.errorCode) || nonzeroCode(value.returnCode) || nonzeroCode(value.exitCode)) {
       var code = value.code || value.errorCode;
-      if (typeof code === 'string' && /^helper_[a-z_]+$/.test(code)) throw problem(code);
       throw problem(code === 'revision_conflict' ? 'CONFLICT' : code === 'home_mapping_requires_custom' ? 'HOME_MAPPING_REQUIRES_CUSTOM' : code === 'other_home_mapping' ? 'OTHER_HOME_MAPPING' : 'SERVICE_ERROR');
     }
     return value;
   }
 
-  function request(command, timeout) {
+  function execute(command, timeout) {
     var cancel = function () {};
     var operation = new Promise(function (resolve, reject) {
       if (!isTV() || typeof root.PalmServiceBridge !== 'function') {
@@ -119,6 +118,27 @@
     return operation;
   }
 
+  function request(command, timeout) {
+    var helper = root.LGXMBHelper;
+    if (!helper) return Promise.reject(problem('UNAVAILABLE'));
+    if (helper.isReady()) return execute(command, timeout);
+    var commandRequest = null, cancelled = false, rejectWait;
+    var operation = new Promise(function(resolve, reject) {
+      rejectWait = reject;
+      helper.ensure().then(function() {
+        if (cancelled) return;
+        commandRequest = execute(command, timeout);
+        commandRequest.then(resolve, reject);
+      }, reject);
+    });
+    operation.cancel = function() {
+      cancelled = true;
+      if (commandRequest) commandRequest.cancel();
+      else rejectWait(problem('CANCELLED'));
+    };
+    return operation;
+  }
+
   function mapped(operation, success, failure) {
     var result = operation.then(success, failure);
     result.cancel = function () { operation.cancel(); };
@@ -152,6 +172,7 @@
     return mapped(request(COMMAND + 'set ' + key + ' ' + (enabled ? '1' : '0') + ' ' + revision, 8000), state);
   }
   function prepareLaunch(appId) {
+    if (!root.LGXMBHelper || !root.LGXMBHelper.isReady()) return Promise.resolve({prepared:false, reason:'unavailable'});
     if (APPS.indexOf(appId) === -1) return Promise.resolve({ prepared: false, reason: 'not_managed' });
     return mapped(request(COMMAND + 'prepare ' + appId, 1000), function (value) {
       return { prepared: value.prepared === true };
@@ -169,24 +190,6 @@
     if (!Number.isSafeInteger(revision) || revision < 0) return Promise.reject(problem('INVALID_REVISION'));
     return mapped(request(COMMAND + 'remote-set ' + home + ' ' + revision, 40000), remoteState);
   }
-
-  function helperRequest(action) {
-    // Only these fixed calls are exposed, never an app-provided command.
-    var command = 'if [ -x /usr/bin/python3 ]; then ' + SETUP + action +
-      "; else printf '%s\\n' '{\"returnValue\":false,\"errorCode\":\"helper_python_required\"}'; fi";
-    return mapped(request(command, action === 'status' ? 10000 : 65000), function (value) {
-      if (['missing','needs_setup','stopped','starting','running'].indexOf(value.state) === -1) throw problem('INVALID_REPLY');
-      return {state:value.state};
-    }, function (error) {
-      if (error.code === 'SERVICE_ERROR' || error.code === 'UNAVAILABLE') throw problem('helper_unavailable');
-      throw error;
-    });
-  }
-  root.C5HelperAdapter = Object.freeze({
-    getState: function () { return helperRequest('status'); },
-    install: function () { return helperRequest('install'); },
-    stop: function () { return helperRequest('stop'); }
-  });
 
   root.C5ProcessAdapter = Object.freeze({ getState: getState, setEnabled: setEnabled, prepareLaunch: prepareLaunch });
   root.C5RemoteAdapter = Object.freeze({getState:getRemoteState,setHome:setRemoteHome});

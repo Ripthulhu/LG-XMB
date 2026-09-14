@@ -117,7 +117,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     await page.screenshot({path:path.join(__dirname,'../qa/settings-waves-rose-720.png')});
     checks.push('All submenus retain white text and dividers over themed backgrounds; long privacy text and 720p controls stay within the unboxed layout');
 
-    await page.evaluate(() => localStorage.setItem('openxmb-c5-preferences-v1',JSON.stringify({theme:'__proto__',waveSpeed:'Infinity',waveBrightness:99,motion:'invalid'})));
+    await page.evaluate(() => localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify({theme:'__proto__',waveSpeed:'Infinity',waveBrightness:99,motion:'invalid'})));
     await page.reload(); await page.waitForFunction(() => window.C5App);
     const invalid = await page.evaluate(() => C5App.getState().preferences);
     assert.equal(invalid.theme,'midnight'); assert.equal(invalid.waveSpeed,'normal'); assert.equal(invalid.waveBrightness,'normal');

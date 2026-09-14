@@ -1,7 +1,7 @@
 {
   "id": "org.local.openxmb.c5",
-  "version": "0.1.11",
-  "vendor": "OpenXMB C5 contributors",
+  "version": "0.1.12",
+  "vendor": "lg-xmb contributors",
   "type": "web",
   "main": "index.html",
   "title": "Home",

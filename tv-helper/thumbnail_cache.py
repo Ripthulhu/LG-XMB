@@ -19,7 +19,7 @@ HOME_ID = "org.local.openxmb.c5"
 STOCK_HOME_ID = "com.webos.app.home"
 APP_DIR = "/media/developer/apps/usr/palm/applications/" + HOME_ID
 APPINFO = APP_DIR + "/appinfo.json"
-CACHE_DIR = "/tmp/openxmb-c5-thumbnails"
+CACHE_DIR = "/tmp/lg-xmb-thumbnails"
 WIDTH, HEIGHT = 480, 270
 # This C5's physical output was independently verified against two DOM/PIG maps.
 # These are panel/output dimensions, deliberately not the HDMI signal dimensions.
@@ -655,10 +655,10 @@ def main(argv=None):
     try:
         cache = Cache()
         if args.process_controls:
-            # This module is deployed alongside this helper; it is never supplied by the web app.
+            # The matching controller is shipped in the same app-owned bundle.
             import importlib.util
-            module_path = "/var/lib/openxmb-c5/process-control.py"
-            for directory in ("/var", "/var/lib", "/var/lib/openxmb-c5"):
+            module_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "process_control.py")
+            for directory in (APP_DIR, os.path.dirname(module_path)):
                 check_directory(os.lstat(directory))
             check_file(os.lstat(module_path))
             spec = importlib.util.spec_from_file_location("c5_process_control", module_path)

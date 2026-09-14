@@ -199,14 +199,6 @@ window.C5Catalog=[
         "action": "stock"
       },
       {
-        "id": "helper",
-        "title": "TV integration",
-        "icon": "settings",
-        "type": "SETTING",
-        "description": "Set up cached pictures and Home-button controls.",
-        "action": "helper"
-      },
-      {
         "id": "about",
         "title": "About this menu",
         "icon": "info",

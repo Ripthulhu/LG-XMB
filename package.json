@@ -1,13 +1,13 @@
 {
-  "name": "openxmb-c5-web-port",
-  "version": "0.1.11",
+  "name": "lg-xmb",
+  "version": "0.1.12",
   "private": true,
   "description": "A webOS web-app adaptation of OpenXMB's interface and wave shader",
   "license": "GPL-3.0-only",
   "scripts": {
     "preview": "node tools/preview.cjs",
     "test": "node --test tests/*.test.cjs",
-    "test:browser": "node tests/helper-settings-browser.cjs && node tests/input-labels-browser.cjs && node tools/browser-check.cjs",
+    "test:browser": "node tests/input-labels-browser.cjs && node tools/browser-check.cjs && node tests/upper-items-browser.cjs",
     "package": "node tools/package.mjs",
     "verify:package": "node tools/package.mjs --verify-only",
     "test:compat": "node tests/compat-layout-browser.cjs",

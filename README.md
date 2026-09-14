@@ -24,16 +24,15 @@ See the [compatibility and test matrix](docs/COMPATIBILITY.md).
 
 The launcher can be installed through Developer Mode or an existing homebrew
 setup. Home-button assignment, cached pictures and background controls require
-the bundled root helper, enabled under **Settings → TV integration**.
-That helper is still C5-specific. Do not install it
-on an unverified TV just because the menu renders correctly.
+the bundled helper, prepared automatically through Homebrew Channel. Its native
+integrations are still C5-specific; a working menu is not a compatibility test.
 
 ## Install
 
 Follow [Installation](docs/INSTALLATION.md) to install an IPK with **webOS Dev
 Manager**. Installing the launcher alone does not change the Home button.
-Root features are enabled from inside the app; no helper files need to be copied
-by hand. Recovery steps are in the same guide.
+Rooted installations prepare their helper on first launch. Recovery is covered in
+the same guide.
 
 Development packages are available only after the **Checks** workflow succeeds:
 open its run in GitHub Actions and download `lg-xmb-candidate`. It contains the

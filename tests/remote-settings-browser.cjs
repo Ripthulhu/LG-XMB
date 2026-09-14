@@ -64,7 +64,7 @@ module.exports=async function checkRemoteSettings(browser,checks,errors){
     });
     assert.equal(result.before.home,'custom');assert.equal(result.stock.home,'stock');assert.equal(result.stock.homeKeepClosed,false);
     assert.equal(result.home.enabled,false);assert.equal(result.usage.enabled,true);assert.equal(result.custom.homeKeepClosed,false);
-    await preview.evaluate(()=>localStorage.setItem('openxmb-c5-preferences-v1',JSON.stringify({backBehavior:'not-a-choice'})));await preview.reload();await preview.waitForFunction(()=>window.C5App);
+    await preview.evaluate(()=>localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify({backBehavior:'not-a-choice'})));await preview.reload();await preview.waitForFunction(()=>window.C5App);
     assert.equal(await preview.evaluate(()=>C5App.getState().preferences.backBehavior),'stay');
     checks.push('Desktop Home mapping simulation allows LG Home without changing other background choices; returning to custom does not silently re-enable closing and invalid Back preferences default safely');
   }finally{await preview.close();}

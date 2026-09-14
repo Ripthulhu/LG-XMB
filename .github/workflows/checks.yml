@@ -59,8 +59,8 @@ jobs:
           npm run package
           npm run verify:package
           git archive --format=zip --output=dist/source.zip HEAD
-      - name: Verify bundled helper and app-owned startup entry
-        run: python3 tools/verify-helper-package.py
+      - name: Verify bundled helper and app-owned startup
+        run: python3 tools/verify-helper-package.py dist/org.local.openxmb.c5_0.1.12_all.ipk
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: lg-xmb-candidate

@@ -1,6 +1,6 @@
 /* Remote button settings client. SPDX-License-Identifier: GPL-3.0-or-later */
 (function(){'use strict';
-var previewKey='openxmb-c5-remote-preview-v1';
+var previewKey='lg-xmb-remote-preview-v1';
 function unavailable(){return new Error('Remote button settings are unavailable. Please try again.');}
 function state(value){if(!value||value.available!==true||!Number.isSafeInteger(value.revision)||value.revision<0||['custom','stock','other'].indexOf(value.home)===-1||typeof value.homeKeepClosed!=='boolean')throw unavailable();return{available:true,revision:value.revision,home:value.home,homeKeepClosed:value.homeKeepClosed};}
 function isTV(){return !!(window.C5TV&&C5TV.isTV());}

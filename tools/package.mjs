@@ -1,21 +1,20 @@
-// OpenXMB C5 web adaptation, 2026. SPDX-License-Identifier: GPL-3.0-only
+// lg-xmb web application, 2026. SPDX-License-Identifier: GPL-3.0-only
 // Local build/inspection only. This script has no device or deployment commands.
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { stageHelper } from './helper-bundle.mjs';
+import { stageHelper } from './stage-helper.mjs';
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const sourceAppDir = path.join(projectDir, 'app');
-const appDir = path.join(projectDir, '.build', 'package-app');
+const appDir = path.join(projectDir, 'app');
 const outputDir = path.join(projectDir, 'dist');
 const cliStateDir = path.join(projectDir, '.build', 'cli-state');
 const cliDir = path.join(projectDir, 'node_modules', '@webos-tools', 'cli');
 const cli = path.join(cliDir, 'bin', 'ares-package.js');
 const expectedId = 'org.local.openxmb.c5';
-const expectedVersion = '0.1.11';
+const expectedVersion = '0.1.12';
 const packagePath = path.join(outputDir, `${expectedId}_${expectedVersion}_all.ipk`);
 const verifyOnly = process.argv.includes('--verify-only');
 
@@ -43,9 +42,6 @@ try {
   requireCondition(fs.existsSync(cli), 'Install local dependencies first: npm ci --ignore-scripts --no-audit --no-fund');
   const cliPackage = JSON.parse(fs.readFileSync(path.join(cliDir, 'package.json'), 'utf8'));
   requireCondition(cliPackage.version === '3.2.6', 'Expected pinned @webos-tools/cli 3.2.6. Run npm ci.');
-  fs.rmSync(appDir, {recursive: true, force: true});
-  fs.cpSync(sourceAppDir, appDir, {recursive: true, dereference: false});
-  stageHelper(projectDir, appDir);
   const appinfo = JSON.parse(fs.readFileSync(path.join(appDir, 'appinfo.json'), 'utf8'));
   requireCondition(appinfo.id === expectedId, `App ID must be ${expectedId}`);
   requireCondition(appinfo.version === expectedVersion, `App version must be ${expectedVersion}`);
@@ -67,7 +63,11 @@ try {
   fs.mkdirSync(outputDir, { recursive: true });
   fs.mkdirSync(cliStateDir, { recursive: true });
   if (!verifyOnly) {
-    process.stdout.write(runCli(['--no-minify', '--outdir', outputDir, appDir]));
+    const stagedApp = path.join(projectDir, '.build', 'package', 'app');
+    fs.rmSync(path.dirname(stagedApp), {recursive: true, force: true});
+    fs.cpSync(appDir, stagedApp, {recursive: true});
+    stageHelper(projectDir, stagedApp);
+    process.stdout.write(runCli(['--no-minify', '--outdir', outputDir, stagedApp]));
   }
   requireCondition(fs.existsSync(packagePath), `Package was not produced: ${packagePath}`);
   const packageBytes = fs.readFileSync(packagePath);

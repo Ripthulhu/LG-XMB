@@ -1,6 +1,6 @@
 /* Background activity control client. SPDX-License-Identifier: GPL-3.0-or-later */
 (function(){'use strict';
-var adapter=null,previewState=null,previewKey='openxmb-c5-background-preview-v1';
+var adapter=null,previewState=null,previewKey='lg-xmb-background-preview-v1';
 function unavailable(){return new Error('Background controls are unavailable. Please try again.');}
 function checkedState(value){
   if(!value||value.available!==true||!Number.isSafeInteger(value.revision)||value.revision<0||!Array.isArray(value.items))throw unavailable();

@@ -95,7 +95,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
       await openPreviewSetting();
       await page.getByRole('button', {name: mode === 'live' ? 'Live' : 'Cached', exact: true}).click();
       assert.equal((await state()).preferences.previewMode, mode);
-      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('openxmb-c5-preferences-v1')).previewMode), mode);
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')).previewMode), mode);
       await page.keyboard.press('Escape');
     };
     const finishLaunch = async failed => {
@@ -227,7 +227,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     checks.push('Live mode survives reload; an unavailable preview still permits fullscreen with one OK');
 
     for (const saved of [{inputPreviews: true}, {previewMode: true}, {previewMode: 'LIVE'}, {previewMode: 'invalid'}]) {
-      await page.evaluate(value => localStorage.setItem('openxmb-c5-preferences-v1', JSON.stringify(value)), saved);
+      await page.evaluate(value => localStorage.setItem('lg-xmb-preferences-v1', JSON.stringify(value)), saved);
       await reload();
       assert.equal((await state()).preferences.previewMode, 'cached');
       await selectCategory('Inputs'); await page.waitForTimeout(450); await assertIdle();

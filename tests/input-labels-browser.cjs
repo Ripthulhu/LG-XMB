@@ -11,7 +11,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
   page.on('request', request => requests.push(request.url()));
   await page.addInitScript(() => {
     // The UA activates TV detection; it does not emulate Chromium 87.
-    localStorage.setItem('openxmb-c5-preferences-v1', JSON.stringify({motion: 'reduced'}));
+    localStorage.setItem('lg-xmb-preferences-v1', JSON.stringify({motion: 'reduced'}));
     window.labelTest = {reads: [], launches: [], commands: [], images: 0, videos: 0, releases: 0};
     window.PalmSystem = {identifier: 'org.local.openxmb.c5'};
     window.PalmServiceBridge = function () {
@@ -84,6 +84,9 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     await page.goto(pathToFileURL(path.resolve(__dirname, '../app/index.html')).href);
     await page.waitForFunction(() => window.C5App && labelTest.reads.length === 1);
     const storage = await page.evaluate(() => JSON.stringify(localStorage));
+    const setupCommands = await page.evaluate(() => labelTest.commands.slice());
+    assert.equal(setupCommands.length, 1, 'one independent bundled-helper setup');
+    assert.match(setupCommands[0], /helper-startup\.py ensure/);
     assert.equal((await state()).busy, false);
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('ArrowDown');
@@ -91,7 +94,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     await reply(0, null, true);
     assert.equal(await title(), 'HDMI 2');
     assert.equal(await page.locator('#toast').textContent(), '');
-    assert.deepEqual(await page.evaluate(() => labelTest.commands), []);
+    assert.deepEqual(await page.evaluate(() => labelTest.commands), setupCommands, 'denied label discovery adds no root fallback');
     checks.push('Denied input-label discovery leaves usable HDMI defaults without root fallback or an error toast');
 
     await home();
