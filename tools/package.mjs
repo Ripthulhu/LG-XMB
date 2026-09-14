@@ -38,6 +38,23 @@ function runCli(args) {
   return transcript;
 }
 
+function checkPackageMetadata(normalize) {
+  const script = path.join(projectDir, 'tools', 'ipk_metadata.py');
+  const args = [script, ...(normalize ? ['--normalize'] : []), packagePath];
+  const commands = process.platform === 'win32' ? [['py', '-3'], ['python'], ['python3']] : [['python3'], ['python']];
+  for (const [command, ...prefix] of commands) {
+    const result = spawnSync(command, [...prefix, ...args], {
+      cwd: projectDir, encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true
+    });
+    if (result.error && result.error.code === 'ENOENT') continue;
+    if (result.error) throw result.error;
+    requireCondition(result.status === 0, `IPK metadata check failed:\n${result.stderr || result.stdout}`);
+    process.stdout.write(result.stdout);
+    return;
+  }
+  throw new Error('Packaging requires Python 3.10 or newer on your computer.');
+}
+
 try {
   requireCondition(fs.existsSync(cli), 'Install local dependencies first: npm ci --ignore-scripts --no-audit --no-fund');
   const cliPackage = JSON.parse(fs.readFileSync(path.join(cliDir, 'package.json'), 'utf8'));
@@ -70,6 +87,7 @@ try {
     process.stdout.write(runCli(['--no-minify', '--outdir', outputDir, stagedApp]));
   }
   requireCondition(fs.existsSync(packagePath), `Package was not produced: ${packagePath}`);
+  checkPackageMetadata(!verifyOnly);
   const packageBytes = fs.readFileSync(packagePath);
   requireCondition(packageBytes.subarray(0, 8).toString('ascii') === '!<arch>\n', 'IPK is not an ar archive.');
   const info = runCli(['--info-detail', packagePath]);

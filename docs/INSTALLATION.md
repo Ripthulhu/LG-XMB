@@ -87,7 +87,7 @@ normal startup prepares the helper again.
 
 ## Build
 
-Use Node.js 20 or newer on your computer:
+Use Node.js 20 or newer and Python 3.10 or newer on your computer:
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
@@ -98,7 +98,8 @@ npm run verify:package
 
 The IPK and checksum are in `dist/`. The packager stages the helper from its
 reviewed sources without putting generated files in `app/`. CI also checks the
-bytes and permissions of every helper module inside the actual IPK:
+bytes, root ownership and permissions inside the actual IPK. The build normalizes
+archive metadata without running as root or changing source ownership:
 
 ```sh
 python3 tools/verify-helper-package.py dist/org.local.openxmb.c5_0.1.12_all.ipk

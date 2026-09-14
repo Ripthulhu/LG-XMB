@@ -42,7 +42,8 @@ GitHub Actions as `lg-xmb-candidate` after **Checks** succeeds.
 
 ## Develop
 
-Use Node.js 20 or newer. The Node requirement is for your computer, not the TV.
+Use Node.js 20 or newer. Building the IPK also needs Python 3.10 or newer.
+These requirements are for your computer, not the TV.
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund

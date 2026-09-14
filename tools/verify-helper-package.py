@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 import tarfile
 
+from ipk_metadata import read_ipk, verify_metadata
+
 ROOT = Path(__file__).resolve().parents[1]
 APP = 'usr/palm/applications/org.local.openxmb.c5/'
 SOURCES = {'process_control.py': 'tv-helper/process_control.py',
@@ -17,19 +19,8 @@ SOURCES = {'process_control.py': 'tv-helper/process_control.py',
 
 def verify(filename):
     raw = Path(filename).read_bytes()
-    if raw[:8] != b'!<arch>\n':
-        raise ValueError('Not an IPK archive')
-    pos, members = 8, {}
-    while pos < len(raw):
-        header = raw[pos:pos + 60]
-        if len(header) != 60 or header[58:] != b'`\n':
-            raise ValueError('Invalid ar member')
-        name = header[:16].decode('ascii').strip().rstrip('/')
-        size = int(header[48:58])
-        if size < 0 or name in members or pos + 60 + size > len(raw):
-            raise ValueError('Invalid ar size or duplicate member')
-        members[name] = raw[pos + 60:pos + 60 + size]
-        pos += 60 + size + size % 2
+    members = read_ipk(raw)
+    verify_metadata(members)
     with tarfile.open(fileobj=io.BytesIO(members['data.tar.gz']), mode='r:gz') as archive:
         entries = {}
         for entry in archive:
