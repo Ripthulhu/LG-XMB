@@ -5,7 +5,7 @@
 (function (root) {
   'use strict';
   var URI = 'luna://org.webosbrew.hbchannel.service/exec';
-  var COMMAND = '/usr/bin/python3 /var/lib/openxmb-c5/process-control.py ';
+  var COMMAND = '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py ';
   var KEYS = ['home', 'browser', 'search', 'hdmi1', 'hdmi2', 'hdmi3', 'hdmi4', 'livetv', 'usage', 'ads', 'voice'];
   var APPS = ['com.webos.app.home', 'com.webos.app.browser', 'com.webos.app.voice',
     'com.webos.app.hdmi1', 'com.webos.app.hdmi2', 'com.webos.app.hdmi3', 'com.webos.app.hdmi4', 'com.webos.app.livetv'];
@@ -19,6 +19,8 @@
 
   function problem(code) {
     var messages = {
+      HELPER_MISMATCH: 'The app and helper do not match. Reinstall the lg-xmb IPK.',
+      HELPER_REJECTED: 'The helper rejected an unsafe file or configuration. Existing settings were preserved.',
       INVALID_CHOICE: 'This background setting is unavailable.',
       INVALID_REVISION: 'Settings changed. Please refresh and try again.',
       CONFLICT: 'Settings changed. Please refresh and try again.',
@@ -44,6 +46,18 @@
     var outer;
     try { outer = JSON.parse(raw); } catch (ignored) { throw problem('INVALID_REPLY'); }
     if (!object(outer)) throw problem('INVALID_REPLY');
+    // A failed command can still return a bounded diagnostic from our helper.
+    // Never turn an outer execution failure into a successful settings reply.
+    if (typeof outer.stdoutString === 'string' && outer.stdoutString.length <= 32768) {
+      var diagnostic;
+      try { diagnostic = JSON.parse(outer.stdoutString); } catch (ignored) {}
+      if (object(diagnostic) && diagnostic.returnValue === false) {
+        var codes = {untrusted_app_manifest:'HELPER_MISMATCH',unsafe_app_path:'HELPER_REJECTED',
+          unsafe_file:'HELPER_REJECTED',unsafe_directory:'HELPER_REJECTED',invalid_config:'HELPER_REJECTED',
+          revision_conflict:'CONFLICT',home_mapping_requires_custom:'HOME_MAPPING_REQUIRES_CUSTOM',other_home_mapping:'OTHER_HOME_MAPPING'};
+        if (Object.prototype.hasOwnProperty.call(codes, diagnostic.errorCode)) throw problem(codes[diagnostic.errorCode]);
+      }
+    }
     // Homebrew exec does not normally return an exit code. Its returnValue is false
     // whenever child_process.exec reports a nonzero exit or another execution error.
     if (outer.returnValue !== true || nonzeroCode(outer.errorCode) ||
@@ -67,7 +81,7 @@
     return value;
   }
 
-  function request(command, timeout) {
+  function execute(command, timeout) {
     var cancel = function () {};
     var operation = new Promise(function (resolve, reject) {
       if (!isTV() || typeof root.PalmServiceBridge !== 'function') {
@@ -104,6 +118,27 @@
     return operation;
   }
 
+  function request(command, timeout) {
+    var helper = root.LGXMBHelper;
+    if (!helper) return Promise.reject(problem('UNAVAILABLE'));
+    if (helper.isReady()) return execute(command, timeout);
+    var commandRequest = null, cancelled = false, rejectWait;
+    var operation = new Promise(function(resolve, reject) {
+      rejectWait = reject;
+      helper.ensure().then(function() {
+        if (cancelled) return;
+        commandRequest = execute(command, timeout);
+        commandRequest.then(resolve, reject);
+      }, reject);
+    });
+    operation.cancel = function() {
+      cancelled = true;
+      if (commandRequest) commandRequest.cancel();
+      else rejectWait(problem('CANCELLED'));
+    };
+    return operation;
+  }
+
   function mapped(operation, success, failure) {
     var result = operation.then(success, failure);
     result.cancel = function () { operation.cancel(); };
@@ -137,6 +172,7 @@
     return mapped(request(COMMAND + 'set ' + key + ' ' + (enabled ? '1' : '0') + ' ' + revision, 8000), state);
   }
   function prepareLaunch(appId) {
+    if (!root.LGXMBHelper || !root.LGXMBHelper.isReady()) return Promise.resolve({prepared:false, reason:'unavailable'});
     if (APPS.indexOf(appId) === -1) return Promise.resolve({ prepared: false, reason: 'not_managed' });
     return mapped(request(COMMAND + 'prepare ' + appId, 1000), function (value) {
       return { prepared: value.prepared === true };

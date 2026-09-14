@@ -15,6 +15,13 @@ from unittest.mock import patch
 import process_control as pc
 
 
+def legacy_config():
+    value = pc.default_config()
+    value['enabled']['home'] = True
+    value['saved']['home'] = {'enabled': True, 'permanentRestore': True}
+    return value
+
+
 class AppMetadataFixture:
     """Descriptor-level app tree with LG's writable boot modes, no real chmod."""
     def __init__(self):
@@ -68,7 +75,7 @@ class Clock:
 class FakeStore(pc.Store):
     def __init__(self, config=None):
         self.boot = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
-        self.data = {'background.json': copy.deepcopy(config or pc.default_config())}
+        self.data = {'background.json': copy.deepcopy(config or legacy_config())}
         self.depth = 0; self.closed = False; self.reject_write = False
     @contextmanager
     def locked(self):
@@ -146,8 +153,9 @@ class ProcessControlTests(unittest.TestCase):
         if key == 'home': p['argv'] = [b'/usr/bin/flutter-client', b'-i', item['app'].encode(), b'']
         self.native.processes[pid] = p; return p
 
-    def test_defaults_keep_only_existing_stock_home_control(self):
-        self.assertEqual([k for k, v in pc.default_config()['enabled'].items() if v], ['home'])
+    def test_fresh_defaults_allow_everything_without_invented_rollback_values(self):
+        self.assertEqual([k for k, v in pc.default_config()['enabled'].items() if v], [])
+        self.assertEqual(pc.default_config()['saved'], {})
         self.assertNotIn('familycare', pc.ITEMS)
         self.assertFalse(pc.default_config()['enabled']['ads']); self.assertFalse(pc.default_config()['enabled']['usage'])
         for key in ('voice', 'hdmi1', 'hdmi2'): self.assertFalse(pc.default_config()['enabled'][key])

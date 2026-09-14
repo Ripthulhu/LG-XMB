@@ -13,7 +13,7 @@ function setup(overrides = {}) {
     cancel() { this.cancelled = true; }
   }
   const window = {
-    C5TV: { isTV: () => true }, PalmServiceBridge,
+    C5TV: { isTV: () => true }, PalmServiceBridge, LGXMBHelper: {isReady: () => true},
     setTimeout(fn, delay) { const id = ++next; timers.set(id, { fn, delay }); return id; },
     clearTimeout(id) { timers.delete(id); }, ...overrides
   };
@@ -42,11 +42,11 @@ test('fixed get and set commands use only the existing exec service and bounded 
   const h = setup();
   const get = h.adapter.getState();
   assert.equal(h.calls[0].uri, 'luna://org.webosbrew.hbchannel.service/exec');
-  assert.deepEqual(h.calls[0].body, { command: '/usr/bin/python3 /var/lib/openxmb-c5/process-control.py get' });
+  assert.deepEqual(h.calls[0].body, { command: '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py get' });
   assert.equal([...h.timers.values()][0].delay, 8000);
   h.reply(0); assert.equal((await get).revision, 3);
   const set = h.adapter.setEnabled('usage', true, 3);
-  assert.deepEqual(h.calls[1].body, { command: '/usr/bin/python3 /var/lib/openxmb-c5/process-control.py set usage 1 3' });
+  assert.deepEqual(h.calls[1].body, { command: '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py set usage 1 3' });
   h.reply(1, state({ revision: 4 })); assert.equal((await set).revision, 4);
   assert.equal(h.timers.size, 0); assert.ok(h.bridges.every(b => b.cancelled));
   assert.equal(Object.keys(h.adapter).sort().join(','), 'getState,prepareLaunch,setEnabled');
@@ -55,12 +55,12 @@ test('fixed get and set commands use only the existing exec service and bounded 
 test('Remote Home mapping reads and writes use fixed commands, authoritative fields and a bounded legacy restore wait', async () => {
   const h=setup(),remote=h.window.C5RemoteAdapter;
   const get=remote.getState();
-  assert.equal(h.calls[0].body.command,'/usr/bin/python3 /var/lib/openxmb-c5/process-control.py remote-get');
+  assert.equal(h.calls[0].body.command,'/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py remote-get');
   assert.equal([...h.timers.values()][0].delay,8000);
   h.reply(0,{returnValue:true,available:true,revision:3,home:'custom',homeKeepClosed:true});
   assert.equal((await get).home,'custom');
   const set=remote.setHome('stock',3);
-  assert.equal(h.calls[1].body.command,'/usr/bin/python3 /var/lib/openxmb-c5/process-control.py remote-set stock 3');
+  assert.equal(h.calls[1].body.command,'/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py remote-set stock 3');
   assert.equal([...h.timers.values()][0].delay,40000);
   h.reply(1,{returnValue:true,available:true,revision:4,home:'stock',homeKeepClosed:false});
   const result=await set;assert.equal(result.home,'stock');assert.equal(result.homeKeepClosed,false);
@@ -85,7 +85,7 @@ test('all catalogue keys can use only their fixed spelling and boolean literal',
   const h = setup();
   for (const key of ['home', 'browser', 'search', 'hdmi1', 'hdmi2', 'hdmi3', 'hdmi4', 'livetv', 'usage', 'ads', 'voice']) {
     const i = h.calls.length, operation = h.adapter.setEnabled(key, false, Number.MAX_SAFE_INTEGER);
-    assert.equal(h.calls[i].body.command, '/usr/bin/python3 /var/lib/openxmb-c5/process-control.py set ' + key + ' 0 9007199254740991');
+    assert.equal(h.calls[i].body.command, '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py set ' + key + ' 0 9007199254740991');
     h.reply(i); await operation;
   }
 });
@@ -152,7 +152,7 @@ test('explicit cancellation releases its native bridge and ignores stale callbac
 test('manual launch preparation uses a one-second best-effort request and never sends arbitrary apps', async () => {
   const h = setup();
   const first = h.adapter.prepareLaunch('com.webos.app.browser');
-  assert.equal(h.calls[0].body.command, '/usr/bin/python3 /var/lib/openxmb-c5/process-control.py prepare com.webos.app.browser');
+  assert.equal(h.calls[0].body.command, '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py prepare com.webos.app.browser');
   assert.equal([...h.timers.values()][0].delay, 1000);
   h.reply(0, { returnValue: true, prepared: true }); assert.equal((await first).prepared, true);
   const second = h.adapter.prepareLaunch('com.webos.app.home');
@@ -168,11 +168,11 @@ test('HDMI 1 and 2 use fixed launch preparation while the voice daemon has no la
   const h = setup();
   for (const appId of ['com.webos.app.hdmi1', 'com.webos.app.hdmi2']) {
     const index = h.calls.length, operation = h.adapter.prepareLaunch(appId);
-    assert.equal(h.calls[index].body.command, '/usr/bin/python3 /var/lib/openxmb-c5/process-control.py prepare ' + appId);
+    assert.equal(h.calls[index].body.command, '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py prepare ' + appId);
     h.reply(index, { returnValue: true, prepared: true }); assert.equal((await operation).prepared, true);
   }
   const voice = h.adapter.setEnabled('voice', true, 3);
-  assert.equal(h.calls[2].body.command, '/usr/bin/python3 /var/lib/openxmb-c5/process-control.py set voice 1 3');
+  assert.equal(h.calls[2].body.command, '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py set voice 1 3');
   h.reply(2); await voice;
   for (const id of ['voice', 'voiceconductor.service', 'com.webos.service.voiceconductor']) {
     assert.equal((await h.adapter.prepareLaunch(id)).prepared, false);

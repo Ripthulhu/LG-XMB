@@ -6,10 +6,10 @@ The helper adds cached HDMI pictures, background controls and Home-button assign
 
 | Source | Installed path |
 | --- | --- |
-| `thumbnail_cache.py` | `/var/lib/openxmb-c5/thumbnail-cache.py` |
-| `process_control.py` | `/var/lib/openxmb-c5/process-control.py` |
+| `thumbnail_cache.py` | Installed app's `helper/thumbnail_cache.py` |
+| `process_control.py` | Installed app's `helper/process_control.py` |
 | `../app/helper-startup.py` | App container; `init.d/60-openxmb-thumbnails` symlinks to it |
-| `recovery/stop_thumbnail_helper.py` | `/var/lib/openxmb-c5/stop-helper.py` |
+| `recovery/stop_thumbnail_helper.py` | `/var/lib/lg-xmb/stop-helper.py` |
 
 The packaged startup entry starts one detached Python worker with
 `--allow-home-preview --process-controls`, then exits without blocking boot.
@@ -25,14 +25,14 @@ left alone. Restore settings before uninstalling; see the removal instructions.
 
 `/var/lib/webosbrew/lg-xmb-startup.log` records the last launch request or spawn
 failure. A new start replaces the small record; a duplicate start does not erase
-it. Runtime status remains in the bounded JSON files under `/tmp/openxmb-c5-*`.
+it. Runtime status remains in the bounded JSON files under `/tmp/lg-xmb-*`.
 The startup log alone does not confirm that the worker initialized successfully.
 
 ## Pictures
 
 The capture worker polls at five-second intervals, requires a stable active HDMI source, and limits refreshes to one per input per minute. It uses the TV's existing VIDEO capture API, producing 480×270 PNGs. A live Home preview may be cropped using the TV's installed OpenCV and NumPy. The worker does not start an HDMI pipeline or disable content protection.
 
-Files live under `/tmp/openxmb-c5-thumbnails`, linked into the app as `thumbnails`. They disappear on restart and rebuild after an eligible input is viewed. Muted, disconnected or changed sources are not published. Atomic file replacement preserves a previous valid image if a capture fails. Capture protection decisions come from the TV; a valid PNG alone cannot establish whether an all-black picture is intended.
+Files live under `/tmp/lg-xmb-thumbnails`, linked into the app as `thumbnails`. They disappear on restart and rebuild after an eligible input is viewed. Muted, disconnected or changed sources are not published. Atomic file replacement preserves a previous valid image if a capture fails. Capture protection decisions come from the TV; a valid PNG alone cannot establish whether an all-black picture is intended.
 
 ## Background controls
 
@@ -46,11 +46,11 @@ Privacy entries control only:
 
 Allow restores saved preload settings and services that were previously active. Privacy services may need Allow before their features work again. Restart attempts are bounded; no unit is masked, and no SIGKILL is used. Security, DRM, networking, audio, casting and microphone muting are outside this controller.
 
-Persistent choices and rollback values are stored in root-owned `/var/lib/openxmb-c5/background.json`. Status and short launch leases use `/tmp/openxmb-c5-controls`. Configurations are revisioned, locked and atomically replaced. Existing configurations are preserved during upgrades.
+Persistent choices and rollback values are stored in root-owned `/var/lib/lg-xmb/background.json`. Status and short launch leases use `/tmp/lg-xmb-controls`. Configurations are revisioned, locked and atomically replaced. Existing configurations are preserved during upgrades.
 
 ## Fixed command interface
 
-Run with `/usr/bin/python3 /var/lib/openxmb-c5/process-control.py`:
+Run the bundled `helper/process_control.py` with `/usr/bin/python3 -I -B`:
 
 | Command | Purpose |
 | --- | --- |
@@ -77,4 +77,4 @@ A temporarily missing app gets up to 90 seconds to become available. The same ch
 
 Stop the helper before replacing either module or the app. Review any manifest change and update its pin together with the release. Keep old user configurations and saved restoration values. Run the unit tests and verify actual helper status, input pictures and Home routing on the target firmware before enabling startup.
 
-The legacy default initializer supports earlier installs that already managed LG Home. The documented fresh-install procedure creates an explicit all-Allowed configuration instead, so a new installation does not assume those legacy preload settings.
+Fresh defaults allow every background entry and contain no assumed rollback values. Automatic setup migrates existing choices and saved values without resetting them. Helper code ships in the IPK and is not copied into the persistent settings directory.

@@ -6,7 +6,7 @@ module.exports = async function checkLaunchReturn(browser, checks, errors) {
     const page = await browser.newPage({viewport: {width: 1920, height: 1080}});
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(previewMode => {
-      localStorage.setItem('openxmb-c5-preferences-v1', JSON.stringify({previewMode}));
+      localStorage.setItem('lg-xmb-preferences-v1', JSON.stringify({previewMode}));
       window.returnTest = {launches: [], thumbnails: 0, videos: 0, releases: 0,
         detailMutations: 0, toastMessages: [], waveCancels: 0, waveResumes: 0};
       window.Image = function() {

@@ -165,7 +165,7 @@ class StartupHookTests(unittest.TestCase):
         # main owns this separate descriptor; the fixture keeps its own open.
         fd = os.dup(self.fd)
         with patch.object(recovery.os, 'geteuid', return_value=0), \
-             patch.object(recovery, 'inspect_hook', return_value=(fd, recovery.read_hook(fd))), \
+             patch.object(recovery, 'inspect_hook', side_effect=[(fd, recovery.read_hook(fd)), (None, None)]), \
              patch.object(recovery, 'find_helpers', side_effect=[[identity], []]), \
              patch.object(recovery, 'process_identity', return_value=None), \
              patch.object(recovery, 'stop_one', side_effect=stopped), \
