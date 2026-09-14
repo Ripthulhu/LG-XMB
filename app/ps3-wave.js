@@ -174,18 +174,20 @@
     return true;
   };
 
-  var BACKDROP = [
-    'precision PRECISION float;',
-    'varying vec2 vUV;',
-    'uniform vec3 uBackground; uniform vec3 uWave;',
-    'void main() {',
-    '  float gradient = smoothstep(0.0,1.0,1.0-vUV.y);',
-    '  vec3 top = uBackground*0.75 + uWave*0.035;',
-    '  vec3 bottom = uBackground*0.9 + uWave*0.15;',
-    '  float glow = exp(-length((vUV-vec2(0.18,0.36))*vec2(1.3,2.6))*3.0);',
-    '  vec3 color = mix(top,bottom,gradient) + uWave*glow*0.045;',
-    '  gl_FragColor = vec4(color,1.0);',
+  var BACKGROUND_COLOR = [
+    'vec3 backgroundColor(vec2 uv,vec3 background,vec3 wave) {',
+    '  float gradient = smoothstep(0.0,1.0,1.0-uv.y);',
+    '  vec3 top = background*0.75 + wave*0.035;',
+    '  vec3 bottom = background*0.9 + wave*0.15;',
+    '  float glow = exp(-length((uv-vec2(0.18,0.36))*vec2(1.3,2.6))*3.0);',
+    '  return mix(top,bottom,gradient) + wave*glow*0.045;',
     '}'
+  ].join('\n');
+  var BACKDROP = [
+    'precision PRECISION float; varying vec2 vUV;',
+    'uniform vec3 uBackground; uniform vec3 uWave;',
+    BACKGROUND_COLOR,
+    'void main() { gl_FragColor = vec4(backgroundColor(vUV,uBackground,uWave),1.0); }'
   ].join('\n');
   var VERTEX = [
     'attribute vec4 aPosition; attribute vec3 aNormal;',
@@ -216,6 +218,8 @@
   var COMPOSITE_FRAGMENT = [
     'precision PRECISION float; varying vec2 vUV;',
     'uniform sampler2D uSurface; uniform vec2 uTexel;',
+    'uniform bool uResolved; uniform vec3 uBackground; uniform vec3 uWave;',
+    BACKGROUND_COLOR,
     'void main() {',
     // A small separable-kernel equivalent softens the mesh at grazing edges.
     // RGBA8 is WebGL 1 core; no floating-point/filtering extension is needed.
@@ -224,6 +228,9 @@
     '  color+=(texture2D(uSurface,vUV+vec2(0.0,uTexel.y))+texture2D(uSurface,vUV-vec2(0.0,uTexel.y)))*0.125;',
     '  color+=(texture2D(uSurface,vUV+uTexel)+texture2D(uSurface,vUV-uTexel))*0.0625;',
     '  color+=(texture2D(uSurface,vUV+vec2(uTexel.x,-uTexel.y))+texture2D(uSurface,vUV+vec2(-uTexel.x,uTexel.y)))*0.0625;',
+    // RGB is the complete display background; A remains wave coverage for the
+    // optional opacity-aware detector. The final post-process outputs alpha 1.
+    '  if(uResolved) color.rgb += backgroundColor(vUV,uBackground,uWave)*(1.0-color.a);',
     '  gl_FragColor=color;',
     '}'
   ].join('\n');
@@ -233,11 +240,13 @@
 
   function quality(options, previous) {
     options = options || {};
-    previous = previous || {sampling:1,detail:'standard',softness:1.5};
+    previous = previous || {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal'};
     return {
       sampling:SAMPLE_SCALES.indexOf(options.sampling) >= 0 ? options.sampling : previous.sampling,
       detail:Object.prototype.hasOwnProperty.call(GRIDS,options.detail) ? options.detail : previous.detail,
-      softness:[0,0.75,1.5].indexOf(options.softness) >= 0 ? options.softness : previous.softness
+      softness:[0,0.75,1.5].indexOf(options.softness) >= 0 ? options.softness : previous.softness,
+      postprocess:['off','fxaa','wave'].indexOf(options.postprocess) >= 0 ? options.postprocess : previous.postprocess || 'off',
+      strength:['gentle','normal','strong'].indexOf(options.strength) >= 0 ? options.strength : previous.strength || 'normal'
     };
   }
 
@@ -245,6 +254,8 @@
     var shaders = [], programs = [], buffers = [], texture = null, framebuffer = null;
     var geometry = null, uniformWave, uniformBrightness, attribute, normalAttribute, quadAttribute, texel, sampler;
     var complete = false, dead = false, width = 0, height = 0;
+    var resolvedUniform, backgroundUniform, tintUniform;
+    var post = null, postTried = false, postError = null, postMode = 'off', postReason = null;
     var settings = quality(options), meshDetail = null, allocationKey = null, effectiveScale = 0, fallback = null;
     var maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE), viewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
     var maxWidth = Math.min(3840,maxTexture,viewport[0]), maxHeight = Math.min(2160,maxTexture,viewport[1]);
@@ -252,6 +263,7 @@
     function destroy(lost) {
       if (dead) return;
       dead = true;
+      if (post) post.destroy(lost); post = null;
       if (!lost) {
         shaders.forEach(function(shader) { gl.deleteShader(shader); });
         programs.forEach(function(program) { gl.deleteProgram(program); });
@@ -283,6 +295,20 @@
       meshProgram = program(VERTEX,FRAGMENT.replace('PRECISION',precision));
       compositeProgram = program(COMPOSITE_VERTEX,COMPOSITE_FRAGMENT.replace('PRECISION',precision));
     } catch (error) { destroy(false); throw error; }
+    function preparePost(w,h) {
+      postMode = 'off'; postReason = null;
+      if (settings.postprocess === 'off') { if (post) post.release(); return false; }
+      if (!postTried) {
+        postTried = true;
+        try {
+          if (!root.LGXMBWavePost) throw new Error('Post-process module unavailable');
+          post = root.LGXMBWavePost.create(gl,precision);
+        } catch (error) { postError = error.message; }
+      }
+      if (!post) { postReason = postError; return false; }
+      if (!post.prepare(w,h)) { postReason = post.diagnostics().failure; return false; }
+      postMode = settings.postprocess; return true;
+    }
     function updateMesh() {
       if (meshDetail === settings.detail) return false;
       var grid = GRIDS[settings.detail], next = new SplineSurface(grid[0],grid[1]);
@@ -362,7 +388,7 @@
       programs: programs,
       configure: function (options) {
         var next = quality(options,settings);
-        if (next.sampling === settings.sampling && next.detail === settings.detail && next.softness === settings.softness) return;
+        if (next.sampling === settings.sampling && next.detail === settings.detail && next.softness === settings.softness && next.postprocess === settings.postprocess && next.strength === settings.strength) return;
         settings = next; settingsChanged = true;
       },
       finish: function () {
@@ -389,11 +415,16 @@
         uniformBrightness = gl.getUniformLocation(meshProgram,'uBrightness');
         texel = gl.getUniformLocation(compositeProgram,'uTexel');
         sampler = gl.getUniformLocation(compositeProgram,'uSurface');
+        resolvedUniform = gl.getUniformLocation(compositeProgram,'uResolved');
+        backgroundUniform = gl.getUniformLocation(compositeProgram,'uBackground');
+        tintUniform = gl.getUniformLocation(compositeProgram,'uWave');
         complete = true;
       },
-      draw: function (time,wave,brightness,targetWidth,targetHeight) {
+      draw: function (time,wave,brightness,targetWidth,targetHeight,background) {
         if (!complete || dead) return;
         var resized = resize(targetWidth,targetHeight), remeshed = updateMesh();
+        var beforePost = postMode+'|'+postReason;
+        var filtered = preparePost(targetWidth,targetHeight);
         try {
           gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
           gl.viewport(0,0,width,height);
@@ -409,7 +440,7 @@
           gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
           gl.drawElements(gl.TRIANGLES,geometry.indices.length,gl.UNSIGNED_SHORT,0);
           gl.disableVertexAttribArray(normalAttribute);
-          gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+          gl.bindFramebuffer(gl.FRAMEBUFFER,filtered ? post.target() : null);
           gl.viewport(0,0,targetWidth,targetHeight);
           gl.useProgram(compositeProgram);
           gl.bindBuffer(gl.ARRAY_BUFFER,quadBuffer);
@@ -419,23 +450,30 @@
           // Radius is in output pixels, independent of the internal sample factor.
           var radius = Math.max(settings.softness,effectiveScale > 1 ? 0.5 : 0);
           gl.uniform1i(sampler,0); gl.uniform2f(texel,radius/targetWidth,radius/targetHeight);
-          // The off-screen surface already contains premultiplied color.
-          gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+          gl.uniform1i(resolvedUniform,filtered ? 1 : 0);
+          gl.uniform3fv(backgroundUniform,background || [0,0,0]); gl.uniform3fv(tintUniform,wave);
+          // With postprocessing, write display RGB and coverage once, without blending.
+          // Otherwise retain the original premultiplied composite directly to canvas.
+          if (filtered) gl.disable(gl.BLEND);
+          else gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
           gl.drawArrays(gl.TRIANGLES,0,3);
+          if (filtered) post.render(settings.postprocess,settings.strength);
         } finally {
           gl.disableVertexAttribArray(normalAttribute);
           gl.bindFramebuffer(gl.FRAMEBUFFER,null);
           gl.viewport(0,0,targetWidth,targetHeight);
           gl.disable(gl.BLEND);
         }
-        var changed = resized || remeshed || settingsChanged; settingsChanged = false;
+        var changed = resized || remeshed || settingsChanged || beforePost !== postMode+'|'+postReason; settingsChanged = false;
         return changed;
       },
       destroy: destroy,
       diagnostics: function () { return {vertices:geometry ? geometry.vertices.length/7 : 0,
         triangles:geometry ? geometry.indices.length/3 : 0, floatTextures:false,
         surfaceWidth:width,surfaceHeight:height,requestedScale:settings.sampling,effectiveScale:effectiveScale,
-        detail:meshDetail,softness:settings.softness,samplingFallback:fallback}; }
+        detail:meshDetail,softness:settings.softness,samplingFallback:fallback,
+        postprocess:postMode,requestedPostprocess:settings.postprocess,postprocessFallback:postReason,
+        strength:settings.strength,postWidth:post ? post.diagnostics().width : 0,postHeight:post ? post.diagnostics().height : 0}; }
     };
   }
   root.LGXMBPS3Wave = Object.freeze({backdrop:BACKDROP, create:create, quality:quality, createGeometry:function(columns,rows) {

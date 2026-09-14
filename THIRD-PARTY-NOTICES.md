@@ -47,3 +47,12 @@ The combined app remains GPL version 3; the MIT notice is preserved in this file
 and the package. The reference credits Alphardex's CodePen as its starting point.
 No Sony firmware code, extracted DDS assets or PlayStation logos are included.
 See `WAVE-PROVENANCE.md` for scope and differences from the reference.
+
+## FXAA edge-search shader
+
+`app/wave-post.js` adapts three.js `examples/jsm/shaders/FXAAShader.js` at
+`caddbf4cd84b62d7edf6b9fc937ca709afdfe915` (MIT; Copyright 2010-2025 three.js
+authors). Upstream credits NVIDIA's FXAA algorithm, Jasper Flick's implementation
+and Dave Hoskins' GLSL port. The full MIT notice is in
+`app/licenses/THREE-FXAA-MIT.txt`. No Three.js runtime dependency is included.
+See `WAVE-PROVENANCE.md` for WebGL 1 changes and the wave-opacity variant.

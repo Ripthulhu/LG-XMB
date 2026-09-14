@@ -78,3 +78,28 @@ Create `new C5Wave(canvas, options)`.
 Options include `quality: '1080p' | '720p' | '540p'`, `adaptive: false`,
 `pattern: 'classic'` for renderer comparisons, and `renderer: 'canvas2d'`.
 No network requests, device commands or persistent writes originate in a renderer.
+
+## Output-space post-process (0.1.19)
+
+`app/wave-post.js` adapts the directional edge-search and subpixel blending in
+[three.js FXAAShader.js](https://github.com/mrdoob/three.js/blob/caddbf4cd84b62d7edf6b9fc937ca709afdfe915/examples/jsm/shaders/FXAAShader.js).
+NVIDIA developed FXAA; that implementation credits Jasper Flick and Dave
+Hoskins. The three.js MIT notice is packaged in `licenses/THREE-FXAA-MIT.txt`.
+The Three.js runtime is not used. This is an adapted FXAA quality algorithm,
+not the unmodified NVIDIA FXAA 3.11 reference shader.
+
+The port uses GLSL ES 1.00, fixed search bounds, `texture2D`, selectable contrast
+and subpixel thresholds, and the actual output pixel spacing. The complete
+background is resolved into display RGB at output resolution before filtering;
+its alpha channel carries wave coverage for the experimental Wave FXAA mode.
+The shared background function prevents theme drift between direct and filtered
+paths. The output alpha is one. Filtering the already composited RGB avoids
+unpremultiplication and dark transparent borders. No additional gamma conversion
+is applied, and browser-composited text/icons are not sampled.
+
+Reference: [NVIDIA FXAA sample documentation](https://docs.nvidia.com/gameworks/content/gameworkslibrary/graphicssamples/d3d_samples/fxaa311sample.htm).
+The original nine-tap resolve/softness pass, mesh, temporal spline and sampling
+factors are unchanged in this increment, to isolate the post-process comparison.
+This spatial filter cannot correct a genuinely irregular mesh contour and uses
+no previous-frame history. The final texture has one sample per output pixel;
+the selected supersampling factor affects the preceding wave surface only.

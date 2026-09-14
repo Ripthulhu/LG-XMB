@@ -155,7 +155,7 @@
     this.renderer = options && options.renderer === 'canvas2d' ? 'canvas2d' : 'webgl';
     this.qualityIndex = options && options.quality === '720p' ? 1 : options && options.quality === '540p' ? 2 : 0;
     this.adaptive = !(options && options.adaptive === false);
-    this.ps3Quality = {sampling:1,detail:'standard',softness:1.5};
+    this.ps3Quality = {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal'};
     this.onRenderStatus = options && typeof options.onRenderStatus === 'function' ? options.onRenderStatus : null;
     this.ps3Surface = null;
     this.ps3Disabled = !!(options && options.pattern === 'classic');
@@ -495,7 +495,7 @@
         var renderChanged = false;
         try {
           this.ps3Surface.configure(this.ps3Quality);
-          renderChanged = this.ps3Surface.draw(this.time,this.wave,this.brightness,this.canvas.width,this.canvas.height);
+          renderChanged = this.ps3Surface.draw(this.time,this.wave,this.brightness,this.canvas.width,this.canvas.height,this.background);
         }
         catch (error) { this._cancel(); this._failGpu(error); renderChanged = true; }
         if (renderChanged && this.onRenderStatus) this.onRenderStatus();
@@ -626,7 +626,8 @@
   C5Wave.prototype.setQuality = function (options) {
     if (this.destroyed || !global.LGXMBPS3Wave) return;
     var next = global.LGXMBPS3Wave.quality(options,this.ps3Quality), previous = this.ps3Quality;
-    if (next.sampling === previous.sampling && next.detail === previous.detail && next.softness === previous.softness) return;
+    if (next.sampling === previous.sampling && next.detail === previous.detail && next.softness === previous.softness &&
+        next.postprocess === previous.postprocess && next.strength === previous.strength) return;
     this.ps3Quality = next;
     // Apply resources on the next permitted draw, never while hidden or paused.
     this._draw();

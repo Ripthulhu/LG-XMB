@@ -28,20 +28,20 @@ module.exports = async function checkWaveQuality(browser, checks, errors) {
     assert.equal(before.preferences.waveSampling,1.5);assert.equal(before.preferences.waveDetail,'high');assert.equal(before.preferences.waveSoftness,0.75);
     assert.equal(before.preferences.theme,'rose');assert.equal(before.preferences.previewMode,'live');assert.equal(before.preferences.backBehavior,'lg');
     await open();
-    assert.equal(await page.locator('.choice-group').count(),6);
-    assert.equal(await group('Antialiasing').getByRole('button',{name:'1.5×',exact:true}).getAttribute('aria-pressed'),'true');
+    assert.equal(await page.locator('.choice-group').count(),8);
+    assert.equal(await group('Supersampling').getByRole('button',{name:'1.5×',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await group('Mesh detail').getByRole('button',{name:'High',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await group('Edge softness').getByRole('button',{name:'Subtle',exact:true}).getAttribute('aria-pressed'),'true');
     for(const [label,sampling] of [['Off',1],['1.25×',1.25],['1.5×',1.5],['2×',2]]) {
-      await group('Antialiasing').getByRole('button',{name:label,exact:true}).click();
+      await group('Supersampling').getByRole('button',{name:label,exact:true}).click();
       const d=(await state()).waveDiagnostics;
       assert.deepEqual([d.backingWidth,d.backingHeight],[1920,1080]);
       assert.deepEqual([d.surface.surfaceWidth,d.surface.surfaceHeight],[1920*sampling,1080*sampling]);
       assert.equal(d.surface.effectiveScale,sampling);assert.equal(d.reducedMotion,true);assert.equal(d.adaptive,false);
-      assert.equal(await group('Antialiasing').getByRole('button',{name:label,exact:true}).getAttribute('aria-pressed'),'true');
-      assert.equal(await group('Antialiasing').locator('[aria-pressed="true"]').count(),1);
+      assert.equal(await group('Supersampling').getByRole('button',{name:label,exact:true}).getAttribute('aria-pressed'),'true');
+      assert.equal(await group('Supersampling').locator('[aria-pressed="true"]').count(),1);
     }
-    await group('Antialiasing').getByRole('button',{name:'1.5×',exact:true}).click();
+    await group('Supersampling').getByRole('button',{name:'1.5×',exact:true}).click();
     for(const [label,vertices] of [['Standard',129*49],['High',257*97],['Fine',385*129]]) {
       await group('Mesh detail').getByRole('button',{name:label,exact:true}).click();
       assert.equal((await state()).waveDiagnostics.surface.vertices,vertices);
@@ -54,7 +54,7 @@ module.exports = async function checkWaveQuality(browser, checks, errors) {
     assert.equal(await waveImage(),still,'Softness changes do not advance a frozen spline');
     await page.screenshot({path:path.resolve(__dirname,'../qa/ps3-waves-quality-1080.png')});
     // D-pad navigation selects new rows and keeps numeric-valued choices accessible.
-    await group('Antialiasing').getByRole('button',{name:'1.5×',exact:true}).focus();
+    await group('Supersampling').getByRole('button',{name:'1.5×',exact:true}).focus();
     await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');
     assert.equal((await state()).preferences.waveSampling,2);
     await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');

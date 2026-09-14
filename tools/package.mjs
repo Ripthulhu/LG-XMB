@@ -14,7 +14,7 @@ const cliStateDir = path.join(projectDir, '.build', 'cli-state');
 const cliDir = path.join(projectDir, 'node_modules', '@webos-tools', 'cli');
 const cli = path.join(cliDir, 'bin', 'ares-package.js');
 const expectedId = 'org.local.openxmb.c5';
-const expectedVersion = '0.1.18';
+const expectedVersion = '0.1.19';
 const packagePath = path.join(outputDir, `${expectedId}_${expectedVersion}_all.ipk`);
 const verifyOnly = process.argv.includes('--verify-only');
 
@@ -63,7 +63,7 @@ try {
       if (fs.existsSync(sourcePath)) fs.copyFileSync(sourcePath, path.join(licenseDir, name));
     }
   }
-  for (const relativeName of [appinfo.main, appinfo.icon, 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/UPSTREAM-original.frag', 'licenses/UPSTREAM-config.json', 'licenses/PS3-XMB-MIT.txt']) {
+  for (const relativeName of [appinfo.main, appinfo.icon, 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/UPSTREAM-original.frag', 'licenses/UPSTREAM-config.json', 'licenses/PS3-XMB-MIT.txt', 'licenses/THREE-FXAA-MIT.txt']) {
     requireCondition(typeof relativeName === 'string' && relativeName.length > 0, 'App entry and icon paths are required.');
     const resolved = path.resolve(appDir, relativeName);
     requireCondition(resolved.startsWith(appDir + path.sep), `App file leaves package directory: ${relativeName}`);

@@ -182,3 +182,15 @@ test('Retessellating at a frozen time keeps the temporal kernel and shared sampl
     assert.ok(Math.abs(coarse.vertices[a+1]-dense.vertices[b+1])<1e-6);
   }
 });
+
+test('A missing or refused post-process leaves the PS3 surface usable and reports fallback',()=>{
+  const h=fakeGL(),renderer=api.create(h.gl,'highp',{postprocess:'fxaa'});renderer.finish();
+  renderer.draw(14,[1,1,1],1,1920,1080);
+  assert.equal(renderer.diagnostics().postprocess,'off');assert.match(renderer.diagnostics().postprocessFallback,/module unavailable/);
+  assert.equal(renderer.diagnostics().surfaceWidth,1920);renderer.destroy(false);assert.equal(h.live.size,0);
+});
+test('Post-process presets validate independently from retained sampling and geometry',()=>{
+  const q=api.quality({sampling:2,detail:'fine',postprocess:'wave',strength:'strong'});
+  const next=api.quality({postprocess:'__proto__',strength:Infinity},q);
+  assert.equal(next.sampling,2);assert.equal(next.detail,'fine');assert.equal(next.postprocess,'wave');assert.equal(next.strength,'strong');
+});
