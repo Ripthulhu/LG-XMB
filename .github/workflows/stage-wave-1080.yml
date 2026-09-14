@@ -1,0 +1,42 @@
+name: Stage 1080p wave update
+on:
+  push:
+    branches: [work/ps3-waves-1080p]
+    paths: [.wave-1080-patch.b64]
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Apply exact tested source and remove transport files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, lzma
+          from pathlib import Path
+          data = base64.b64decode(Path('.wave-1080-patch.b64').read_text(), validate=True)
+          assert hashlib.sha256(data).hexdigest() == '92a35481478492d48dc9d635113a4373358d066778d685b5f2aefe3e5eb79d0b'
+          Path('/tmp/lg-xmb-1080.patch').write_bytes(lzma.decompress(data))
+          PY
+          git apply --check --unidiff-zero /tmp/lg-xmb-1080.patch
+          git apply --unidiff-zero /tmp/lg-xmb-1080.patch
+          rm .wave-1080-patch.b64 .github/workflows/stage-wave-1080.yml
+          git add -A
+          test "$(git write-tree)" = f236c644754ad69e4da9429034039835c83c6977
+          git diff --cached --check
+          npm test
+          python3 -B -m unittest discover -s tests -p 'test_*.py'
+          python3 -B -m unittest discover -s tv-helper -p 'test_*.py'
+          python3 -B -m unittest discover -s tv-helper/recovery -p 'test_*.py'
+          test "$(git write-tree)" = f236c644754ad69e4da9429034039835c83c6977
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Render PS3 waves at 1080p without automatic downscaling'
+          git push origin HEAD:refs/heads/work/ps3-waves-1080p
