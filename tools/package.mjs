@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { stageHelper } from './stage-helper.mjs';
+import { normalizeIpkPermissions } from './ipk-permissions.mjs';
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appDir = path.join(projectDir, 'app');
@@ -68,9 +69,11 @@ try {
     fs.cpSync(appDir, stagedApp, {recursive: true});
     stageHelper(projectDir, stagedApp);
     process.stdout.write(runCli(['--no-minify', '--outdir', outputDir, stagedApp]));
+    fs.writeFileSync(packagePath, normalizeIpkPermissions(fs.readFileSync(packagePath)));
   }
   requireCondition(fs.existsSync(packagePath), `Package was not produced: ${packagePath}`);
   const packageBytes = fs.readFileSync(packagePath);
+  normalizeIpkPermissions(packageBytes, {verifyOnly: true});
   requireCondition(packageBytes.subarray(0, 8).toString('ascii') === '!<arch>\n', 'IPK is not an ar archive.');
   const info = runCli(['--info-detail', packagePath]);
   requireCondition(info.includes(expectedId), 'IPK inspection did not report the expected app ID.');
