@@ -1,10 +1,33 @@
 # Installation and recovery
 
-This release targets an already rooted LG C5 with a working Homebrew Channel, root SSH, `/usr/bin/python3`, and the existing `/var/lib/webosbrew/init.d` startup mechanism. Root access must already work. The installer does not obtain it or change TV security measures.
+Install the launcher first. The root helper is optional and remains limited to
+the tested C5 environment. The development target is webOS 22–26; check the
+[compatibility matrix](COMPATIBILITY.md) before trying another TV.
 
-The launcher itself is a normal web app. Its privileged features require the separate helper, access to Homebrew Channel's existing `org.webosbrew.hbchannel.service/exec` service, and the private webOS APIs used by that helper. App permissions alone do not grant these capabilities on webOS 10.
+## Install the launcher
 
-Keep a known working way to open LG Home and use SSH before changing the default launcher. Compatibility is established for the tested C5 environment, not every webOS release.
+1. Get the IPK from a successful **Checks** run in GitHub Actions (the
+   `lg-xmb-candidate` artifact), or build it below. Candidate artifacts are for
+   testing, not stable releases. Extract the artifact ZIP on your computer.
+2. Open [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop/releases).
+   Add your TV using its existing Developer Mode or rooted connection, following
+   the tool's setup prompts. Never paste device credentials into a bug report.
+3. Select the TV, choose **Install**, and select the `.ipk`. Launch **Home** from
+   the TV's app list. Test navigation and app launch/return before changing any
+   system setting.
+
+A Developer Mode-only installation does not need root or the native SDK, and
+it does not assign the Home button. Keep Developer Mode active according to
+[Homebrew's guide](https://www.webosbrew.org/devmode/). Cached pictures and
+background controls will remain unavailable without the helper.
+
+**Existing helper installation?** Before upgrading the IPK, stop the helper as
+explained below. Do not replace app files underneath the running worker.
+
+To remove a launcher-only installation, uninstall **Home** using the TV's app
+manager or Dev Manager. With a root-helper installation, first follow
+[Return to LG Home](#return-to-lg-home), confirm restoration, and stop the helper;
+only then remove the app. App removal does not clean up root-owned helper files.
 
 ## Build
 
@@ -24,7 +47,16 @@ npx ares-install --device tv dist/org.local.openxmb.c5_0.1.11_all.ipk
 
 **For an upgrade, stop the existing helper before installing the new IPK or replacing its modules.** Run the recovery stop utility below without running `process-control.py restore`; that preserves the user's background choices.
 
-## Deploy the helper
+## Deploy the helper (C5 only)
+
+This requires an already rooted LG C5, working Homebrew Channel, root SSH,
+`/usr/bin/python3`, and the existing `/var/lib/webosbrew/init.d` mechanism. It
+does not provide root access. Keep a working SSH connection and a way to open
+LG Home before changing the default launcher.
+
+The following is the existing 0.1.11 helper procedure, not a cross-model
+installer. Its copied startup hook must be replaced, with corresponding recovery
+tests, before Homebrew submission; see [remaining work](COMPATIBILITY.md#before-broad-distribution).
 
 Copy the source files over your existing authenticated SSH connection into a new root-only staging directory. For example, in a POSIX shell on your computer, set `TV_HOST` to your TV's address:
 

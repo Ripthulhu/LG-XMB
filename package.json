@@ -9,7 +9,9 @@
     "test": "node --test tests/*.test.cjs",
     "test:browser": "node tools/browser-check.cjs",
     "package": "node tools/package.mjs",
-    "verify:package": "node tools/package.mjs --verify-only"
+    "verify:package": "node tools/package.mjs --verify-only",
+    "test:compat": "node tests/compat-layout-browser.cjs",
+    "tools:download": "node tools/dev-tools.cjs"
   },
   "engines": {
     "node": ">=20.0.0"
