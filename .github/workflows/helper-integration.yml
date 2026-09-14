@@ -24,18 +24,20 @@ jobs:
       - name: Prepare isolated source tree
         run: |
           python3 .maintenance/apply.py
+          python3 .maintenance/post.py
           rm -rf .maintenance
           rm .github/workflows/helper-integration.yml
           git diff --check
           git diff --stat
-      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm ci --ignore-scripts --no-audit --no-fund > "$RUNNER_TEMP/npm.log" 2>&1 || { tail -60 "$RUNNER_TEMP/npm.log"; exit 1; }
       - name: Unit and clean-install tests
         run: |
-          npm test
+          npm test > "$RUNNER_TEMP/node-tests.log" 2>&1 || { tail -100 "$RUNNER_TEMP/node-tests.log"; exit 1; }
+          tail -8 "$RUNNER_TEMP/node-tests.log"
           python3 -B -m unittest discover -s tests -p 'test_*.py'
           python3 -B -m unittest discover -s tv-helper -p 'test_*.py'
           python3 -B -m unittest discover -s tv-helper/recovery -p 'test_*.py'
-      - run: npx playwright install --with-deps chromium msedge
+      - run: npx playwright install --with-deps chromium msedge > "$RUNNER_TEMP/browser-install.log" 2>&1 || { tail -60 "$RUNNER_TEMP/browser-install.log"; exit 1; }
       - name: Browser tests
         shell: bash
         run: |
