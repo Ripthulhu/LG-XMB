@@ -15,9 +15,10 @@
     BUNDLE_INCOMPLETE:'The installed helper is incomplete. Reinstall the lg-xmb IPK.',
     BUNDLE_MISMATCH:'The installed app and helper do not match. Reinstall the lg-xmb IPK.',
     CONFIG_CONFLICT:'Old and new helper settings differ. Both were preserved; resolve the migration before continuing.',
+    UNSAFE_PATH:'Helper ownership or file checks failed. See /var/lib/webosbrew/lg-xmb-startup.log.',
     BUSY:'Another helper setup is running. Wait for it to finish before retrying.',
     TIMEOUT:'Helper setup was not confirmed. It may still be running; no retry was sent.',
-    SETUP_FAILED:'Helper setup failed. Existing settings were preserved. Check the helper files before retrying.'
+    SETUP_FAILED:'Helper setup failed. See /var/lib/webosbrew/lg-xmb-startup.log before retrying.'
   };
   function problem(code){var e=new Error(messages[code]||messages.SETUP_FAILED);e.code=code;return e;}
   function object(value){return !!value&&typeof value==='object'&&!Array.isArray(value);}
@@ -35,7 +36,9 @@
       var codes={python_missing:'PYTHON_MISSING',python_too_old:'PYTHON_TOO_OLD',
         bundle_incomplete:'BUNDLE_INCOMPLETE',invalid_helper_bundle:'BUNDLE_MISMATCH',
         helper_bundle_mismatch:'BUNDLE_MISMATCH',untrusted_app_manifest:'BUNDLE_MISMATCH',
-        legacy_config_conflict:'CONFIG_CONFLICT',helper_busy:'BUSY'};
+        legacy_config_conflict:'CONFIG_CONFLICT',helper_busy:'BUSY',
+        unsafe_helper_path:'UNSAFE_PATH',helper_owner_mismatch:'UNSAFE_PATH',
+        helper_path_changed:'UNSAFE_PATH',helper_permissions_not_confirmed:'UNSAFE_PATH'};
       if(value.errorCode==='root_required'&&Number.isInteger(value.effectiveUid)&&value.effectiveUid>0)throw problem('ROOT_REQUIRED');
       throw problem(codes[value.errorCode]||'SETUP_FAILED');
     }

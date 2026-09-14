@@ -30,6 +30,34 @@ where the firmware permits the read. Helper features stay unavailable, with icon
 fallbacks for cached pictures. Keep Developer Mode active according to
 [Homebrew's guide](https://www.webosbrew.org/devmode/).
 
+## Helper diagnostics
+
+On a rooted TV, setup writes `/var/lib/webosbrew/lg-xmb-startup.log` **before**
+validating the bundle. It records the setup stage, error code, exception type,
+errno when available, and failing line locations. It is capped at 8 KiB and
+replaced on the next attempt. No native replies, captured pictures or saved
+settings are logged. A non-root attempt or an unsafe/unwritable log directory
+cannot create this file; the app still reports the failure.
+
+Read it through your existing root SSH connection:
+
+```sh
+cat /var/lib/webosbrew/lg-xmb-startup.log
+cat /var/lib/webosbrew/lg-xmb-worker.log
+cat /tmp/lg-xmb-thumbnails/status.json
+```
+
+The worker files appear only after setup reaches that stage. A running worker
+is not proof that the TV capture API accepted an image. The worker's raw stdout
+and stderr are still not retained.
+
+Version 0.1.12 could fail before any log existed because its packaged helper
+directory was world-writable. Version 0.1.13 sets package directory permissions
+explicitly and can repair changed modes only after verifying the pinned bundle
+and app bytes. It does not accept foreign owners or links, change shared parent
+directories, or reset saved settings. Install the new IPK and reopen Home; do not
+use a recursive chmod/chown or remove configuration to work around this error.
+
 ## Upgrade
 
 Install the new IPK over the existing app, then open **Home**. Setup stops a
@@ -56,7 +84,8 @@ in-place upgrades and existing Home assignments. Project and runtime names use
 | `/tmp/lg-xmb-thumbnails` | Volatile HDMI pictures and capture status |
 | `/tmp/lg-xmb-controls` | Volatile controller state and launch leases |
 | `/var/lib/webosbrew/init.d/60-lg-xmb` | Symlink to the app's `helper-startup.py` |
-| `/var/lib/webosbrew/lg-xmb-startup.log` | Bounded startup record |
+| `/var/lib/webosbrew/lg-xmb-startup.log` | Last setup attempt, including early failures |
+| `/var/lib/webosbrew/lg-xmb-worker.log` | Worker launch record |
 
 The app owns the startup target. Removing the app breaks that link, preventing
 future boot starts. Removing it does not restore LG settings automatically.
@@ -101,7 +130,7 @@ reviewed sources without putting generated files in `app/`. CI also checks the
 bytes and permissions of every helper module inside the actual IPK:
 
 ```sh
-python3 tools/verify-helper-package.py dist/org.local.openxmb.c5_0.1.12_all.ipk
+python3 tools/verify-helper-package.py dist/org.local.openxmb.c5_0.1.13_all.ipk
 ```
 
 A manifest change requires updating the controller's reviewed manifest pin in

@@ -37,17 +37,25 @@ def verify(filename):
             if name in entries:
                 raise ValueError('Duplicate package path')
             entries[name] = entry
+        for name in (APP.rstrip('/'), APP + 'helper'):
+            entry = entries[name]
+            if not entry.isdir() or entry.mode != 0o755:
+                raise ValueError('Unsafe packaged helper directory: ' + name)
         def read(name, executable=False):
             entry = entries[APP + name]
             if not entry.isfile() or entry.mode & 0o022 or (executable and not entry.mode & 0o111):
                 raise ValueError('Unsafe packaged helper permissions: ' + name)
             return archive.extractfile(entry).read()
-        if read('helper-startup.py', True) != (ROOT / 'app/helper-startup.py').read_bytes():
-            raise ValueError('Startup entry differs from source')
         appinfo = read('appinfo.json')
         if appinfo != (ROOT / 'app/appinfo.json').read_bytes():
             raise ValueError('Packaged manifest differs from source')
-        manifest = json.loads(read('helper/bundle.json'))
+        bundle = read('helper/bundle.json')
+        manifest = json.loads(bundle)
+        template = (ROOT / 'app/helper-startup.py').read_bytes()
+        expected = template.replace(b'\nBUNDLE_SHA256 = "@BUNDLE_SHA256@"',
+                                    b'\nBUNDLE_SHA256 = "' + hashlib.sha256(bundle).hexdigest().encode() + b'"', 1)
+        if read('helper-startup.py', True) != expected or manifest.get('startupSha256') != hashlib.sha256(template).hexdigest():
+            raise ValueError('Startup entry or embedded bundle pin differs from source')
         if manifest.get('schema') != 1 or set(manifest.get('files', {})) != set(SOURCES):
             raise ValueError('Incomplete helper bundle')
         if manifest['appinfoSha256'] != hashlib.sha256(appinfo).hexdigest():

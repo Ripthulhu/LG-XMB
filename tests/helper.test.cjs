@@ -32,7 +32,9 @@ test('only an explicit non-root effective UID is reported as missing root privil
     [{returnValue:false,errorCode:'root_required'},'SETUP_FAILED'],
     [{returnValue:false,errorCode:'bundle_incomplete'},'BUNDLE_INCOMPLETE'],
     [{returnValue:false,errorCode:'python_missing'},'PYTHON_MISSING'],
-    [{returnValue:false,errorCode:'legacy_config_conflict'},'CONFIG_CONFLICT']
+    [{returnValue:false,errorCode:'legacy_config_conflict'},'CONFIG_CONFLICT'],
+    [{returnValue:false,errorCode:'unsafe_helper_path'},'UNSAFE_PATH'],
+    [{returnValue:false,errorCode:'helper_owner_mismatch'},'UNSAFE_PATH']
   ]){
     const h=setup(),p=h.helper.ensure();h.reply(0,value,{returnValue:false,error:'Command failed'});
     await assert.rejects(p,e=>e.code===expected);assert.equal(h.helper.isReady(),false);
