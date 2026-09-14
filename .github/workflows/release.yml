@@ -1,0 +1,177 @@
+name: Publish prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Checks run ID from a push to main
+        required: true
+        type: string
+      source_sha:
+        description: Full commit SHA tested by that run
+        required: true
+        type: string
+  # Bootstrap the first release; removed once it is published.
+  push:
+    branches: [main]
+    paths: [.github/workflows/release.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lg-xmb-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'Ripthulhu/LG-XMB' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      source_sha: ${{ steps.prepare.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the tested artifact and prepare release assets
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id || '34867439222' }}
+          SOURCE_SHA: ${{ inputs.source_sha || 'fe911e4a938b5c918f4b88fbb39e719b3ccb8030' }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import io
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import zipfile
+
+          repo, run_id, sha = (os.environ[key] for key in ('GITHUB_REPOSITORY', 'RUN_ID', 'SOURCE_SHA'))
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+          def api(path):
+              return subprocess.check_output(['gh', 'api', 'repos/' + repo + '/' + path])
+          def digest(raw):
+              return hashlib.sha256(raw).hexdigest()
+          require(re.fullmatch(r'[1-9][0-9]*', run_id), 'Invalid run ID')
+          require(re.fullmatch(r'[0-9a-f]{40}', sha), 'A full source SHA is required')
+          run = json.loads(api('actions/runs/' + run_id))
+          require(run['name'] == 'Checks' and run['path'] == '.github/workflows/checks.yml'
+                  and run['event'] == 'push' and run['head_branch'] == 'main'
+                  and run['head_repository']['full_name'] == repo and run['head_sha'] == sha
+                  and run['status'] == 'completed' and run['conclusion'] == 'success',
+                  'Only successful Checks builds from this repository main are eligible')
+          subprocess.run(['git', 'merge-base', '--is-ancestor', sha, 'origin/main'], check=True)
+          artifacts = json.loads(api('actions/runs/' + run_id + '/artifacts?per_page=100'))['artifacts']
+          matches = [item for item in artifacts if item['name'] == 'lg-xmb-candidate']
+          require(len(matches) == 1, 'Expected one candidate artifact')
+          artifact = matches[0]
+          require(not artifact['expired'] and artifact['workflow_run']['head_sha'] == sha
+                  and 0 < artifact['size_in_bytes'] <= 20_000_000, 'Invalid candidate artifact')
+          archive = api('actions/artifacts/' + str(artifact['id']) + '/zip')
+          require('sha256:' + digest(archive) == artifact['digest'], 'Artifact digest mismatch')
+          with zipfile.ZipFile(io.BytesIO(archive)) as candidate:
+              names = candidate.namelist()
+              require(len(names) == len(set(names)) and all(i.file_size <= 20_000_000
+                      for i in candidate.infolist()), 'Invalid candidate ZIP entries')
+              source_bytes = candidate.read('source.zip')
+              with zipfile.ZipFile(io.BytesIO(source_bytes)) as source:
+                  require(source.comment.decode('ascii') == sha, 'Source commit mismatch')
+                  tracked = subprocess.check_output(['git', 'ls-tree', '-rz', sha]).split(b'\0')
+                  expected = {}
+                  for row in filter(None, tracked):
+                      metadata, name = row.split(b'\t', 1)
+                      mode, kind, blob = metadata.split()
+                      require(kind == b'blob', 'Submodules require a separate release review')
+                      expected[name.decode()] = blob.decode()
+                  files = [i for i in source.infolist() if not i.is_dir()]
+                  require(len(files) == len(expected) and {i.filename for i in files} == set(expected)
+                          and all(i.file_size <= 20_000_000 for i in files), 'Source inventory mismatch')
+                  for entry in files:
+                      raw = source.read(entry)
+                      blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+                      require(blob == expected[entry.filename], 'Source differs: ' + entry.filename)
+                  manifest = json.loads(source.read('app/appinfo.json'))
+              version = manifest['version']
+              require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'Invalid app version')
+              require(manifest['id'] == 'org.local.openxmb.c5', 'Unexpected installed app ID')
+              ipk_name = manifest['id'] + '_' + version + '_all.ipk'
+              ipk = candidate.read(ipk_name)
+              checksum = digest(ipk) + '  ' + ipk_name
+              require(checksum in candidate.read('SHA256SUMS').decode().splitlines(), 'IPK checksum mismatch')
+          notes = Path('docs/releases/' + version + '.md').read_text()
+          require(notes.strip(), 'Reviewed release notes are required')
+          output = Path('release-assets')
+          output.mkdir()
+          (output / ipk_name).write_bytes(ipk)
+          source_name = 'lg-xmb-' + version + '-source.zip'
+          (output / source_name).write_bytes(source_bytes)
+          (output / 'SHA256SUMS').write_text(checksum + '\n' + digest(source_bytes) + '  ' + source_name + '\n')
+          worktree = Path(os.environ['RUNNER_TEMP']) / 'release-source'
+          subprocess.run(['git', 'worktree', 'add', '--detach', str(worktree), sha], check=True)
+          subprocess.run(['python3', str(worktree / 'tools/verify-helper-package.py'),
+                          str((output / ipk_name).resolve())], check=True)
+          notes += '\n## Build provenance\n\nSource commit: `' + sha + '`.\n\n'
+          notes += '[Successful Checks run](https://github.com/' + repo + '/actions/runs/' + run_id + ').\n'
+          notes += 'The IPK and source archive are the verified CI artifact bytes, not a rebuild.\n'
+          (output / 'release-notes.md').write_text(notes)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+              stream.write('version=' + version + '\nsource_sha=' + sha + '\n')
+          print('Verified candidate artifact, matching source tree and bundled helper: ' + version)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-release
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+    steps:
+      - name: Publish verified files, without replacing existing releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$GITHUB_RUN_ID" --name verified-release --dir assets
+          cd assets
+          sha256sum -c SHA256SUMS
+          tag="v$VERSION"
+          existing=$(gh api "repos/$GH_REPO/git/matching-refs/tags/$tag" \
+            --jq ".[] | select(.ref == \"refs/tags/$tag\") | .ref")
+          test -z "$existing" || { echo 'Tag already exists; refusing to replace it.'; exit 1; }
+          gh release create "$tag" --draft --prerelease --latest=false \
+            --target "$SOURCE_SHA" --title "LG-XMB $VERSION (prerelease)" \
+            --notes-file release-notes.md \
+            "org.local.openxmb.c5_${VERSION}_all.ipk" "lg-xmb-${VERSION}-source.zip" SHA256SUMS
+          # Read back the uploaded bytes before making the release visible.
+          gh release download "$tag" --dir readback
+          cmp "org.local.openxmb.c5_${VERSION}_all.ipk" "readback/org.local.openxmb.c5_${VERSION}_all.ipk"
+          cmp "lg-xmb-${VERSION}-source.zip" "readback/lg-xmb-${VERSION}-source.zip"
+          cmp SHA256SUMS readback/SHA256SUMS
+          gh release edit "$tag" --draft=false --prerelease --latest=false
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')" = "$SOURCE_SHA"
+          gh release view "$tag" --json url,isDraft,isPrerelease,assets
+          echo "Published https://github.com/$GH_REPO/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
