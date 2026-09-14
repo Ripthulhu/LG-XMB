@@ -2,11 +2,14 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const {createHash} = require('node:crypto');
 
 // A loader argument lets an offline fixture supply the same local sources.
 // CI uses normal navigation, including the packaged page's CSP and script order.
 module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
   const load = loader || (page => page.goto('http://127.0.0.1:8765/'));
+  // Compare renderer pixels independently of clock/text overlays and keep diffs bounded.
+  const waveImage = async page => createHash('sha256').update(await page.evaluate(()=>document.getElementById('wave').toDataURL())).digest('hex');
   async function create(width=1280,height=720,init) {
     const page=await browser.newPage({viewport:{width,height}});
     page.on('pageerror',error=>errors.push(error.message));
@@ -48,15 +51,15 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
       assert.deepEqual([diag.surface.surfaceWidth,diag.surface.surfaceHeight],[width*1.5,height*1.5]);
       assert.equal(await page.evaluate(()=>ps3TestWave.gl.getError()),0);
       await page.evaluate(()=>{ps3TestWave.setReducedMotion(true);ps3TestWave.time=14;ps3TestWave._draw();});
-      const still=await page.locator('#wave').screenshot();
+      const still=await waveImage(page);
       await page.waitForTimeout(200);
-      assert.deepEqual(await page.locator('#wave').screenshot(),still);
+      assert.equal(await waveImage(page),still);
       await page.evaluate(()=>ps3TestWave._draw());
-      assert.deepEqual(await page.locator('#wave').screenshot(),still,'A repaint must not advance smoothing');
+      assert.equal(await waveImage(page),still,'A repaint must not advance smoothing');
       await page.evaluate(()=>ps3TestWave.setStyle({brightness:0.6,speed:0.5}));
-      assert.notDeepEqual(await page.locator('#wave').screenshot(),still);
+      assert.notEqual(await waveImage(page),still);
       await page.evaluate(()=>ps3TestWave.setStyle({brightness:1,speed:1.5}));
-      assert.deepEqual(await page.locator('#wave').screenshot(),still,'Brightness changes preserve shape/time');
+      assert.equal(await waveImage(page),still,'Brightness changes preserve shape/time');
       await page.screenshot({path:path.join(dir,`ps3-waves-${width}.png`)});
       const before=await page.evaluate(()=>ps3TestWave.time);
       await page.evaluate(()=>ps3TestWave.setReducedMotion(false));
@@ -64,11 +67,11 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
       await page.waitForFunction(previous=>ps3TestWave.time>previous,before,{timeout:10000});
       assert.ok(await page.evaluate(()=>ps3TestWave.time)>before);
       await page.evaluate(()=>ps3TestWave.setPaused(true));
-      const paused=await page.locator('#wave').screenshot(),at=await page.evaluate(()=>ps3TestWave.time);
-      await page.waitForTimeout(150);assert.deepEqual(await page.locator('#wave').screenshot(),paused);
+      const paused=await waveImage(page),at=await page.evaluate(()=>ps3TestWave.time);
+      await page.waitForTimeout(150);assert.equal(await waveImage(page),paused);
       assert.equal(await page.evaluate(()=>ps3TestWave.time),at);
       await page.evaluate(()=>{ps3TestWave.setReducedMotion(true);ps3TestWave.setPaused(false);});
-      assert.deepEqual(await page.locator('#wave').screenshot(),paused);
+      assert.equal(await waveImage(page),paused);
       await page.evaluate(()=>{
         window.testHidden=false;Object.defineProperty(document,'hidden',{configurable:true,get:()=>testHidden});
         testHidden=true;document.dispatchEvent(new Event('visibilitychange'));
