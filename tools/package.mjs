@@ -6,7 +6,6 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { stageHelper } from './stage-helper.mjs';
-import { normalizeIpkPermissions } from './ipk-permissions.mjs';
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appDir = path.join(projectDir, 'app');
@@ -39,6 +38,15 @@ function runCli(args) {
   return transcript;
 }
 
+function runPython(script, args) {
+  const result = spawnSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+    [path.join(projectDir, 'tools', script), ...args],
+    {encoding: 'utf8', timeout: 30000, windowsHide: true});
+  if (result.error) throw new Error(`Packaging requires Python 3.10 or newer: ${result.error.message}`);
+  requireCondition(result.status === 0, `${script} failed:\n${result.stderr}`);
+  process.stdout.write(result.stdout);
+}
+
 try {
   requireCondition(fs.existsSync(cli), 'Install local dependencies first: npm ci --ignore-scripts --no-audit --no-fund');
   const cliPackage = JSON.parse(fs.readFileSync(path.join(cliDir, 'package.json'), 'utf8'));
@@ -69,12 +77,14 @@ try {
     fs.cpSync(appDir, stagedApp, {recursive: true});
     stageHelper(projectDir, stagedApp);
     process.stdout.write(runCli(['--no-minify', '--outdir', outputDir, stagedApp]));
-    fs.writeFileSync(packagePath, normalizeIpkPermissions(fs.readFileSync(packagePath)));
+    // The pinned CLI recreates directories with mode 0777. Normalize the IPK,
+    // not just the staging folder, without changing shared TV ancestor entries.
+    runPython('ipk_archive.py', [packagePath]);
   }
   requireCondition(fs.existsSync(packagePath), `Package was not produced: ${packagePath}`);
   const packageBytes = fs.readFileSync(packagePath);
-  normalizeIpkPermissions(packageBytes, {verifyOnly: true});
   requireCondition(packageBytes.subarray(0, 8).toString('ascii') === '!<arch>\n', 'IPK is not an ar archive.');
+  runPython('verify-helper-package.py', [packagePath]);
   const info = runCli(['--info-detail', packagePath]);
   requireCondition(info.includes(expectedId), 'IPK inspection did not report the expected app ID.');
   fs.writeFileSync(path.join(outputDir, 'package-info.txt'), info, 'utf8');

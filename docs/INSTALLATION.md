@@ -30,34 +30,6 @@ where the firmware permits the read. Helper features stay unavailable, with icon
 fallbacks for cached pictures. Keep Developer Mode active according to
 [Homebrew's guide](https://www.webosbrew.org/devmode/).
 
-## Helper diagnostics
-
-On a rooted TV, setup writes `/var/lib/webosbrew/lg-xmb-startup.log` **before**
-validating the bundle. It records the setup stage, error code, exception type,
-errno when available, and failing line locations. It is capped at 8 KiB and
-replaced on the next attempt. No native replies, captured pictures or saved
-settings are logged. A non-root attempt or an unsafe/unwritable log directory
-cannot create this file; the app still reports the failure.
-
-Read it through your existing root SSH connection:
-
-```sh
-cat /var/lib/webosbrew/lg-xmb-startup.log
-cat /var/lib/webosbrew/lg-xmb-worker.log
-cat /tmp/lg-xmb-thumbnails/status.json
-```
-
-The worker files appear only after setup reaches that stage. A running worker
-is not proof that the TV capture API accepted an image. The worker's raw stdout
-and stderr are still not retained.
-
-Version 0.1.12 could fail before any log existed because its packaged helper
-directory was world-writable. Version 0.1.13 sets package directory permissions
-explicitly and can repair changed modes only after verifying the pinned bundle
-and app bytes. It does not accept foreign owners or links, change shared parent
-directories, or reset saved settings. Install the new IPK and reopen Home; do not
-use a recursive chmod/chown or remove configuration to work around this error.
-
 ## Upgrade
 
 Install the new IPK over the existing app, then open **Home**. Setup stops a
@@ -84,11 +56,29 @@ in-place upgrades and existing Home assignments. Project and runtime names use
 | `/tmp/lg-xmb-thumbnails` | Volatile HDMI pictures and capture status |
 | `/tmp/lg-xmb-controls` | Volatile controller state and launch leases |
 | `/var/lib/webosbrew/init.d/60-lg-xmb` | Symlink to the app's `helper-startup.py` |
-| `/var/lib/webosbrew/lg-xmb-startup.log` | Last setup attempt, including early failures |
-| `/var/lib/webosbrew/lg-xmb-worker.log` | Worker launch record |
+| `/var/lib/webosbrew/lg-xmb-startup.log` | Bounded startup record |
 
 The app owns the startup target. Removing the app breaks that link, preventing
 future boot starts. Removing it does not restore LG settings automatically.
+
+## Helper setup errors
+
+From a root shell, read `/var/lib/webosbrew/lg-xmb-startup.log`. Starting with
+0.1.13, setup records early failures before bundle validation, not only worker
+launch. The file is root-only and capped at 16 KiB. It includes the failure code,
+exception type and source location, but no raw native replies or saved settings.
+The app shows its path only when writing the error record succeeded.
+
+A rejected `helper/` directory records its numeric owner and permissions.
+The released 0.1.12 IPK incorrectly packaged this directory as 0777; install
+0.1.13 over it rather than deleting settings or bypassing ownership checks.
+A non-root process or an unsafe/unwritable log location cannot create this log;
+the command's JSON reply remains available in that case.
+
+Worker state remains in `/tmp/lg-xmb-thumbnails/status.json`. The setup log does
+not contain a full worker stdout/stderr transcript or prove a capture succeeded.
+`lg-xmb-worker.lock` in `/var/lib/webosbrew` is a separate lifetime lock, so an
+already running worker cannot prevent setup diagnostics.
 
 ## Return to LG Home and remove
 
@@ -116,7 +106,9 @@ normal startup prepares the helper again.
 
 ## Build
 
-Use Node.js 20 or newer on your computer:
+Use Node.js 20 or newer and Python 3.10 or newer on your computer. The TV helper
+still needs only Python 3.7. Packaging uses `python3` (`python` on Windows); set
+`PYTHON` to select another interpreter:
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
@@ -127,10 +119,13 @@ npm run verify:package
 
 The IPK and checksum are in `dist/`. The packager stages the helper from its
 reviewed sources without putting generated files in `app/`. CI also checks the
-bytes and permissions of every helper module inside the actual IPK:
+bytes, root ownership, and directory/file permissions inside the actual IPK.
+The pinned CLI creates 0777 directories, so packaging normalizes app-owned
+entries to 0755/0644 before checksums are generated. Shared TV ancestor entries
+and file contents are not changed:
 
 ```sh
-python3 tools/verify-helper-package.py dist/org.local.openxmb.c5_0.1.13_all.ipk
+python3 tools/verify-helper-package.py
 ```
 
 A manifest change requires updating the controller's reviewed manifest pin in

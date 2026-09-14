@@ -3,7 +3,7 @@ import copy
 import hashlib
 import importlib.util
 import io
-import contextlib
+from contextlib import redirect_stdout
 import json
 import os
 from pathlib import Path
@@ -75,12 +75,10 @@ class SetupFixture(unittest.TestCase):
             stop=lambda **kw: self.stops.append(kw), find_helpers=lambda: [],
             helper_argument=lambda raw: raw, read_hook=self.read_hook)
         (self.app / 'appinfo.json').write_bytes(b'{"id":"org.local.openxmb.c5"}\n')
-        self.template = b'#!/usr/bin/python3\nBUNDLE_SHA256 = "@BUNDLE_SHA256@"\n'
-        (self.app / 'helper-startup.py').write_bytes(self.template)
+        (self.app / 'helper-startup.py').write_text('#!/bin/sh\nexit 0\n')
         (self.app / 'helper-startup.py').chmod(0o755)
         for name in startup.FILES:
             (self.bundle / name).write_text('# fixture\n')
-        self.addCleanup(setattr, startup, "BUNDLE_SHA256", startup.BUNDLE_SHA256)
         self.update_manifest()
 
     @staticmethod
@@ -101,12 +99,8 @@ class SetupFixture(unittest.TestCase):
     def update_manifest(self):
         self.control.PIN_APPINFO_SHA256 = digest((self.app / 'appinfo.json').read_bytes())
         manifest = {'schema': 1, 'appinfoSha256': self.control.PIN_APPINFO_SHA256,
-                    'startupSha256': digest(self.template),
                     'files': {name: digest((self.bundle / name).read_bytes()) for name in startup.FILES}}
-        raw = json.dumps(manifest).encode()
-        (self.bundle / 'bundle.json').write_bytes(raw)
-        startup.BUNDLE_SHA256 = digest(raw)
-        (self.app / 'helper-startup.py').write_bytes(self.template.replace(b'@BUNDLE_SHA256@', digest(raw).encode()))
+        (self.bundle / 'bundle.json').write_text(json.dumps(manifest))
 
     def modules(self, name, raw, path):
         return self.control if name == 'lg_xmb_control' else self.recovery
@@ -235,133 +229,15 @@ class SetupFixture(unittest.TestCase):
         with self.assertRaises(OSError):
             self.run_setup()
 
-    def test_hardlinked_bundle_member_is_rejected(self):
+    def test_hardlinked_or_writable_bundle_member_is_rejected(self):
         member = self.bundle / 'process_control.py'
         os.link(member, self.root / 'extra-link')
         with self.assertRaises(startup.SetupError):
             self.run_setup()
-
-    def test_verified_installed_modes_are_repaired_without_touching_ancestors(self):
-        paths = [self.app, self.bundle] + list(self.bundle.iterdir()) + [
-            self.app / 'appinfo.json', self.app / 'helper-startup.py']
-        for path in paths:
-            path.chmod(0o777)
-        before = self.root.stat().st_mode
-        result, _ = self.run_setup()
-        self.assertTrue(result['ready'])
-        for path in paths:
-            expected = 0o755 if path.is_dir() or path.name == 'helper-startup.py' else 0o644
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), expected, path)
-        self.assertEqual(self.root.stat().st_mode, before)
-
-    def test_changed_payload_and_rewritten_bundle_cannot_authorize_mode_repair(self):
-        member = self.bundle / 'process_control.py'
-        self.bundle.chmod(0o777)
+        (self.root / 'extra-link').unlink()
         member.chmod(0o666)
-        member.write_text('# substituted payload')
-        manifest = json.loads((self.bundle / 'bundle.json').read_text())
-        manifest['files']['process_control.py'] = digest(member.read_bytes())
-        (self.bundle / 'bundle.json').write_text(json.dumps(manifest))
-        with patch.object(startup, 'load_module') as load:
-            with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
-                startup.start()
-        load.assert_not_called()
-        self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o777)
-        self.assertEqual(stat.S_IMODE(member.stat().st_mode), 0o666)
-        self.assertFalse(self.base.exists())
-
-    def test_non_root_owned_bundle_is_refused_not_chowned(self):
-        metadata = startup.os.fstat
-        def foreign(fd):
-            info = metadata(fd)
-            if Path(os.readlink('/proc/self/fd/' + str(fd))) == self.bundle:
-                info.st_uid = 1000
-            return info
-        with patch.object(startup.os, 'fstat', side_effect=foreign):
-            with self.assertRaisesRegex(startup.SetupError, 'helper_owner_mismatch'):
-                self.run_setup()
-        self.assertFalse(self.base.exists())
-
-    def test_byte_change_during_chmod_is_refused_before_import(self):
-        self.bundle.chmod(0o777)
-        chmod = os.fchmod
-        def changed(fd, mode):
-            chmod(fd, mode)
-            if Path(os.readlink('/proc/self/fd/' + str(fd))) == self.bundle:
-                (self.bundle / 'process_control.py').write_text('# changed during repair')
-        with patch.object(startup.os, 'fchmod', side_effect=changed), patch.object(startup, 'load_module') as load:
-            with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
-                startup.start()
-        load.assert_not_called()
-
-    def test_member_replacement_during_repair_is_refused(self):
-        self.bundle.chmod(0o777)
-        chmod = os.fchmod
-        def replaced(fd, mode):
-            chmod(fd, mode)
-            if Path(os.readlink('/proc/self/fd/' + str(fd))) == self.bundle:
-                member = self.bundle / 'process_control.py'
-                raw = member.read_bytes()
-                member.unlink()
-                member.write_bytes(raw)
-        with patch.object(startup.os, 'fchmod', side_effect=replaced), patch.object(startup, 'load_module') as load:
-            with self.assertRaisesRegex(startup.SetupError, 'helper_path_changed'):
-                startup.start()
-        load.assert_not_called()
-
-    def test_early_failure_creates_private_log_before_state_or_worker(self):
-        (self.bundle / 'process_control.py').unlink()
         with self.assertRaises(startup.SetupError):
             self.run_setup()
-        log = self.log / startup.LOG_NAME
-        rows = [json.loads(line) for line in log.read_text().splitlines()]
-        self.assertEqual(rows[-1]['stage'], 'verify_bundle')
-        self.assertEqual(rows[-1]['code'], 'bundle_incomplete')
-        self.assertTrue(rows[-1]['trace'])
-        self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
-        self.assertFalse(self.base.exists())
-
-    def test_log_is_bounded_and_does_not_store_exception_payloads(self):
-        log = startup.SetupLog()
-        try:
-            for _ in range(1000):
-                log.record('verify_bundle', ValueError('private native reply'))
-            raw = (self.log / startup.LOG_NAME).read_bytes()
-            self.assertLessEqual(len(raw), 8192)
-            self.assertNotIn(b'private native reply', raw)
-        finally:
-            log.close()
-        self.run_setup()
-        self.assertNotIn('ValueError', (self.log / startup.LOG_NAME).read_text())
-
-    def test_foreign_log_symlink_is_never_followed(self):
-        other = self.root / 'other'; other.write_text('preserve')
-        (self.log / startup.LOG_NAME).symlink_to(other)
-        with self.assertRaises(startup.SetupError):
-            self.run_setup()
-        self.assertEqual(other.read_text(), 'preserve')
-        self.assertFalse(self.base.exists())
-
-    def test_previous_worker_log_lock_does_not_block_upgrade(self):
-        import fcntl
-        old = self.log / startup.LOG_NAME
-        old.write_text('old launch record')
-        with old.open('r') as stream:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            result, _ = self.run_setup()
-            self.assertTrue(result['ready'])
-            self.assertIn('verify_bundle', old.read_text())
-            self.assertEqual(stream.read(), 'old launch record')
-
-    def test_busy_setup_does_not_truncate_active_log(self):
-        log = startup.SetupLog()
-        try:
-            before = (self.log / startup.LOG_NAME).read_bytes()
-            with self.assertRaisesRegex(startup.SetupError, 'helper_busy'):
-                self.run_setup()
-            self.assertEqual((self.log / startup.LOG_NAME).read_bytes(), before)
-        finally:
-            log.close()
 
     def test_non_root_reply_is_explicit_and_makes_no_files(self):
         with patch.object(startup.os, 'geteuid', return_value=1000), \
@@ -369,8 +245,7 @@ class SetupFixture(unittest.TestCase):
              patch('builtins.print') as output:
             self.assertEqual(startup.main(), 2)
         reply = json.loads(output.call_args.args[0])
-        self.assertEqual(reply, {'returnValue': False, 'errorCode': 'root_required', 'effectiveUid': 1000})
-        self.assertFalse((self.log / startup.LOG_NAME).exists())
+        self.assertEqual(reply, {'returnValue': False, 'errorCode': 'root_required', 'effectiveUid': 1000, 'logWritten': False})
         self.assertFalse(self.base.exists())
 
     def test_old_python_is_not_reported_as_missing_root(self):
@@ -406,7 +281,7 @@ class SetupFixture(unittest.TestCase):
             result = subprocess.run(['run-parts', '--test', str(self.log / 'init.d')], capture_output=True, text=True)
             self.assertNotIn('60-lg-xmb', result.stdout)
 
-    def test_worker_detaches_and_inherits_only_its_log_lock(self):
+    def test_worker_detaches_and_does_not_block_setup_logging(self):
         worker = self.bundle / 'thumbnail_cache.py'
         worker.write_text('import os,time\nopen(' + repr(str(self.root / 'session')) + ',"w").write(str(os.getsid(0)))\ntime.sleep(15)\n')
         children = []
@@ -420,6 +295,7 @@ class SetupFixture(unittest.TestCase):
             with patch.object(startup.subprocess, 'Popen', side_effect=spawn):
                 self.assertTrue(startup.launch_worker(recovery))
                 self.assertEqual(int((self.root / 'session').read_text()), children[0].pid)
+                self.assertTrue(startup.record_startup('test_while_worker_runs'))
                 with self.assertRaisesRegex(startup.SetupError, 'helper_busy'):
                     startup.launch_worker(recovery)
             self.assertEqual(len(children), 1)
@@ -427,6 +303,92 @@ class SetupFixture(unittest.TestCase):
             for child in children:
                 child.terminate()
                 child.wait(timeout=3)
+
+    def main_reply(self):
+        output = io.StringIO()
+        with patch.object(startup.sys, 'argv', ['helper-startup.py', 'ensure']), redirect_stdout(output):
+            result = startup.main()
+        return result, json.loads(output.getvalue())
+
+    def log_records(self):
+        return [json.loads(line) for line in (self.log / startup.LOG_NAME).read_text().splitlines()]
+
+    def test_packaged_writable_directory_is_logged_before_any_helper_import(self):
+        self.bundle.chmod(0o777)
+        with patch.object(startup, 'load_module') as module:
+            code, reply = self.main_reply()
+        self.assertEqual(code, 2)
+        self.assertEqual(reply['errorCode'], 'helper_directory_writable')
+        self.assertTrue(reply['logWritten'])
+        module.assert_not_called()
+        failure = self.log_records()[-1]
+        self.assertEqual(failure['code'], 'helper_directory_writable')
+        self.assertEqual((failure['path'], failure['mode'], failure['uid']), ('helper/', '0o777', 0))
+        self.assertTrue(any(frame['function'] == 'load_bundle' for frame in failure['frames']))
+        self.assertFalse(self.base.exists())
+        self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o777, 'Do not weaken the runtime guard')
+
+    def test_ownership_mismatch_is_reported_distinctly_without_chown(self):
+        original = startup.os.fstat
+        def metadata(fd):
+            info = original(fd)
+            if Path(os.readlink('/proc/self/fd/' + str(fd))) == self.bundle:
+                info.st_uid = 1001
+            return info
+        with patch.object(startup.os, 'fstat', side_effect=metadata), patch.object(startup.os, 'chown') as chown:
+            code, reply = self.main_reply()
+        self.assertEqual(reply['errorCode'], 'helper_owner_mismatch')
+        self.assertEqual(self.log_records()[-1]['uid'], 1001)
+        chown.assert_not_called()
+        self.assertFalse(self.base.exists())
+
+    def test_missing_bundle_logs_without_a_running_capture_worker(self):
+        shutil.rmtree(self.bundle)
+        code, reply = self.main_reply()
+        self.assertEqual(code, 2)
+        self.assertEqual(reply['errorCode'], 'bundle_incomplete')
+        self.assertTrue(reply['logWritten'])
+        self.assertEqual(self.log_records()[-1]['exception'], 'FileNotFoundError')
+
+    def test_logs_are_created_on_first_failure_and_remain_private_and_bounded(self):
+        self.log.rmdir()
+        for index in range(200):
+            self.assertTrue(startup.record_startup('fixture', sequence=index))
+        log = self.log / startup.LOG_NAME
+        self.assertLessEqual(log.stat().st_size, startup.LOG_LIMIT)
+        self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
+        self.assertEqual(self.log_records()[-1]['sequence'], 199)
+
+    def test_exception_payloads_are_not_logged(self):
+        try:
+            raise ValueError('secret native reply or saved configuration')
+        except ValueError as error:
+            self.assertTrue(startup.record_startup('fixture_failure', error))
+        text = (self.log / startup.LOG_NAME).read_text()
+        self.assertNotIn('secret', text)
+        self.assertIn('ValueError', text)
+        self.assertIn('test_exception_payloads_are_not_logged', text)
+
+    def test_foreign_log_paths_are_not_followed_or_replaced(self):
+        target = self.root / 'foreign-log'
+        target.write_text('keep')
+        log = self.log / startup.LOG_NAME
+        log.symlink_to(target)
+        self.assertFalse(startup.record_startup('fixture'))
+        self.assertEqual(target.read_text(), 'keep')
+        self.bundle.chmod(0o777)
+        _, reply = self.main_reply()
+        self.assertFalse(reply['logWritten'])
+        self.assertEqual(reply['errorCode'], 'helper_directory_writable')
+        self.assertTrue(log.is_symlink())
+
+    def test_logging_failure_does_not_mask_setup_failure(self):
+        self.bundle.chmod(0o777)
+        with patch.object(startup.os, 'write', side_effect=OSError('disk full')):
+            code, reply = self.main_reply()
+        self.assertEqual(code, 2)
+        self.assertEqual(reply['errorCode'], 'helper_directory_writable')
+        self.assertFalse(reply['logWritten'])
 
 
 if __name__ == '__main__':

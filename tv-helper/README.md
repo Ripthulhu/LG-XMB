@@ -23,12 +23,10 @@ handles both the exact link (including a broken one) and reviewed legacy copies;
 it never follows the link to remove the packaged script. Unrecognized hooks are
 left alone. Restore settings before uninstalling; see the removal instructions.
 
-`/var/lib/webosbrew/lg-xmb-startup.log` records setup from before bundle
-validation, including bounded failure details. `/var/lib/webosbrew/lg-xmb-worker.log`
-records the worker launch. Runtime status remains in the bounded JSON files
-under `/tmp/lg-xmb-*`. The launch record does not confirm successful capture;
-raw worker stdout/stderr are not retained. See the installation guide for the
-exact logging limits.
+`/var/lib/webosbrew/lg-xmb-startup.log` records the last launch request or spawn
+failure. A new start replaces the small record; a duplicate start does not erase
+it. Runtime status remains in the bounded JSON files under `/tmp/lg-xmb-*`.
+The startup log alone does not confirm that the worker initialized successfully.
 
 ## Pictures
 

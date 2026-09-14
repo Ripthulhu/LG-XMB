@@ -12,10 +12,7 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export function stageHelper(projectDir, appDir) {
   const appinfo = fs.readFileSync(path.join(appDir, 'appinfo.json'));
-  const startup = fs.readFileSync(path.join(projectDir, 'app/helper-startup.py'), 'utf8');
-  const placeholder = '\nBUNDLE_SHA256 = "@BUNDLE_SHA256@"';
-  if (startup.split(placeholder).length !== 2) throw new Error('Expected one bootstrap bundle pin.');
-  const manifest = {schema: 1, appinfoSha256: sha256(appinfo), startupSha256: sha256(startup), files: {}};
+  const manifest = {schema: 1, appinfoSha256: sha256(appinfo), files: {}};
   const destination = path.join(appDir, 'helper');
   fs.mkdirSync(destination, {recursive: true, mode: 0o755});
   for (const [name, relative] of Object.entries(helperSources)) {
@@ -29,10 +26,7 @@ export function stageHelper(projectDir, appDir) {
     fs.writeFileSync(path.join(destination, name), bytes, {mode: 0o644});
     manifest.files[name] = sha256(bytes);
   }
-  const bundle = JSON.stringify(manifest, null, 2) + '\n';
-  fs.writeFileSync(path.join(destination, 'bundle.json'), bundle, {mode: 0o644});
-  fs.writeFileSync(path.join(appDir, 'helper-startup.py'),
-    startup.replace(placeholder, '\nBUNDLE_SHA256 = "' + sha256(bundle) + '"'), {mode: 0o755});
+  fs.writeFileSync(path.join(destination, 'bundle.json'), JSON.stringify(manifest, null, 2) + '\n', {mode: 0o644});
   fs.chmodSync(path.join(appDir, 'helper-startup.py'), 0o755);
   return manifest;
 }

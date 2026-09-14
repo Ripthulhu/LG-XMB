@@ -60,20 +60,13 @@ jobs:
           npm run verify:package
           git archive --format=zip --output=dist/source.zip HEAD
       - name: Verify bundled helper and app-owned startup
-        run: python3 tools/verify-helper-package.py dist/org.local.openxmb.c5_0.1.13_all.ipk
+        run: python3 tools/verify-helper-package.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: lg-xmb-candidate
           path: dist/
           if-no-files-found: error
           retention-days: 14
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: lg-xmb-layout
-          path: qa/upper-labels-*.png
-          if-no-files-found: error
-          retention-days: 7
 
   homebrew-tools:
     runs-on: ubuntu-24.04
