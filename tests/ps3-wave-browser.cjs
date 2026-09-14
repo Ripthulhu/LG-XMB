@@ -31,7 +31,10 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
       let diag=await page.evaluate(()=>ps3TestWave.getDiagnostics());
       assert.equal(diag.pattern,'ps3');assert.equal(diag.mode,'webgl');assert.equal(diag.error,null);
       assert.equal(diag.targetFps,30);assert.equal(diag.surface.floatTextures,false);
-      assert.ok(diag.surface.surfaceWidth<=1280&&diag.surface.surfaceHeight<=720);
+      assert.equal(diag.quality,'1080p');assert.equal(diag.adaptive,false);
+      assert.deepEqual([diag.backingWidth,diag.backingHeight],[width,height]);
+      assert.deepEqual([diag.surface.surfaceWidth,diag.surface.surfaceHeight],[width,height]);
+      assert.deepEqual(await page.evaluate(()=>[ps3TestWave.gl.drawingBufferWidth,ps3TestWave.gl.drawingBufferHeight]),[width,height]);
       assert.equal(await page.evaluate(()=>ps3TestWave.gl.getError()),0);
       await page.evaluate(()=>{ps3TestWave.setReducedMotion(true);ps3TestWave.time=14;ps3TestWave._draw();});
       const still=await page.locator('#wave').screenshot();
@@ -67,6 +70,30 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
       checks.push(`PS3 surface at ${width}x${height}: real shaders, still/brightness retention, bounded surface, pause and hidden suspension`);
     } finally {await page.close();}
   }
+  const tv=await create(1920,1080,()=>{
+    Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Mozilla/5.0 (Web0S; Linux/SmartTV) Chrome/87.0.4280.88'});
+    window.PalmSystem={identifier:'org.local.openxmb.c5'};
+    window.PalmServiceBridge=function(){
+      this.cancel=function(){};
+      this.call=function(){const reply=this.onservicecallback;setTimeout(()=>reply(JSON.stringify({returnValue:false,errorText:'Test: no TV services'})),0);};
+    };
+  });
+  try {
+    assert.equal(await tv.evaluate(()=>C5TV.isTV()),true);
+    await tv.evaluate(()=>{
+      ps3TestWave.setReducedMotion(true);
+      // Two completed slow scheduling windows used to reduce image quality.
+      ps3TestWave._resetTiming();
+      for(let now=100;now<=16000;now+=50)ps3TestWave._sampleTiming(now);
+    });
+    const diag=await tv.evaluate(()=>ps3TestWave.getDiagnostics());
+    assert.equal(diag.pattern,'ps3');assert.equal(diag.adaptive,false);
+    assert.deepEqual(diag.qualityChanges,[]);assert.ok(diag.scheduling.completedWindows>=2);
+    assert.deepEqual([diag.backingWidth,diag.backingHeight,diag.surface.surfaceWidth,diag.surface.surfaceHeight],[1920,1080,1920,1080]);
+    assert.deepEqual(await tv.evaluate(()=>[ps3TestWave.gl.drawingBufferWidth,ps3TestWave.gl.drawingBufferHeight]),[1920,1080]);
+    assert.equal(await tv.evaluate(()=>ps3TestWave.gl.getError()),0);
+    checks.push('TV-detected app keeps a true 1920x1080 canvas and surface despite slow scheduling windows');
+  } finally {await tv.close();}
   const page=await create();
   try {
     await page.evaluate(()=>{ps3TestWave.setReducedMotion(true);window.loss=ps3TestWave.gl.getExtension('WEBGL_lose_context');});

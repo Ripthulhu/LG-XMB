@@ -63,7 +63,7 @@ test('Independent spline instances and an explicit rewind are deterministic',()=
 test('Mesh uses RGBA8, bounded surfaces and uploads geometry only when time changes',()=>{
   const h=fakeGL(),renderer=api.create(h.gl,'highp');renderer.finish();
   renderer.draw(14,[0.5,0.5,1],1,1920,1080);
-  const diag=renderer.diagnostics();assert.equal(diag.surfaceWidth,1280);assert.equal(diag.surfaceHeight,720);
+  const diag=renderer.diagnostics();assert.equal(diag.surfaceWidth,1920);assert.equal(diag.surfaceHeight,1080);
   assert.equal(diag.floatTextures,false);
   renderer.draw(14,[1,0.5,0.5],0.6,1920,1080);
   assert.equal(h.calls.filter(c=>c[0]==='bufferSubData').length,1);
@@ -73,6 +73,19 @@ test('Mesh uses RGBA8, bounded surfaces and uploads geometry only when time chan
   assert.equal(renderer.diagnostics().surfaceWidth,960);
   assert.ok(h.calls.filter(c=>c[0]==='texImage2D').every(c=>c[3]==='RGBA'&&c[8]==='UNSIGNED_BYTE'));
   renderer.destroy(false);assert.equal(h.live.size,0);renderer.destroy(false);
+});
+test('PS3 surface is native at 1080p and capped on larger viewports',()=>{
+  const h=fakeGL(),renderer=api.create(h.gl,'highp');renderer.finish();
+  for (const [w,height,expectedWidth,expectedHeight] of [
+    [1280,720,1280,720],[1920,1080,1920,1080],[3840,2160,1920,1080],[960,540,960,540]
+  ]) {
+    renderer.draw(14,[0.5,0.5,1],1,w,height);
+    const diag=renderer.diagnostics();
+    assert.equal(diag.surfaceWidth,expectedWidth);assert.equal(diag.surfaceHeight,expectedHeight);
+    const allocation=h.calls.filter(c=>c[0]==='texImage2D').at(-1);
+    assert.deepEqual(allocation.slice(4,6),[expectedWidth,expectedHeight]);
+  }
+  renderer.destroy(false);assert.equal(h.live.size,0);
 });
 test('Compilation failure releases every allocated shader and program',()=>{
   const h=fakeGL({link:false}),renderer=api.create(h.gl,'mediump');
