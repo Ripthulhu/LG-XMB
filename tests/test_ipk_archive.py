@@ -45,7 +45,11 @@ def package(helper_mode=0o777, extra=()):
         payload = (ROOT / path).read_bytes()
         entries.append(entry(APP + '/helper/' + name, payload))
         bundle['files'][name] = hashlib.sha256(payload).hexdigest()
-    entries.append(entry(APP + '/helper/bundle.json', json.dumps(bundle).encode()))
+    bundle_bytes = json.dumps(bundle).encode()
+    entries.append(entry(APP + '/helper/bundle.json', bundle_bytes))
+    startup = (ROOT / 'app/helper-startup.py').read_bytes().replace(
+        b'@BUNDLE_SHA256@', hashlib.sha256(bundle_bytes).hexdigest().encode())
+    entries[4] = entry(APP + '/helper-startup.py', startup, mode=0o755)
     return write_ipk({'debian-binary': b'2.0\n',
                       'control.tar.gz': tar_bytes([entry('control', b'Package: fixture\n')]),
                       'data.tar.gz': tar_bytes(entries + list(extra))})

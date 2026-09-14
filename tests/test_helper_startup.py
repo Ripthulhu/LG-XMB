@@ -40,14 +40,16 @@ class SetupFixture(unittest.TestCase):
         self.log.mkdir()
         self.cache = str(self.root / 'cache')
         self.old_cache = str(self.root / 'old-cache')
+        self.owners = {}
+        self.chowns = []
         # Model root ownership without requiring a privileged test runner. Only
         # host ancestors (such as /tmp) lose their writable bits; fixture file
         # modes, types and link counts remain real and are exercised below.
         def metadata(fd):
             info = os.fstat(fd)
             values = {name: getattr(info, name) for name in dir(info) if name.startswith('st_')}
-            values['st_uid'] = 0
             target = Path(os.readlink('/proc/self/fd/' + str(fd)))
+            values['st_uid'], values['st_gid'] = self.owners.get(target, (0, 0))
             if target in self.root.parents:
                 values['st_mode'] &= ~0o022
             return SimpleNamespace(**values)
@@ -56,13 +58,21 @@ class SetupFixture(unittest.TestCase):
         def named_metadata(*args, **kwargs):
             info = os.stat(*args, **kwargs)
             values = {name: getattr(info, name) for name in dir(info) if name.startswith('st_')}
-            values['st_uid'] = 0
+            target = Path(args[0])
+            if kwargs.get('dir_fd') is not None:
+                target = Path(os.readlink('/proc/self/fd/' + str(kwargs['dir_fd']))) / target
+            values['st_uid'], values['st_gid'] = self.owners.get(target, (0, 0))
             return SimpleNamespace(**values)
         os_view.stat = named_metadata
+        def change_owner(fd, uid, gid):
+            target = Path(os.readlink('/proc/self/fd/' + str(fd)))
+            self.chowns.append((target, uid, gid))
+            self.owners[target] = (uid, gid)
+        os_view.fchown = change_owner
         os_view.geteuid = lambda: 0
         self.patches = patch.multiple(startup, os=os_view, APP_DIR=str(self.app), BASE=str(self.base),
             LEGACY_BASE=str(self.legacy), CACHE=self.cache, LEGACY_CACHE=self.old_cache,
-            LOG_DIR=str(self.log))
+            LOG_DIR=str(self.log), BUNDLE_SHA256='fixture')
         self.patches.start()
         self.addCleanup(self.patches.stop)
         # Real file metadata and byte checks; no TV services or processes.
@@ -101,6 +111,7 @@ class SetupFixture(unittest.TestCase):
         manifest = {'schema': 1, 'appinfoSha256': self.control.PIN_APPINFO_SHA256,
                     'files': {name: digest((self.bundle / name).read_bytes()) for name in startup.FILES}}
         (self.bundle / 'bundle.json').write_text(json.dumps(manifest))
+        startup.BUNDLE_SHA256 = digest((self.bundle / 'bundle.json').read_bytes())
 
     def modules(self, name, raw, path):
         return self.control if name == 'lg_xmb_control' else self.recovery
@@ -313,20 +324,12 @@ class SetupFixture(unittest.TestCase):
     def log_records(self):
         return [json.loads(line) for line in (self.log / startup.LOG_NAME).read_text().splitlines()]
 
-    def test_packaged_writable_directory_is_logged_before_any_helper_import(self):
+    def test_root_owned_writable_directory_is_repaired_after_bundle_verification(self):
         self.bundle.chmod(0o777)
-        with patch.object(startup, 'load_module') as module:
-            code, reply = self.main_reply()
-        self.assertEqual(code, 2)
-        self.assertEqual(reply['errorCode'], 'helper_directory_writable')
-        self.assertTrue(reply['logWritten'])
-        module.assert_not_called()
-        failure = self.log_records()[-1]
-        self.assertEqual(failure['code'], 'helper_directory_writable')
-        self.assertEqual((failure['path'], failure['mode'], failure['uid']), ('helper/', '0o777', 0))
-        self.assertTrue(any(frame['function'] == 'load_bundle' for frame in failure['frames']))
-        self.assertFalse(self.base.exists())
-        self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o777, 'Do not weaken the runtime guard')
+        self.run_setup()
+        self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o755)
+        self.assertEqual(self.log_records()[-1]['event'], 'helper_directory_repaired')
+        self.assertEqual(self.chowns, [])
 
     def test_ownership_mismatch_is_reported_distinctly_without_chown(self):
         original = startup.os.fstat
@@ -376,19 +379,167 @@ class SetupFixture(unittest.TestCase):
         log.symlink_to(target)
         self.assertFalse(startup.record_startup('fixture'))
         self.assertEqual(target.read_text(), 'keep')
-        self.bundle.chmod(0o777)
+        (self.bundle / 'process_control.py').write_text('# bad bytes')
         _, reply = self.main_reply()
         self.assertFalse(reply['logWritten'])
-        self.assertEqual(reply['errorCode'], 'helper_directory_writable')
+        self.assertEqual(reply['errorCode'], 'helper_bundle_mismatch')
         self.assertTrue(log.is_symlink())
 
     def test_logging_failure_does_not_mask_setup_failure(self):
-        self.bundle.chmod(0o777)
+        (self.bundle / 'process_control.py').write_text('# bad bytes')
         with patch.object(startup.os, 'write', side_effect=OSError('disk full')):
             code, reply = self.main_reply()
         self.assertEqual(code, 2)
-        self.assertEqual(reply['errorCode'], 'helper_directory_writable')
+        self.assertEqual(reply['errorCode'], 'helper_bundle_mismatch')
         self.assertFalse(reply['logWritten'])
+
+    def set_legacy_owner(self):
+        self.owners[self.bundle] = (1001, 1001)
+        self.bundle.chmod(0o777)
+        self.app.chmod(0o777)
+
+    def test_reported_upgrade_shape_is_recovered_without_changing_payloads(self):
+        self.set_legacy_owner()
+        before = {p.name: p.read_bytes() for p in self.bundle.iterdir()}
+        parent_mode = self.root.stat().st_mode
+        self.base.mkdir()
+        saved = dict(self.config, revision=4, saved={'home': {'enabled': True}})
+        raw = (json.dumps(saved) + '\n').encode()
+        (self.base / 'background.json').write_bytes(raw)
+        result, launch = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual(self.chowns, [(self.bundle, 0, 0)])
+        self.assertEqual(self.owners[self.bundle], (0, 0))
+        self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE(self.app.stat().st_mode), 0o755)
+        self.assertEqual(self.root.stat().st_mode, parent_mode)
+        self.assertEqual({p.name: p.read_bytes() for p in self.bundle.iterdir()}, before)
+        self.assertEqual((self.base / 'background.json').read_bytes(), raw)
+        launch.assert_called_once()
+        event = self.log_records()[-1]
+        self.assertEqual((event['event'], event['fromUid'], event['fromGid']),
+                         ('helper_directory_repaired', 1001, 1001))
+        self.run_setup()
+        self.assertEqual(self.chowns, [(self.bundle, 0, 0)], 'Repeat setup must not chown again')
+
+    def test_unrecognized_directory_owners_are_not_adopted(self):
+        for owner in [(1000, 1000), (1001, 0), (1002, 1001)]:
+            with self.subTest(owner=owner), patch.object(startup, 'load_module') as load:
+                self.owners[self.bundle] = owner
+                with self.assertRaisesRegex(startup.SetupError, 'helper_owner_mismatch'):
+                    startup.load_bundle()
+                load.assert_not_called()
+        self.assertEqual(self.chowns, [])
+
+    def test_known_uid_is_not_sufficient_when_payload_bytes_are_changed(self):
+        self.set_legacy_owner()
+        (self.bundle / 'process_control.py').write_text('# changed')
+        with patch.object(startup, 'load_module') as load:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
+                startup.load_bundle()
+        load.assert_not_called()
+        self.assertEqual(self.chowns, [])
+        self.assertEqual(stat.S_IMODE(self.app.stat().st_mode), 0o777)
+        self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o777)
+
+    def test_helper_cannot_self_approve_new_payload_hashes(self):
+        self.set_legacy_owner()
+        member = self.bundle / 'process_control.py'
+        member.write_text('# changed')
+        manifest = self.bundle / 'bundle.json'
+        data = json.loads(manifest.read_text())
+        data['files'][member.name] = digest(member.read_bytes())
+        manifest.write_text(json.dumps(data))
+        with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
+            startup.load_bundle()
+        self.assertEqual(self.chowns, [])
+
+    def test_foreign_owned_or_writable_members_are_not_repaired(self):
+        self.set_legacy_owner()
+        member = self.bundle / 'process_control.py'
+        self.owners[member] = (1001, 1001)
+        with self.assertRaises(startup.SetupError):
+            startup.load_bundle()
+        self.owners[member] = (0, 0)
+        member.chmod(0o666)
+        with self.assertRaises(startup.SetupError):
+            startup.load_bundle()
+        self.assertEqual(self.chowns, [])
+
+    def test_legacy_directory_with_extra_entries_is_not_adopted(self):
+        self.set_legacy_owner()
+        extra = self.bundle / 'foreign-file'
+        extra.write_text('keep')
+        with self.assertRaisesRegex(startup.SetupError, 'unexpected_helper_files'):
+            startup.load_bundle()
+        self.assertEqual(self.chowns, [])
+        self.assertEqual(extra.read_text(), 'keep')
+
+    def test_symlinked_legacy_directory_is_never_followed(self):
+        self.set_legacy_owner()
+        target = self.app / 'foreign'
+        self.bundle.rename(target)
+        self.bundle.symlink_to(target)
+        with self.assertRaises(OSError):
+            startup.load_bundle()
+        self.assertEqual(self.chowns, [])
+
+    def test_legacy_directory_lock_conflict_does_not_modify_state(self):
+        self.set_legacy_owner()
+        import fcntl
+        fd = os.open(self.bundle, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(startup.SetupError, 'helper_busy'):
+                startup.load_bundle()
+        finally:
+            os.close(fd)
+        self.assertEqual(self.chowns, [])
+        self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o777)
+
+    def test_failed_owner_repair_never_imports_code(self):
+        self.set_legacy_owner()
+        with patch.object(startup.os, 'fchown'), patch.object(startup, 'load_module') as load:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_permissions_failed'):
+                startup.load_bundle()
+        load.assert_not_called()
+
+    def test_failed_mode_repair_never_imports_code(self):
+        self.set_legacy_owner()
+        with patch.object(startup.os, 'fchmod'), patch.object(startup, 'load_module') as load:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_permissions_failed'):
+                startup.load_bundle()
+        load.assert_not_called()
+
+    def test_changed_bytes_during_owner_repair_are_rejected(self):
+        self.set_legacy_owner()
+        change_owner = startup.os.fchown
+        def changed(fd, uid, gid):
+            change_owner(fd, uid, gid)
+            (self.bundle / 'process_control.py').write_text('# changed mid-repair')
+        with patch.object(startup.os, 'fchown', side_effect=changed), patch.object(startup, 'load_module') as load:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
+                startup.load_bundle()
+        load.assert_not_called()
+
+    def test_directory_replacement_during_repair_is_rejected(self):
+        self.set_legacy_owner()
+        chmod = startup.os.fchmod
+        def replaced(fd, mode):
+            chmod(fd, mode)
+            if Path(os.readlink('/proc/self/fd/' + str(fd))) == self.app:
+                self.bundle.rename(self.app / 'old-helper')
+                self.bundle.mkdir()
+        with patch.object(startup.os, 'fchmod', side_effect=replaced), patch.object(startup, 'load_module') as load:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_path_changed'):
+                startup.load_bundle()
+        self.assertEqual(self.chowns, [])
+        load.assert_not_called()
+
+    def test_verified_root_owned_directory_does_not_trigger_repair(self):
+        with patch.object(startup, 'repair_helper_directory') as repair:
+            self.run_setup()
+        repair.assert_not_called()
 
 
 if __name__ == '__main__':

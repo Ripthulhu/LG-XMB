@@ -25,6 +25,8 @@ WORKER_LOCK_NAME = "lg-xmb-worker.lock"
 LOG_LIMIT = 16384
 PYTHON = "/usr/bin/python3"
 FILES = ("process_control.py", "thumbnail_cache.py", "stop_thumbnail_helper.py")
+BUNDLE_SHA256 = "@BUNDLE_SHA256@"  # Replaced by the packager, not read from helper/.
+LEGACY_HELPER_OWNER = (1001, 1001)  # CI runner IDs shipped in the early 0.1.12 IPKs.
 
 
 class SetupError(Exception):
@@ -130,6 +132,74 @@ def load_module(name, raw, path):
     return module
 
 
+def read_bundle(app, directory):
+    raw = read_file(directory, "bundle.json", 4096)
+    require(hashlib.sha256(raw).hexdigest() == BUNDLE_SHA256, "helper_bundle_mismatch")
+    manifest = json.loads(raw)
+    require(isinstance(manifest, dict) and manifest.get("schema") == 1,
+            "invalid_helper_bundle")
+    hashes = manifest.get("files")
+    require(isinstance(hashes, dict) and set(hashes) == set(FILES),
+            "invalid_helper_bundle")
+    require(all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h)
+                for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
+            "invalid_helper_bundle")
+    appinfo = read_file(app, "appinfo.json", 65536, app_file=True)
+    require(hashlib.sha256(appinfo).hexdigest() == manifest["appinfoSha256"],
+            "untrusted_app_manifest")
+    sources = {name: read_file(directory, name) for name in FILES}
+    require(all(hashlib.sha256(sources[name]).hexdigest() == hashes[name]
+                for name in FILES), "helper_bundle_mismatch")
+    return manifest, raw, appinfo, sources
+
+
+def repair_helper_directory(app, directory, original, bundle):
+    """Recover only a verified app-owned directory left by an earlier install."""
+    expected = {"bundle.json", *FILES}
+
+    def check_binding():
+        # Hold the original directory descriptor: never chown a symlink or a
+        # replacement selected by a second pathname lookup.
+        named = os.stat("helper", dir_fd=app, follow_symlinks=False)
+        opened = os.fstat(directory)
+        require(stat.S_ISDIR(named.st_mode) and
+                (named.st_dev, named.st_ino) == (original.st_dev, original.st_ino) ==
+                (opened.st_dev, opened.st_ino), "helper_path_changed")
+        current = open_directory(APP_DIR, app_path=True)
+        try:
+            a, b = os.fstat(app), os.fstat(current)
+            require((a.st_dev, a.st_ino) == (b.st_dev, b.st_ino), "helper_path_changed")
+        finally:
+            os.close(current)
+        require(set(os.listdir(directory)) == expected, "unexpected_helper_files")
+
+    check_binding()
+    require(read_bundle(app, directory) == bundle, "helper_bundle_changed")
+    # The app manifest and every root-owned, non-writable helper file have now
+    # matched the independent build pin. Shared installation ancestors are not
+    # changed. Only the known legacy directory may have a non-root owner.
+    if stat.S_IMODE(os.fstat(app).st_mode) != 0o755:
+        os.fchmod(app, 0o755)
+    check_binding()
+    meta = os.fstat(directory)
+    require((meta.st_uid, meta.st_gid) == (original.st_uid, original.st_gid),
+            "helper_path_changed")
+    legacy = meta.st_uid != 0
+    if legacy:
+        require((meta.st_uid, meta.st_gid) == LEGACY_HELPER_OWNER, "helper_owner_mismatch")
+        os.fchown(directory, 0, 0)
+    if stat.S_IMODE(os.fstat(directory).st_mode) != 0o755:
+        os.fchmod(directory, 0o755)
+    check_binding()
+    meta = os.fstat(directory)
+    require(meta.st_uid == 0 and (not legacy or meta.st_gid == 0) and
+            stat.S_IMODE(meta.st_mode) == 0o755 and
+            stat.S_IMODE(os.fstat(app).st_mode) == 0o755, "helper_permissions_failed")
+    require(read_bundle(app, directory) == bundle, "helper_bundle_changed")
+    record_startup("helper_directory_repaired", path="helper/", fromUid=original.st_uid,
+                   fromGid=original.st_gid, fromMode=oct(stat.S_IMODE(original.st_mode)))
+
+
 def load_bundle():
     app = open_directory(APP_DIR, app_path=True)
     try:
@@ -137,26 +207,17 @@ def load_bundle():
                             dir_fd=app)
         try:
             meta = os.fstat(directory)
-            require(meta.st_uid == 0, "helper_owner_mismatch",
-                    path="helper/", uid=meta.st_uid, mode=oct(stat.S_IMODE(meta.st_mode)))
-            require(not meta.st_mode & 0o022, "helper_directory_writable",
-                    path="helper/", uid=meta.st_uid, mode=oct(stat.S_IMODE(meta.st_mode)))
-            raw = read_file(directory, "bundle.json", 4096)
-            manifest = json.loads(raw)
-            require(isinstance(manifest, dict) and manifest.get("schema") == 1,
-                    "invalid_helper_bundle")
-            hashes = manifest.get("files")
-            require(isinstance(hashes, dict) and set(hashes) == set(FILES),
-                    "invalid_helper_bundle")
-            require(all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h)
-                        for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
-                    "invalid_helper_bundle")
-            appinfo = read_file(app, "appinfo.json", 65536, app_file=True)
-            require(hashlib.sha256(appinfo).hexdigest() == manifest["appinfoSha256"],
-                    "untrusted_app_manifest")
-            sources = {name: read_file(directory, name) for name in FILES}
-            require(all(hashlib.sha256(sources[name]).hexdigest() == hashes[name]
-                        for name in FILES), "helper_bundle_mismatch")
+            require(meta.st_uid == 0 or (meta.st_uid, meta.st_gid) == LEGACY_HELPER_OWNER,
+                    "helper_owner_mismatch", path="helper/", uid=meta.st_uid,
+                    gid=meta.st_gid, mode=oct(stat.S_IMODE(meta.st_mode)))
+            try:
+                fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise SetupError("helper_busy") from None
+            bundle = read_bundle(app, directory)
+            if meta.st_uid != 0 or stat.S_IMODE(meta.st_mode) != 0o755:
+                repair_helper_directory(app, directory, meta, bundle)
+            manifest, raw, appinfo, sources = bundle
         finally:
             os.close(directory)
     finally:

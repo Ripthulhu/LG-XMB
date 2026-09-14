@@ -40,8 +40,12 @@ def verify(filename):
             if not entry.isfile() or entry.mode & 0o022 or (executable and not entry.mode & 0o111):
                 raise ValueError('Unsafe packaged helper permissions: ' + name)
             return archive.extractfile(entry).read()
-        if read('helper-startup.py', True) != (ROOT / 'app/helper-startup.py').read_bytes():
-            raise ValueError('Startup entry differs from source')
+        template = (ROOT / 'app/helper-startup.py').read_bytes()
+        if template.count(b'@BUNDLE_SHA256@') != 1:
+            raise ValueError('Expected one source bootstrap bundle pin')
+        pin = hashlib.sha256(read('helper/bundle.json')).hexdigest().encode()
+        if read('helper-startup.py', True) != template.replace(b'@BUNDLE_SHA256@', pin):
+            raise ValueError('Startup entry or build pin differs from source')
         appinfo = read('appinfo.json')
         if appinfo != (ROOT / 'app/appinfo.json').read_bytes():
             raise ValueError('Packaged manifest differs from source')
