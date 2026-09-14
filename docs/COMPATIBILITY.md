@@ -51,15 +51,22 @@ mean the corresponding feature is safe to enable. `service_refused` deliberately
 does not guess whether the cause is a permission, a missing method or firmware
 behavior. SDK versions are reported verbatim, not inferred from a model name.
 
+## Startup lifecycle
+
+The `init.d` entry is now a symlink to the packaged `app/helper-startup.py`,
+following [Homebrew's startup guidance](https://www.webosbrew.org/develop/guides/startup-script/).
+Recovery accepts only that exact root-owned link or a reviewed legacy copy.
+Tests cover migration, dangling links, changed/foreign entries and app removal;
+CI also checks that the IPK contains the executable startup entry.
+
+Deleting the app breaks the link, not the TV's Home assignment. Restore settings
+before uninstalling; see [removal and leftovers](INSTALLATION.md#removal-and-leftovers).
+The new startup/recovery path still needs an actual C5 install, reboot, upgrade
+and removal test before release. The earlier 0.1.11 test record does not cover it.
+
 ## Before broad distribution
 
-The root installation still uses the legacy copied startup hook. Homebrew's
-[publishing rules](https://www.webosbrew.org/develop/guides/publishing/rules/)
-require an app-lifetime symlink. Replace it together with the guarded recovery
-utility and test app removal; do not change the guide to `ln -s` while recovery
-still assumes a regular file. This is a release blocker, not fixed by this patch.
-
-Also outstanding: per-feature helper profiles, safe new-install defaults in the
+Outstanding: per-feature helper profiles, safe new-install defaults in the
 controller itself, capture/controller isolation, and verified geometry outside
 the C5. Keep the helper C5-only until those changes are tested.
 

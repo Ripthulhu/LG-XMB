@@ -54,16 +54,18 @@ This requires an already rooted LG C5, working Homebrew Channel, root SSH,
 does not provide root access. Keep a working SSH connection and a way to open
 LG Home before changing the default launcher.
 
-The following is the existing 0.1.11 helper procedure, not a cross-model
-installer. Its copied startup hook must be replaced, with corresponding recovery
-tests, before Homebrew submission; see [remaining work](COMPATIBILITY.md#before-broad-distribution).
+Use the IPK and helper sources from the same commit. The startup entry is now
+packaged as `app/helper-startup.py`; only a symlink belongs in `init.d`.
+The updated recovery utility recognizes both this link and the reviewed copies
+from older installations. Use the newly transferred utility when upgrading,
+not an older `stop-helper.py` that only recognizes regular files.
 
 Copy the source files over your existing authenticated SSH connection into a new root-only staging directory. For example, in a POSIX shell on your computer, set `TV_HOST` to your TV's address:
 
 ```sh
 ssh root@"$TV_HOST" 'umask 077; mkdir /tmp/lg-xmb-stage'
 scp tv-helper/thumbnail_cache.py tv-helper/process_control.py \
-    tv-helper/60-openxmb-thumbnails tv-helper/recovery/stop_thumbnail_helper.py \
+    tv-helper/recovery/stop_thumbnail_helper.py \
     root@"$TV_HOST":/tmp/lg-xmb-stage/
 ```
 
@@ -116,17 +118,31 @@ Run a bounded startup check:
 /usr/bin/python3 /var/lib/openxmb-c5/thumbnail-cache.py --once --allow-home-preview --process-controls
 ```
 
-Inspect `/tmp/openxmb-c5-thumbnails/status.json`. With an eligible HDMI input displayed, a fresh `hdmi1.png`–`hdmi4.png` should appear at 480×270. A muted or protected source can legitimately remain without a picture. Once the check succeeds, install and run the existing Homebrew startup hook:
+Inspect `/tmp/openxmb-c5-thumbnails/status.json`. With an eligible HDMI input displayed, a fresh `hdmi1.png`–`hdmi4.png` should appear at 480×270. A muted or protected source can legitimately remain without a picture. Once the check succeeds, link and run the packaged startup entry:
 
 ```sh
-cp /tmp/lg-xmb-stage/60-openxmb-thumbnails /var/lib/webosbrew/init.d/60-openxmb-thumbnails
-chown root:root /var/lib/webosbrew/init.d/60-openxmb-thumbnails
-chmod 0755 /var/lib/webosbrew/init.d/60-openxmb-thumbnails
-/var/lib/webosbrew/init.d/60-openxmb-thumbnails
+startup=/media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-startup.py
+hook=/var/lib/webosbrew/init.d/60-openxmb-thumbnails
+test -f "$startup" && test ! -L "$startup" && test -x "$startup" && \
+    ln -s "$startup" "$hook" && "$hook"
 /usr/bin/python3 /var/lib/openxmb-c5/process-control.py get
 ```
 
-The helper holds a lifetime lock, so duplicate starts are refused. Confirm Background activity is available in the actual app, then select the controls you want. Choose **Settings → Remote buttons → Our Home** to assign the Home button. Installation alone does not change the assignment.
+Stop here if a command fails. The link command deliberately refuses an existing
+entry; do not replace it with `ln -sf`. Rerun the updated guarded stop utility
+before repeating setup. If the packaged entry is missing or not executable,
+check the IPK rather than copying a script into `init.d`.
+
+The helper holds a lifetime lock, so duplicate starts are refused. The startup
+entry also preserves the active worker's startup log across duplicate requests.
+Check `/var/lib/webosbrew/lg-xmb-startup.log` for the last launch request;
+this small record is replaced on a new start, not appended continuously. It is
+not a health check: inspect `/tmp/openxmb-c5-thumbnails/status.json` and
+`process-control.py get` for actual worker status.
+
+Confirm Background activity is available in the actual app, then select the
+controls you want. Choose **Settings → Remote buttons → Our Home** to assign
+the Home button. Installation alone does not change the assignment.
 
 ## Return to LG Home
 
@@ -142,6 +158,28 @@ luna-send -n 1 luna://com.webos.applicationManager/launch '{"id":"com.webos.app.
 ```
 
 Check every command's result. Recovery keeps the custom app installed and retains its helper files; it is not an uninstall. The guarded stop utility can also be run from a freshly transferred source copy if it was not installed previously.
+
+## Removal and leftovers
+
+Restore LG Home and background settings before uninstalling. webOS has no app
+uninstall hook; deleting the app cannot undo those settings automatically.
+
+Uninstalling removes `helper-startup.py` with the app container, so the `init.d`
+symlink becomes broken and cannot launch the helper at the next boot. If the
+app is deleted while the worker is running, its existing readiness checks stop
+native work when the missing app is observed and end the worker after the
+90-second grace period, plus any in-flight operation and polling delay.
+This is not a substitute for restoring settings first.
+
+The updated recovery utility can remove our broken symlink without following
+its target. It also works when the hook is already absent. It leaves other
+symlinks and unrecognized copied scripts untouched.
+
+After successful recovery, `/var/lib/openxmb-c5/` contains inert helper files
+and saved state. Keep it until restoration is confirmed. The small
+`/var/lib/webosbrew/lg-xmb-startup.log` may be removed then. Runtime directories
+`/tmp/openxmb-c5-controls` and `/tmp/openxmb-c5-thumbnails` disappear on reboot.
+Do not remove shared Homebrew directories.
 
 ## Updating the manifest
 
