@@ -1,0 +1,61 @@
+name: Stage helper permission fix
+on:
+  push:
+    branches: [fix/helper-package-permissions]
+permissions:
+  contents: write
+jobs:
+  stage:
+    if: github.repository == 'Ripthulhu/LG-XMB'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+      - name: Apply the locally tested patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, os, pathlib, subprocess
+          assert subprocess.check_output(['git','rev-parse','HEAD^'], text=True).strip() == '6f7a936bbd2381ae2666001ea8cdfa8b6fa35dca'
+          chunks = [
+            'bca61691cf66a579e0585c58b5f8d214fbc18d16',
+            '9bf04ca966701b283cf388cae19ac2849f039413',
+            '9dcb601429482f61289a544b67c50b76bc7f2637',
+            '6e4127c88176d49a28943097e952c0c3665b76be',
+            'ea01001c8913d38bc05ae64c3a6a819cc8372ece',
+            '6ded3a7a805862b0ad384bedc99c8e84497f58c1',
+            '5ddcb195d489a3868433415e2e866fcccb73d2a9',
+            '74a4d2dc762b65c4e45eeb7a5c327f7046004b57',
+            'c044af93717b69adef1d9197dcb0263dd3a0a3e5',
+            'e4649a39e321a9531dadf449839415ad8d94fe4c']
+          def blob(sha):
+              data=json.loads(subprocess.check_output(['gh','api','repos/'+os.environ['GITHUB_REPOSITORY']+'/git/blobs/'+sha]))
+              raw=base64.b64decode(data['content'])
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+              return raw
+          patch=gzip.decompress(b''.join(blob(sha) for sha in chunks))
+          assert hashlib.sha256(patch).hexdigest()=='5d99ea45ba61164fd7111806b81eb3a9c4eedeff4888a22572ddf8b7ea99a6cc'
+          patchfile=pathlib.Path(os.environ['RUNNER_TEMP'])/'helper.patch'
+          patchfile.write_bytes(patch)
+          subprocess.run(['git','apply','--index','--exclude=.github/workflows/checks.yml',str(patchfile)],check=True)
+          extra=blob('9e1cf57db8e9e1488faca7fa2a4c8fe8f70ac13c')
+          assert hashlib.sha256(extra).hexdigest()=='8c0749f0e2b91fe822a47416d720b18d398f1e3a31960b647b08d27f49d4d879'
+          patchfile.write_bytes(extra)
+          subprocess.run(['git','apply','--index',str(patchfile)],check=True)
+          PY
+          git diff --cached --check
+      - name: Unit tests
+        run: |
+          npm test
+          python3 -B -m unittest discover -s tests -p 'test_*.py'
+          python3 -B -m unittest discover -s tv-helper -p 'test_*.py'
+          python3 -B -m unittest discover -s tv-helper/recovery -p 'test_*.py'
+      - name: Save source on the fix branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix helper package permissions and record early setup failures'
+          git push origin HEAD:refs/heads/fix/helper-package-permissions
