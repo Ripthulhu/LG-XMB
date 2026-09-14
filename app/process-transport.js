@@ -6,6 +6,7 @@
   'use strict';
   var URI = 'luna://org.webosbrew.hbchannel.service/exec';
   var COMMAND = '/usr/bin/python3 /var/lib/openxmb-c5/process-control.py ';
+  var SETUP = '/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-setup.py ';
   var KEYS = ['home', 'browser', 'search', 'hdmi1', 'hdmi2', 'hdmi3', 'hdmi4', 'livetv', 'usage', 'ads', 'voice'];
   var APPS = ['com.webos.app.home', 'com.webos.app.browser', 'com.webos.app.voice',
     'com.webos.app.hdmi1', 'com.webos.app.hdmi2', 'com.webos.app.hdmi3', 'com.webos.app.hdmi4', 'com.webos.app.livetv'];
@@ -19,6 +20,19 @@
 
   function problem(code) {
     var messages = {
+      helper_unavailable: 'TV setup needs Homebrew Channel with Root status enabled. Developer Mode alone cannot run the helper.',
+      helper_root_required: 'Homebrew Channel is not running with root access. Enable its Root status before setting up TV features.',
+      helper_python_required: 'TV setup needs Python 3.7 or newer on the TV.',
+      helper_tv_unknown: 'The TV model could not be read. No helper was installed.',
+      helper_tv_unsupported: 'This helper currently supports LG C5 TVs on webOS 25 only. The launcher can still be used.',
+      helper_bundle_mismatch: 'The bundled helper is incomplete or changed. Reinstall the matching IPK.',
+      helper_manifest_mismatch: 'The installed app does not match the bundled helper. Reinstall the matching IPK.',
+      helper_unsafe_path: 'Setup found an unexpected file, link or permission. Existing files were left in place.',
+      helper_busy: 'TV setup is already running. Wait, then check its status.',
+      helper_start_failed: 'The helper did not start. Check status before trying setup again.',
+      helper_setup_failed: 'TV setup could not complete. Check status before trying again; saved choices were not reset.',
+      helper_recovery_refused: 'The existing helper could not be safely stopped. Setup did not replace its files.',
+      helper_invalid_config: 'Saved background settings are invalid. Setup will not overwrite them.',
       INVALID_CHOICE: 'This background setting is unavailable.',
       INVALID_REVISION: 'Settings changed. Please refresh and try again.',
       CONFLICT: 'Settings changed. Please refresh and try again.',
@@ -62,6 +76,7 @@
     if (!object(value)) throw problem('INVALID_REPLY');
     if (value.returnValue !== true || nonzeroCode(value.errorCode) || nonzeroCode(value.returnCode) || nonzeroCode(value.exitCode)) {
       var code = value.code || value.errorCode;
+      if (typeof code === 'string' && /^helper_[a-z_]+$/.test(code)) throw problem(code);
       throw problem(code === 'revision_conflict' ? 'CONFLICT' : code === 'home_mapping_requires_custom' ? 'HOME_MAPPING_REQUIRES_CUSTOM' : code === 'other_home_mapping' ? 'OTHER_HOME_MAPPING' : 'SERVICE_ERROR');
     }
     return value;
@@ -154,6 +169,24 @@
     if (!Number.isSafeInteger(revision) || revision < 0) return Promise.reject(problem('INVALID_REVISION'));
     return mapped(request(COMMAND + 'remote-set ' + home + ' ' + revision, 40000), remoteState);
   }
+
+  function helperRequest(action) {
+    // Only these fixed calls are exposed, never an app-provided command.
+    var command = 'if [ -x /usr/bin/python3 ]; then ' + SETUP + action +
+      "; else printf '%s\\n' '{\"returnValue\":false,\"errorCode\":\"helper_python_required\"}'; fi";
+    return mapped(request(command, action === 'status' ? 10000 : 65000), function (value) {
+      if (['missing','needs_setup','stopped','starting','running'].indexOf(value.state) === -1) throw problem('INVALID_REPLY');
+      return {state:value.state};
+    }, function (error) {
+      if (error.code === 'SERVICE_ERROR' || error.code === 'UNAVAILABLE') throw problem('helper_unavailable');
+      throw error;
+    });
+  }
+  root.C5HelperAdapter = Object.freeze({
+    getState: function () { return helperRequest('status'); },
+    install: function () { return helperRequest('install'); },
+    stop: function () { return helperRequest('stop'); }
+  });
 
   root.C5ProcessAdapter = Object.freeze({ getState: getState, setEnabled: setEnabled, prepareLaunch: prepareLaunch });
   root.C5RemoteAdapter = Object.freeze({getState:getRemoteState,setHome:setRemoteHome});

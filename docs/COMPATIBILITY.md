@@ -66,9 +66,11 @@ and removal test before release. The earlier 0.1.11 test record does not cover i
 
 ## Before broad distribution
 
-Outstanding: per-feature helper profiles, safe new-install defaults in the
-controller itself, capture/controller isolation, and verified geometry outside
-the C5. Keep the helper C5-only until those changes are tested.
+The IPK bundles the helper and offers in-app setup, repair and stopping for
+updates. Setup checks for a C5 on SDK 10.x and initializes new configurations
+to all-Allowed. This is not cross-model helper support. Per-feature profiles,
+controller-default cleanup, capture/controller isolation and geometry outside
+the C5 remain outstanding. Keep the helper C5-only until those changes are tested.
 
 Before Homebrew submission, make the corresponding source publicly reachable
 and verify the package source URL. Do not submit a private source URL to the

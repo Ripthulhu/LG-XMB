@@ -59,28 +59,8 @@ jobs:
           npm run package
           npm run verify:package
           git archive --format=zip --output=dist/source.zip HEAD
-      - name: Verify app-owned startup entry
-        run: |
-          python3 - <<'PY'
-          import io
-          from pathlib import Path
-          import subprocess
-          import tarfile
-
-          package, = Path('dist').glob('*.ipk')
-          data = subprocess.run(['ar', 'p', str(package), 'data.tar.gz'],
-                                check=True, capture_output=True).stdout
-          expected = 'usr/palm/applications/org.local.openxmb.c5/helper-startup.py'
-          with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
-              members = archive.getmembers()
-              entry, = [m for m in members if m.name.removeprefix('./') == expected]
-              assert entry.isfile() and entry.mode & 0o111, 'Startup entry must be executable'
-              assert not entry.mode & 0o022, 'Startup entry must not be group/other writable'
-              assert archive.extractfile(entry).read() == Path('app/helper-startup.py').read_bytes()
-              assert not any(m.name.removeprefix('./').startswith('var/lib/webosbrew/init.d/')
-                             for m in members), 'Do not package a persistent startup copy'
-          print('Verified executable startup entry inside the app container.')
-          PY
+      - name: Verify bundled helper and app-owned startup entry
+        run: python3 tools/verify-helper-package.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: lg-xmb-candidate

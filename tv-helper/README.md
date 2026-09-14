@@ -1,11 +1,12 @@
 # TV helper
 
-The helper adds cached HDMI pictures, background controls and Home-button assignment to the web app. It uses an existing rooted Homebrew Channel environment; it creates no listener, root shell endpoint, service ACL change or firmware modification. See [installation and recovery](../docs/INSTALLATION.md).
+The helper adds cached HDMI pictures, background controls and Home-button assignment to the web app. It uses an existing rooted Homebrew Channel environment; it creates no listener, root shell endpoint, service ACL change or firmware modification. The IPK includes the helper; use **Settings → TV integration** to install or repair it. See [installation and recovery](../docs/INSTALLATION.md).
 
 ## Components
 
 | Source | Installed path |
 | --- | --- |
+| `setup.py` | Packaged as `helper-setup.py`; fixed status/install/stop actions |
 | `thumbnail_cache.py` | `/var/lib/openxmb-c5/thumbnail-cache.py` |
 | `process_control.py` | `/var/lib/openxmb-c5/process-control.py` |
 | `../app/helper-startup.py` | App container; `init.d/60-openxmb-thumbnails` symlinks to it |
@@ -77,4 +78,4 @@ A temporarily missing app gets up to 90 seconds to become available. The same ch
 
 Stop the helper before replacing either module or the app. Review any manifest change and update its pin together with the release. Keep old user configurations and saved restoration values. Run the unit tests and verify actual helper status, input pictures and Home routing on the target firmware before enabling startup.
 
-The legacy default initializer supports earlier installs that already managed LG Home. The documented fresh-install procedure creates an explicit all-Allowed configuration instead, so a new installation does not assume those legacy preload settings.
+The legacy default initializer supports earlier installs that already managed LG Home. The in-app installer creates an explicit all-Allowed configuration instead, so a new installation does not assume those legacy preload settings.
