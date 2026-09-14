@@ -31,8 +31,6 @@ test('only an explicit non-root effective UID is reported as missing root privil
     [{returnValue:false,errorCode:'root_required',effectiveUid:1000},'ROOT_REQUIRED'],
     [{returnValue:false,errorCode:'root_required'},'SETUP_FAILED'],
     [{returnValue:false,errorCode:'bundle_incomplete'},'BUNDLE_INCOMPLETE'],
-    [{returnValue:false,errorCode:'helper_owner_mismatch'},'OWNER_MISMATCH'],
-    [{returnValue:false,errorCode:'helper_bundle_changed'},'BUNDLE_MISMATCH'],
     [{returnValue:false,errorCode:'python_missing'},'PYTHON_MISSING'],
     [{returnValue:false,errorCode:'legacy_config_conflict'},'CONFIG_CONFLICT']
   ]){
@@ -63,5 +61,17 @@ test('malformed and oversized execution replies cannot enable the helper',async(
   for(const raw of ['garbage','[]','x'.repeat(65537),JSON.stringify({returnValue:true,stdoutString:'{}'})]){
     const h=setup(),p=h.helper.ensure();h.calls[0].bridge.onservicecallback(raw);await assert.rejects(p);
     assert.equal(h.helper.isReady(),false);assert.equal(h.timers.size,0);
+  }
+});
+
+test('directory permission errors show the log only when the helper wrote it',async()=>{
+  for(const [errorCode,code] of [['helper_directory_writable','HELPER_PERMISSIONS'],['helper_owner_mismatch','HELPER_OWNER']]){
+    for(const logWritten of [true,false,undefined]){
+      const h=setup(),p=h.helper.ensure();
+      h.reply(0,{returnValue:false,errorCode,logWritten},{returnValue:false,error:'Command failed'});
+      await assert.rejects(p,e=>e.code===code && e.message.includes('/var/lib/webosbrew/lg-xmb-startup.log')===(logWritten===true));
+      assert.equal(h.helper.isReady(),false);
+      assert.equal(h.calls.length,1,'No permission bypass or automatic retry');
+    }
   }
 });

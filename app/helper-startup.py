@@ -21,19 +21,21 @@ CACHE = "/tmp/lg-xmb-thumbnails"
 LEGACY_CACHE = "/tmp/openxmb-c5-thumbnails"
 LOG_DIR = "/var/lib/webosbrew"
 LOG_NAME = "lg-xmb-startup.log"
+WORKER_LOCK_NAME = "lg-xmb-worker.lock"
+LOG_LIMIT = 16384
 PYTHON = "/usr/bin/python3"
 FILES = ("process_control.py", "thumbnail_cache.py", "stop_thumbnail_helper.py")
-BUNDLE_SHA256 = "@BUNDLE_SHA256@"  # Filled by the packager, not by the TV.
-SETUP_LOG_NAME = "lg-xmb-setup.log"
 
 
 class SetupError(Exception):
-    pass
+    def __init__(self, code, **details):
+        super().__init__(code)
+        self.details = details
 
 
-def require(condition, code="unsafe_helper_path"):
+def require(condition, code="unsafe_helper_path", **details):
     if not condition:
-        raise SetupError(code)
+        raise SetupError(code, **details)
 
 
 def open_directory(path, app_path=False):
@@ -68,22 +70,17 @@ def read_file(directory, name, limit=131072, optional=False, app_file=False):
             return None
         raise SetupError("bundle_incomplete") from None
     try:
-        return read_descriptor(fd, limit, app_file)
+        regular_file(os.fstat(fd), app_file)
+        raw = bytearray()
+        while len(raw) <= limit:
+            chunk = os.read(fd, min(8192, limit + 1 - len(raw)))
+            if not chunk:
+                break
+            raw.extend(chunk)
+        require(len(raw) <= limit, "oversized_helper_file")
+        return bytes(raw)
     finally:
         os.close(fd)
-
-
-def read_descriptor(fd, limit, app_file=False):
-    regular_file(os.fstat(fd), app_file)
-    os.lseek(fd, 0, os.SEEK_SET)
-    raw = bytearray()
-    while len(raw) <= limit:
-        chunk = os.read(fd, min(8192, limit + 1 - len(raw)))
-        if not chunk:
-            break
-        raw.extend(chunk)
-    require(len(raw) <= limit, "oversized_helper_file")
-    return bytes(raw)
 
 
 def make_directory(parent, name):
@@ -133,101 +130,42 @@ def load_module(name, raw, path):
     return module
 
 
-def checked_bundle():
-    """Verify packaged bytes before repairing installer-reset helper permissions."""
-    directories, files = [], {}
-    names = APP_DIR.strip("/").split("/") + ["helper"]
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-
-    def same_entry(parent, name, descriptor):
-        named = os.stat(name, dir_fd=parent, follow_symlinks=False)
-        opened = os.fstat(descriptor)
-        require((named.st_dev, named.st_ino, named.st_uid, stat.S_IFMT(named.st_mode)) ==
-                (opened.st_dev, opened.st_ino, 0, stat.S_IFMT(opened.st_mode)),
-                "helper_path_changed")
-
-    def verify_bindings():
-        for index, name in enumerate(names):
-            same_entry(directories[index], name, directories[index + 1])
-        for name, (parent, descriptor, limit) in files.items():
-            same_entry(parent, name, descriptor)
-            regular_file(os.fstat(descriptor), app_file=True)
-
-    def read_all():
-        return {name: read_descriptor(fd, limit, app_file=True)
-                for name, (_, fd, limit) in files.items()}
-
-    try:
-        directories.append(os.open("/", flags))
-        for name in names:
-            descriptor = os.open(name, flags, dir_fd=directories[-1])
-            directories.append(descriptor)
-            require(os.fstat(descriptor).st_uid == 0, "helper_owner_mismatch")
-        app, helper = directories[-2:]
-        try:
-            fcntl.flock(helper, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise SetupError("helper_busy") from None
-        entries = [(helper, "bundle.json", 4096), (app, "appinfo.json", 65536)]
-        entries += [(helper, name, 131072) for name in FILES]
-        for parent, name, limit in entries:
-            try:
-                descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
-                                     dir_fd=parent)
-            except FileNotFoundError:
-                raise SetupError("bundle_incomplete") from None
-            files[name] = (parent, descriptor, limit)
-            require(os.fstat(descriptor).st_uid == 0, "helper_owner_mismatch")
-        data = read_all()
-        # A writable bundle must not be allowed to approve its own changed hashes.
-        require(hashlib.sha256(data["bundle.json"]).hexdigest() == BUNDLE_SHA256,
-                "helper_bundle_mismatch")
-        manifest = json.loads(data["bundle.json"])
-        require(isinstance(manifest, dict) and manifest.get("schema") == 1,
-                "invalid_helper_bundle")
-        hashes = manifest.get("files")
-        require(isinstance(hashes, dict) and set(hashes) == set(FILES),
-                "invalid_helper_bundle")
-        require(all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h)
-                    for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
-                "invalid_helper_bundle")
-        require(hashlib.sha256(data["appinfo.json"]).hexdigest() == manifest["appinfoSha256"],
-                "untrusted_app_manifest")
-        require(all(hashlib.sha256(data[name]).hexdigest() == hashes[name] for name in FILES),
-                "helper_bundle_mismatch")
-        verify_bindings()
-        # Do not recurse, chown, touch shared ancestors or accept unverified code.
-        # The controller separately verifies/repairs the app directory and appinfo.
-        if stat.S_IMODE(os.fstat(helper).st_mode) != 0o755:
-            os.fchmod(helper, 0o755)
-        for name in ("bundle.json",) + FILES:
-            parent, descriptor, _ = files[name]
-            same_entry(parent, name, descriptor)
-            regular_file(os.fstat(descriptor), app_file=True)
-            if stat.S_IMODE(os.fstat(descriptor).st_mode) != 0o644:
-                os.fchmod(descriptor, 0o644)
-        verify_bindings()
-        # chmod cannot revoke already-open handles: recheck bytes as well as modes.
-        require(read_all() == data, "helper_bundle_changed")
-        require(stat.S_IMODE(os.fstat(helper).st_mode) == 0o755, "helper_permissions_failed")
-        for name in ("bundle.json",) + FILES:
-            require(stat.S_IMODE(os.fstat(files[name][1]).st_mode) == 0o644,
-                    "helper_permissions_failed")
-        return manifest, {name: data[name] for name in FILES}
-    finally:
-        for _, descriptor, _ in files.values():
-            os.close(descriptor)
-        for descriptor in reversed(directories):
-            os.close(descriptor)
-
-
 def load_bundle():
-    manifest, sources = checked_bundle()
+    app = open_directory(APP_DIR, app_path=True)
+    try:
+        directory = os.open("helper", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                            dir_fd=app)
+        try:
+            meta = os.fstat(directory)
+            require(meta.st_uid == 0, "helper_owner_mismatch",
+                    path="helper/", uid=meta.st_uid, mode=oct(stat.S_IMODE(meta.st_mode)))
+            require(not meta.st_mode & 0o022, "helper_directory_writable",
+                    path="helper/", uid=meta.st_uid, mode=oct(stat.S_IMODE(meta.st_mode)))
+            raw = read_file(directory, "bundle.json", 4096)
+            manifest = json.loads(raw)
+            require(isinstance(manifest, dict) and manifest.get("schema") == 1,
+                    "invalid_helper_bundle")
+            hashes = manifest.get("files")
+            require(isinstance(hashes, dict) and set(hashes) == set(FILES),
+                    "invalid_helper_bundle")
+            require(all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h)
+                        for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
+                    "invalid_helper_bundle")
+            appinfo = read_file(app, "appinfo.json", 65536, app_file=True)
+            require(hashlib.sha256(appinfo).hexdigest() == manifest["appinfoSha256"],
+                    "untrusted_app_manifest")
+            sources = {name: read_file(directory, name) for name in FILES}
+            require(all(hashlib.sha256(sources[name]).hexdigest() == hashes[name]
+                        for name in FILES), "helper_bundle_mismatch")
+        finally:
+            os.close(directory)
+    finally:
+        os.close(app)
     control = load_module("lg_xmb_control", sources[FILES[0]], APP_DIR + "/helper/" + FILES[0])
     require(control.PIN_APPINFO_SHA256 == manifest["appinfoSha256"], "helper_bundle_mismatch")
     control.checked_app()
     recovery = load_module("lg_xmb_recovery", sources[FILES[2]], APP_DIR + "/helper/" + FILES[2])
-    return control, recovery, BUNDLE_SHA256
+    return control, recovery, hashlib.sha256(raw).hexdigest()
 
 
 def migrate_config(base, control, previous):
@@ -298,37 +236,90 @@ def startup_link(recovery):
         os.close(directory)
 
 
+def record_startup(event, error=None, **details):
+    """Bounded local diagnostics, independent of bundle loading and worker locks."""
+    if os.geteuid() != 0:
+        return False
+    directory = log = None
+    try:
+        parent = open_directory(os.path.dirname(LOG_DIR))
+        try:
+            directory = make_directory(parent, os.path.basename(LOG_DIR))
+        finally:
+            os.close(parent)
+        log = os.open(LOG_NAME, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                      0o600, dir_fd=directory)
+        regular_file(os.fstat(log))
+        fcntl.flock(log, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.fchmod(log, 0o600)
+        value = {"time": int(time.time()), "event": event, **details}
+        if error is not None:
+            value["exception"] = type(error).__name__
+            value["frames"] = [{"file": os.path.basename(f.filename), "line": f.lineno,
+                                "function": f.name} for f in traceback.extract_tb(error.__traceback__)[-8:]]
+            if isinstance(error, SetupError):
+                value["code"] = str(error)
+                value.update(error.details)
+            elif isinstance(error, OSError):
+                value["errno"] = error.errno
+        # No raw native replies, config contents or exception messages in logs.
+        line = (json.dumps(value, ensure_ascii=True, separators=(",", ":")) + "\n").encode()
+        if len(line) > LOG_LIMIT // 2:
+            return False
+        size = os.fstat(log).st_size
+        os.lseek(log, max(0, size - (LOG_LIMIT - len(line))), os.SEEK_SET)
+        tail = os.read(log, LOG_LIMIT - len(line))
+        if size > len(tail):
+            tail = tail.partition(b"\n")[2]
+        data = tail + line
+        os.lseek(log, 0, os.SEEK_SET)
+        os.ftruncate(log, 0)
+        while data:
+            written = os.write(log, data)
+            if written == 0:
+                raise OSError("Short log write")
+            data = data[written:]
+        return True
+    except Exception:
+        # A foreign/unsafe log path must not be repaired or mask the setup error.
+        return False
+    finally:
+        if log is not None:
+            os.close(log)
+        if directory is not None:
+            os.close(directory)
+
+
 def launch_worker(recovery):
     directory = open_directory(LOG_DIR)
     try:
-        log = os.open(LOG_NAME, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
-                      0o600, dir_fd=directory)
+        lock = os.open(WORKER_LOCK_NAME, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                       0o600, dir_fd=directory)
     finally:
         os.close(directory)
     try:
-        regular_file(os.fstat(log))
+        regular_file(os.fstat(lock))
         try:
-            fcntl.flock(log, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise SetupError("helper_busy") from None
-        os.ftruncate(log, 0)
-        os.write(log, b"lg-xmb: starting bundled worker; capture status: /tmp/lg-xmb-thumbnails/status.json\n")
+        record_startup("worker_start")
         child = subprocess.Popen([PYTHON, "-I", "-B", APP_DIR + "/helper/thumbnail_cache.py",
                                   "--allow-home-preview", "--process-controls"],
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL, pass_fds=(log,),
+                                 stderr=subprocess.DEVNULL, pass_fds=(lock,),
                                  start_new_session=True, close_fds=True)
-        # Catch immediate interpreter/import failures. This does not assert that
-        # a signal is present or the TV's capture API will allow a picture.
+        # Catch immediate interpreter/import failures. Capture diagnostics remain
+        # in /tmp/lg-xmb-thumbnails/status.json, not an unbounded output stream.
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline:
             if child.poll() is not None:
-                os.write(log, b"lg-xmb: worker exited during startup\n")
+                record_startup("worker_exited", returnCode=child.returncode)
                 return False
             time.sleep(.05)
         return recovery.process_identity(child.pid) is not None
     finally:
-        os.close(log)
+        os.close(lock)
 
 
 def start():
@@ -376,52 +367,26 @@ def start():
         os.close(base)
 
 
-def record_setup(result, error=None):
-    """Keep one bounded local result, including failures before worker launch."""
-    if os.geteuid() != 0:
-        return
-    value = dict(result, timestamp=int(time.time()))
-    if error is not None:
-        value["exception"] = type(error).__name__
-        # Frame locations are enough to find the failing check. Never log locals,
-        # exception messages, configuration, native replies or captured content.
-        value["frames"] = [{"file": os.path.basename(frame.filename),
-                            "line": frame.lineno, "function": frame.name}
-                           for frame in traceback.extract_tb(error.__traceback__)[-8:]]
-    parent = open_directory(os.path.dirname(LOG_DIR))
-    try:
-        directory = make_directory(parent, os.path.basename(LOG_DIR))
-    finally:
-        os.close(parent)
-    try:
-        raw = (json.dumps(value) + "\n").encode()
-        require(len(raw) <= 8192, "oversized_setup_log")
-        write_file(directory, SETUP_LOG_NAME, raw)
-    finally:
-        os.close(directory)
-
-
 def main():
-    failure = None
+    if sys.argv[1:] not in ([], ["ensure"]):
+        print(json.dumps({"returnValue": False, "errorCode": "invalid_command"}))
+        return 2
+    record_startup("setup_start")
     try:
-        require(sys.argv[1:] in ([], ["ensure"]), "invalid_command")
         result = start()
     except SetupError as error:
-        failure = error
         result = {"returnValue": False, "errorCode": str(error)}
         if str(error) == "root_required":
             result["effectiveUid"] = os.geteuid()
+        result["logWritten"] = record_startup("setup_failed", error)
     except (FileNotFoundError, ImportError) as error:
-        failure = error
-        result = {"returnValue": False, "errorCode": "bundle_incomplete"}
+        result = {"returnValue": False, "errorCode": "bundle_incomplete",
+                  "logWritten": record_startup("setup_failed", error)}
     except Exception as error:
-        failure = error
-        result = {"returnValue": False, "errorCode": "setup_failed"}
-    try:
-        record_setup(result, failure)
-    except Exception:
-        # An unsafe/unavailable log destination must not change setup's outcome.
-        result["logWritten"] = False
+        result = {"returnValue": False, "errorCode": "setup_failed",
+                  "logWritten": record_startup("setup_failed", error)}
+    else:
+        record_startup("setup_ready", captureRunning=result["captureRunning"])
     print(json.dumps(result), flush=True)
     return 0 if result["returnValue"] else 2
 

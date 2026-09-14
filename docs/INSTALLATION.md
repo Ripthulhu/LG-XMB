@@ -61,6 +61,25 @@ in-place upgrades and existing Home assignments. Project and runtime names use
 The app owns the startup target. Removing the app breaks that link, preventing
 future boot starts. Removing it does not restore LG settings automatically.
 
+## Helper setup errors
+
+From a root shell, read `/var/lib/webosbrew/lg-xmb-startup.log`. Starting with
+0.1.13, setup records early failures before bundle validation, not only worker
+launch. The file is root-only and capped at 16 KiB. It includes the failure code,
+exception type and source location, but no raw native replies or saved settings.
+The app shows its path only when writing the error record succeeded.
+
+A rejected `helper/` directory records its numeric owner and permissions.
+The released 0.1.12 IPK incorrectly packaged this directory as 0777; install
+0.1.13 over it rather than deleting settings or bypassing ownership checks.
+A non-root process or an unsafe/unwritable log location cannot create this log;
+the command's JSON reply remains available in that case.
+
+Worker state remains in `/tmp/lg-xmb-thumbnails/status.json`. The setup log does
+not contain a full worker stdout/stderr transcript or prove a capture succeeded.
+`lg-xmb-worker.lock` in `/var/lib/webosbrew` is a separate lifetime lock, so an
+already running worker cannot prevent setup diagnostics.
+
 ## Return to LG Home and remove
 
 In **Settings → Remote buttons**, select **LG Home**. In **Background activity**,
@@ -87,7 +106,9 @@ normal startup prepares the helper again.
 
 ## Build
 
-Use Node.js 20 or newer and Python 3.10 or newer on your computer:
+Use Node.js 20 or newer and Python 3.10 or newer on your computer. The TV helper
+still needs only Python 3.7. Packaging uses `python3` (`python` on Windows); set
+`PYTHON` to select another interpreter:
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
@@ -98,11 +119,13 @@ npm run verify:package
 
 The IPK and checksum are in `dist/`. The packager stages the helper from its
 reviewed sources without putting generated files in `app/`. CI also checks the
-bytes, root ownership and permissions inside the actual IPK. The build normalizes
-archive metadata without running as root or changing source ownership:
+bytes, root ownership, and directory/file permissions inside the actual IPK.
+The pinned CLI creates 0777 directories, so packaging normalizes app-owned
+entries to 0755/0644 before checksums are generated. Shared TV ancestor entries
+and file contents are not changed:
 
 ```sh
-python3 tools/verify-helper-package.py dist/org.local.openxmb.c5_0.1.12_all.ipk
+python3 tools/verify-helper-package.py
 ```
 
 A manifest change requires updating the controller's reviewed manifest pin in

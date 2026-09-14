@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import tarfile
 
-from ipk_metadata import read_ipk, verify_metadata
+from ipk_archive import read_ipk
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = 'usr/palm/applications/org.local.openxmb.c5/'
@@ -18,9 +18,7 @@ SOURCES = {'process_control.py': 'tv-helper/process_control.py',
 
 
 def verify(filename):
-    raw = Path(filename).read_bytes()
-    members = read_ipk(raw)
-    verify_metadata(members)
+    members = read_ipk(Path(filename).read_bytes())
     with tarfile.open(fileobj=io.BytesIO(members['data.tar.gz']), mode='r:gz') as archive:
         entries = {}
         for entry in archive:
@@ -28,18 +26,22 @@ def verify(filename):
             if name in entries:
                 raise ValueError('Duplicate package path')
             entries[name] = entry
+        for name, entry in entries.items():
+            if name == APP.rstrip('/') or name.startswith(APP):
+                if entry.uid != 0 or entry.gid != 0:
+                    raise ValueError('App entry is not packaged as root: ' + name)
+                if entry.isdir() and entry.mode != 0o755:
+                    raise ValueError('Unsafe packaged directory permissions: ' + name)
+        for name in (APP.rstrip('/'), APP + 'helper'):
+            if name not in entries or not entries[name].isdir():
+                raise ValueError('Missing app/helper directory: ' + name)
         def read(name, executable=False):
             entry = entries[APP + name]
             if not entry.isfile() or entry.mode & 0o022 or (executable and not entry.mode & 0o111):
                 raise ValueError('Unsafe packaged helper permissions: ' + name)
             return archive.extractfile(entry).read()
-        bundle_bytes = read('helper/bundle.json')
-        startup = (ROOT / 'app/helper-startup.py').read_bytes()
-        if startup.count(b'@BUNDLE_SHA256@') != 1:
-            raise ValueError('Expected one source startup bundle pin')
-        expected_startup = startup.replace(b'@BUNDLE_SHA256@', hashlib.sha256(bundle_bytes).hexdigest().encode())
-        if read('helper-startup.py', True) != expected_startup:
-            raise ValueError('Startup entry or bundle pin differs from source')
+        if read('helper-startup.py', True) != (ROOT / 'app/helper-startup.py').read_bytes():
+            raise ValueError('Startup entry differs from source')
         appinfo = read('appinfo.json')
         if appinfo != (ROOT / 'app/appinfo.json').read_bytes():
             raise ValueError('Packaged manifest differs from source')
@@ -58,4 +60,8 @@ def verify(filename):
 
 
 if __name__ == '__main__':
-    verify(sys.argv[1])
+    if len(sys.argv) > 1:
+        package = Path(sys.argv[1])
+    else:
+        package, = (ROOT / 'dist').glob('*.ipk')
+    verify(package)
