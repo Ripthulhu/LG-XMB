@@ -145,10 +145,30 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     await setMode('live');
     checks.push('Settings Input previews offers Cached and Live, and saves the selected mode locally');
     const createdBeforeNavigation = await page.evaluate(() => inputTest.created);
-    await selectCategory('Inputs');
-    assert.equal((await state()).inputPreview.status, 'waiting');
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('ArrowRight');
+    // Dispatch this rapid sequence in one browser task. Separate automation
+    // round trips can outlast the 400 ms debounce on a busy rendering worker.
+    const burst = await page.evaluate(() => {
+      const press = key => {
+        document.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
+        document.dispatchEvent(new KeyboardEvent('keyup', {key, bubbles: true, cancelable: true}));
+      };
+      const target = C5Catalog.findIndex(category => category.id === 'inputs');
+      for (let i = 0; i < C5Catalog.length; i++) {
+        const current = C5Catalog.findIndex(category => category.id === C5App.getState().category);
+        if (current === target) break;
+        press(current < target ? 'ArrowRight' : 'ArrowLeft');
+      }
+      const entered = C5App.getState();
+      press('ArrowDown');
+      const moved = C5App.getState();
+      press('ArrowRight');
+      return {entered, moved, left: C5App.getState()};
+    });
+    assert.equal(burst.entered.category, 'inputs');
+    assert.equal(burst.entered.inputPreview.status, 'waiting');
+    assert.equal(burst.moved.inputPreview.status, 'waiting');
+    assert.equal(burst.moved.inputPreview.port, 3);
+    assert.equal(burst.left.inputPreview.status, 'idle');
     await page.waitForTimeout(450);
     assert.equal(await page.evaluate(() => inputTest.created), createdBeforeNavigation);
     await assertIdle();
