@@ -2,10 +2,13 @@
 'use strict';
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const {createHash} = require('node:crypto');
 module.exports = async function checkWaveQuality(browser, checks, errors) {
   const page = await browser.newPage({viewport:{width:1920,height:1080}});
   page.on('pageerror',error=>errors.push(error.message));
   const state = () => page.evaluate(()=>C5App.getState());
+  // Read canvas pixels, not a screenshot containing the changing dialog focus.
+  const waveImage = async () => createHash('sha256').update(await page.evaluate(()=>document.getElementById('wave').toDataURL())).digest('hex');
   const group = name => page.getByRole('group',{name,exact:true});
   async function open() {
     await page.getByRole('button',{name:'Settings',exact:true}).click();
@@ -44,11 +47,11 @@ module.exports = async function checkWaveQuality(browser, checks, errors) {
       assert.equal((await state()).waveDiagnostics.surface.vertices,vertices);
     }
     await group('Mesh detail').getByRole('button',{name:'High',exact:true}).click();
-    const still=await page.locator('#wave').screenshot();
+    const still=await waveImage();
     await group('Edge softness').getByRole('button',{name:'Sharp',exact:true}).click();
-    assert.notDeepEqual(await page.locator('#wave').screenshot(),still);
+    assert.notEqual(await waveImage(),still);
     await group('Edge softness').getByRole('button',{name:'Subtle',exact:true}).click();
-    assert.deepEqual(await page.locator('#wave').screenshot(),still,'Softness changes do not advance a frozen spline');
+    assert.equal(await waveImage(),still,'Softness changes do not advance a frozen spline');
     await page.screenshot({path:path.resolve(__dirname,'../qa/ps3-waves-quality-1080.png')});
     // D-pad navigation selects new rows and keeps numeric-valued choices accessible.
     await group('Antialiasing').getByRole('button',{name:'1.5×',exact:true}).focus();
