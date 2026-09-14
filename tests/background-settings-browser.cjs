@@ -22,11 +22,15 @@ module.exports = async function checkBackgroundSettings(browser, checks, errors)
     await desktop.waitForSelector('[data-process-id="browser"]');
     assert.equal(await desktop.locator('#modalTitle').innerText(), 'Background activity');
     assert.equal(await desktop.getByRole('heading', {name: 'Privacy', exact: true}).count(), 1);
-    assert.equal(await desktop.locator('[role="switch"][aria-checked="true"]').count(), 1);
+    assert.equal(await desktop.locator('[role="switch"][aria-checked="true"]').count(), 11);
     assert.equal(await desktop.locator('[data-process-id="home"]').getAttribute('aria-checked'), 'true');
-    const browserRow = desktop.locator('[data-process-id="browser"]');
+    assert.ok((await desktop.locator('.background-option-value').allTextContents()).every(value => value === 'Allow'));
+    assert.ok((await desktop.evaluate(() => C5ProcessControl.getState())).items.every(item => item.enabled === false));
+    const browserRow = desktop.getByRole('switch', {name: 'Web Browser: allow background activity', exact: true});
     await browserRow.click();
-    await desktop.waitForFunction(() => document.querySelector('[data-process-id="browser"]').getAttribute('aria-checked') === 'true');
+    await desktop.waitForFunction(() => document.querySelector('[data-process-id="browser"]').getAttribute('aria-checked') === 'false');
+    assert.equal(await browserRow.locator('.background-option-value').innerText(), 'Keep closed');
+    assert.equal(await desktop.evaluate(async () => (await C5ProcessControl.getState()).items.find(item => item.id === 'browser').enabled), true);
     assert.equal(await desktop.evaluate(() => document.activeElement.getAttribute('data-process-id')), 'browser');
     await desktop.keyboard.press('ArrowDown');
     assert.equal(await desktop.evaluate(() => document.activeElement.getAttribute('data-process-id')), 'search');
@@ -39,11 +43,24 @@ module.exports = async function checkBackgroundSettings(browser, checks, errors)
     assert.equal(await desktop.evaluate(() => document.activeElement.id), 'items');
     await desktop.reload(); await desktop.waitForFunction(() => window.C5App);
     await openSettings(desktop); await desktop.waitForSelector('[data-process-id="browser"]');
-    assert.equal(await desktop.locator('[data-process-id="browser"]').getAttribute('aria-checked'), 'true');
+    assert.equal(await desktop.locator('[data-process-id="browser"]').getAttribute('aria-checked'), 'false');
+    // On restores Allow, via the same backend value (false) used before this UI change.
+    await desktop.locator('[data-process-id="browser"]').focus();
+    await desktop.keyboard.press('Space');
+    await desktop.waitForFunction(() => document.querySelector('[data-process-id="browser"]').getAttribute('aria-checked') === 'true');
+    assert.equal(await desktop.locator('[data-process-id="browser"] .background-option-value').innerText(), 'Allow');
+    assert.equal(await desktop.evaluate(async () => (await C5ProcessControl.getState()).items.find(item => item.id === 'browser').enabled), false);
+    await desktop.locator('[data-process-id="usage"]').focus();
+    await desktop.keyboard.press('Enter');
+    await desktop.waitForFunction(() => document.querySelector('[data-process-id="usage"]').getAttribute('aria-checked') === 'false');
+    assert.equal(await desktop.evaluate(async () => (await C5ProcessControl.getState()).items.find(item => item.id === 'usage').enabled), true);
+    await desktop.keyboard.press('Enter');
+    await desktop.waitForFunction(() => document.querySelector('[data-process-id="usage"]').getAttribute('aria-checked') === 'true');
+    assert.equal(await desktop.evaluate(async () => (await C5ProcessControl.getState()).items.find(item => item.id === 'usage').enabled), false);
     await desktop.setViewportSize({width: 1280, height: 720});
     await desktop.locator('[data-process-id="usage"]').focus();
     assert.equal(await desktop.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-    checks.push('Background activity has Apps and Privacy switches, only LG Home defaults on, remote scrolling/focus works and desktop choices persist');
+    checks.push('Background activity has Apps and Privacy switches, all activity defaults to Allow/on, remote scrolling/focus works and desktop choices persist');
   } finally { await desktop.close(); }
 
   const pendingPage = await createPage(() => {
@@ -62,10 +79,16 @@ module.exports = async function checkBackgroundSettings(browser, checks, errors)
   });
   try {
     await openSettings(pendingPage); await pendingPage.waitForSelector('[data-process-id="browser"]');
+    assert.equal(await pendingPage.locator('[data-process-id="home"]').getAttribute('aria-checked'), 'false', 'Existing restricted choice is shown off');
+    assert.equal(await pendingPage.locator('[data-process-id="browser"]').getAttribute('aria-checked'), 'true', 'Existing allowed choice is shown on');
+    assert.equal(await pendingPage.evaluate(() => backgroundTest.calls.length), 0, 'Opening the menu must not rewrite choices');
     await pendingPage.locator('[data-process-id="browser"]').click();
     await pendingPage.keyboard.press('Enter');
     assert.equal(await pendingPage.evaluate(() => backgroundTest.calls.length), 1);
-    assert.equal(await pendingPage.locator('[data-process-id="browser"]').getAttribute('aria-checked'), 'false', 'No optimistic saved state');
+    assert.deepEqual(await pendingPage.evaluate(() => {
+      const {id, enabled, revision} = backgroundTest.calls[0]; return {id, enabled, revision};
+    }), {id: 'browser', enabled: true, revision: 7}, 'Switching off enables suppression, not permission');
+    assert.equal(await pendingPage.locator('[data-process-id="browser"]').getAttribute('aria-checked'), 'true', 'No optimistic saved state');
     assert.equal(await pendingPage.locator('[data-process-id="browser"]').getAttribute('aria-disabled'), 'true');
     await pendingPage.keyboard.press('ArrowDown');
     await pendingPage.evaluate(() => {
@@ -75,11 +98,11 @@ module.exports = async function checkBackgroundSettings(browser, checks, errors)
     });
     await pendingPage.waitForFunction(() => document.getElementById('modalContent').getAttribute('aria-busy') === 'false');
     assert.equal(await pendingPage.evaluate(() => document.activeElement.getAttribute('data-process-id')), 'search');
-    assert.equal(await pendingPage.locator('[data-process-id="browser"]').getAttribute('aria-checked'), 'true');
+    assert.equal(await pendingPage.locator('[data-process-id="browser"]').getAttribute('aria-checked'), 'false');
     await pendingPage.keyboard.press('Enter');
     await pendingPage.evaluate(() => backgroundTest.calls[1].reject(new Error('Setting could not be saved.')));
     await pendingPage.waitForFunction(() => document.getElementById('modalContent').getAttribute('aria-busy') === 'false');
-    assert.equal(await pendingPage.locator('[data-process-id="search"]').getAttribute('aria-checked'), 'false');
+    assert.equal(await pendingPage.locator('[data-process-id="search"]').getAttribute('aria-checked'), 'true');
     assert.match(await pendingPage.locator('.background-error').innerText(), /could not be saved/);
     assert.equal(await pendingPage.evaluate(() => document.activeElement.getAttribute('data-process-id')), 'search');
     assert.equal(await pendingPage.evaluate(() => backgroundTest.gets), 2);
@@ -95,7 +118,7 @@ module.exports = async function checkBackgroundSettings(browser, checks, errors)
       backgroundTest.state.items.find(item => item.id === 'usage').enabled = true;
       backgroundTest.calls[2].resolve(JSON.parse(JSON.stringify(backgroundTest.state)));
     });
-    await pendingPage.waitForFunction(() => document.querySelector('[data-process-id="usage"]')?.getAttribute('aria-checked') === 'true');
+    await pendingPage.waitForFunction(() => document.querySelector('[data-process-id="usage"]')?.getAttribute('aria-checked') === 'false');
     assert.equal(await pendingPage.locator('#modalContent').getAttribute('aria-busy'), 'false');
     assert.equal(await pendingPage.evaluate(() => document.activeElement.getAttribute('data-process-id')), 'home');
     checks.push('Closing and reopening during a save waits for the pending change and reads confirmed state without stale focus updates');
@@ -166,7 +189,7 @@ module.exports = async function checkBackgroundSettings(browser, checks, errors)
     });
     await refreshPage.waitForFunction(() => refreshTest.gets > 4 && refreshTest.timers.size === 1);
     assert.equal(await refreshPage.locator('#modalContent').getAttribute('aria-busy'), 'false');
-    assert.equal(await refreshPage.locator('[data-process-id="ads"]').getAttribute('aria-checked'), 'true');
+    assert.equal(await refreshPage.locator('[data-process-id="ads"]').getAttribute('aria-checked'), 'false');
     await refreshPage.evaluate(() => {refreshTest.holdRead=true;refreshTest.fire();});
     await refreshPage.keyboard.press('Escape');
     const closedCalls = await refreshPage.evaluate(() => refreshTest.gets);

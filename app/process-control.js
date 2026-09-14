@@ -16,9 +16,9 @@ function getAdapter(){return adapter||window.C5ProcessAdapter||null;}
 function preview(){
   if(!previewState){
     var definitions=[
-      ['home','LG Home','apps','Closes the original Home screen after you return here.',true],
+      ['home','LG Home','apps','Closes the original Home screen after you return here.',false],
       ['browser','Web Browser','apps','May take longer to open. Unsaved browsing state can be lost.',false],
-      ['search','Search','apps','Search opens when needed. Check voice search and accessibility before keeping this on.',false],
+      ['search','Search','apps','Search opens when needed. Check voice search and accessibility before disabling background activity.',false],
       ['hdmi1','HDMI 1','apps','May slow input switching. An active live preview stays open.',false],
       ['hdmi2','HDMI 2','apps','May slow input switching. An active live preview stays open.',false],
       ['hdmi3','HDMI 3','apps','May slow input switching. Check connected devices and HDMI control.',false],
