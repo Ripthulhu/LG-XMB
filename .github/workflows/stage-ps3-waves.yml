@@ -1,0 +1,45 @@
+name: Stage PS3 wave candidate
+on:
+  push:
+    branches: [experiment/ps3-waves]
+    paths: ['.wave-patch/**', '.github/workflows/stage-ps3-waves.yml']
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Apply and verify the locally tested source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, lzma
+          from pathlib import Path
+          encoded = ''.join(Path('.wave-patch/%d.b64' % i).read_text() for i in range(3))
+          packed = base64.b64decode(encoded, validate=True)
+          assert hashlib.sha256(packed).hexdigest() == '03df8ad190b79f825271157b5f75489f04caa232a70612f9cf557ca13dfd3ceb'
+          Path('/tmp/lg-xmb-ps3.patch').write_bytes(lzma.decompress(packed))
+          PY
+          git apply --check /tmp/lg-xmb-ps3.patch
+          git apply /tmp/lg-xmb-ps3.patch
+          rm .wave-patch/0.b64 .wave-patch/1.b64 .wave-patch/2.b64
+          rmdir .wave-patch
+          rm .github/workflows/stage-ps3-waves.yml
+          git add -A
+          test "$(git write-tree)" = 19056dfc5b59bb0c531c414639809c4930599591
+          git diff --cached --check
+          npm test
+          python3 -B -m unittest discover -s tests -p 'test_*.py'
+          python3 -B -m unittest discover -s tv-helper -p 'test_*.py'
+          python3 -B -m unittest discover -s tv-helper/recovery -p 'test_*.py'
+          test "$(git write-tree)" = 19056dfc5b59bb0c531c414639809c4930599591
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Add PS3-style spline waves on the working helper and Allow-switch baseline'
+          git push origin HEAD:refs/heads/experiment/ps3-waves
