@@ -1,0 +1,41 @@
+name: Prepare reviewed fix
+on:
+  push:
+    branches: [fix/helper-permissions-upper-labels]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    if: github.repository == 'Ripthulhu/LG-XMB' && github.event.head_commit.message == 'Transfer reviewed helper and upper-label changes'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Apply exact source changes
+        run: |
+          python3 - <<'PY'
+          import gzip, hashlib, json
+          from pathlib import Path
+          payload = Path('.maintenance/changes.json.gz').read_bytes()
+          assert hashlib.sha256(payload).hexdigest() == '7d4735a7691e9e4f042418793bf222d17386ec8ce24e03bd037ae787502056e8'
+          for entry in json.loads(gzip.decompress(payload)):
+              path = Path(entry['path'])
+              assert not path.is_absolute() and '..' not in path.parts and path.parts[0] != '.github'
+              if entry['before'] is None:
+                  assert not path.exists()
+                  text = ''
+              else:
+                  text = path.read_text()
+                  assert hashlib.sha256(text.encode()).hexdigest() == entry['before'], str(path)
+              for start, end, replacement in reversed(entry['changes']):
+                  text = text[:start] + replacement + text[end:]
+              assert hashlib.sha256(text.encode()).hexdigest() == entry['after'], str(path)
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(text)
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix helper package permissions and retain upper item labels'
+          git push origin HEAD:refs/heads/fix/helper-permissions-upper-labels
