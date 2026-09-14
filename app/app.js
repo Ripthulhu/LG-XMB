@@ -1,14 +1,20 @@
 /* lg-xmb web application, 2026. SPDX-License-Identifier: GPL-3.0-or-later */
 (function(){'use strict';
 var categories=window.C5Catalog, selectedCategory=1, selections=categories.map(function(){return 0;}), busy=false, modalOpen=false, lastDirection=0, toastTimer, announceTimer;
-var preferences={theme:'midnight',motion:'full',sound:false,previewMode:'cached',waveSpeed:'normal',waveBrightness:'normal',backBehavior:'stay'};
+var preferences={theme:'midnight',motion:'full',sound:false,previewMode:'cached',waveSpeed:'normal',waveBrightness:'normal',backBehavior:'stay',waveSampling:1.5,waveDetail:'high',waveSoftness:0.75};
 var themes={midnight:{name:'Midnight',background:'#050911',wave:'#738acf',accent:'#a7baf3'},ocean:{name:'Ocean',background:'#030e13',wave:'#4da6ab',accent:'#98dfdf'},ember:{name:'Ember',background:'#130906',wave:'#ac6c45',accent:'#eebd96'},forest:{name:'Forest',background:'#040f0b',wave:'#579b7a',accent:'#b0d6bb'},amber:{name:'Amber',background:'#130f05',wave:'#c49a4a',accent:'#e0c998'},rose:{name:'Rose',background:'#13080d',wave:'#b86e8c',accent:'#e6b2c7'},violet:{name:'Violet',background:'#0d0816',wave:'#9678ca',accent:'#c8b5ec'},graphite:{name:'Graphite',background:'#090b0d',wave:'#83939d',accent:'#ccd4d9'},seasonal:{name:'Seasonal',background:'#080813',wave:'#2e2e73',accent:'#b3b3ea'}};
 // Monthly colours are adapted from OpenXMB config.json, shell.theme-month-colours.
 var monthColours=['#f2e6a6','#9e4540','#4da640','#f299cc','#99cc59','#b399e6','#80d9f2','#3373f2','#2e2e73','#994db3','#cc8040','#e64040'];
 var $=function(id){return document.getElementById(id);};
 try{var saved=JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')||localStorage.getItem('openxmb-c5-preferences-v1')||'{}');if(Object.prototype.hasOwnProperty.call(themes,saved.theme))preferences.theme=saved.theme;if(saved.motion==='reduced'||saved.motion==='full')preferences.motion=saved.motion;else if(matchMedia('(prefers-reduced-motion: reduce)').matches)preferences.motion='reduced';preferences.sound=saved.sound===true;preferences.previewMode=saved.previewMode==='live'?'live':'cached';if(['slow','normal','fast'].indexOf(saved.waveSpeed)!==-1)preferences.waveSpeed=saved.waveSpeed;if(['low','normal','high'].indexOf(saved.waveBrightness)!==-1)preferences.waveBrightness=saved.waveBrightness;if(saved.backBehavior==='lg')preferences.backBehavior='lg';}catch(ignore){}
+// New quality preferences are independent of existing appearance and TV settings.
+if(saved && typeof saved === 'object') {
+  if([1,1.25,1.5,2].indexOf(saved.waveSampling)!==-1)preferences.waveSampling=saved.waveSampling;
+  if(['standard','high','fine'].indexOf(saved.waveDetail)!==-1)preferences.waveDetail=saved.waveDetail;
+  if([0,0.75,1.5].indexOf(saved.waveSoftness)!==-1)preferences.waveSoftness=saved.waveSoftness;
+}
 // Keep the canvas and spline surface at full HD; do not downscale on timing gaps.
-var wave=new C5Wave($('wave'),{quality:'1080p',adaptive:false});
+var wave=new C5Wave($('wave'),{quality:'1080p',adaptive:false,onRenderStatus:updateWaveStatus});
 var inputPreview=new C5InputPreview($('inputPreview'),{isTV:function(){return C5TV.isTV();}});
 var thumbnail=new C5Thumbnail($('inputThumbnail'),$('thumbnailFallback'),{isTV:function(){return C5TV.isTV();}});
 var detailItemId=null,launchGeneration=0,pageActive=!document.hidden,lastReturnAt=-Infinity;
@@ -18,7 +24,7 @@ var audioContext, inputLabelRead=null;
 function tick(){if(!preferences.sound||document.hidden)return;try{if(!audioContext)audioContext=new(window.AudioContext||window.webkitAudioContext)();if(audioContext.state==='suspended')audioContext.resume();var oscillator=audioContext.createOscillator(),gain=audioContext.createGain(),now=audioContext.currentTime;oscillator.type='sine';oscillator.frequency.setValueAtTime(660,now);oscillator.frequency.exponentialRampToValueAtTime(440,now+.065);gain.gain.setValueAtTime(.018,now);gain.gain.exponentialRampToValueAtTime(.0001,now+.065);oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start(now);oscillator.stop(now+.07);}catch(ignore){}}
 function save(){try{localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(preferences));}catch(ignore){toast('This device could not save your preference.');}}
 function seasonal(){var colour=monthColours[new Date().getMonth()],rgb=colour.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);});themes.seasonal.wave=colour;themes.seasonal.background='#'+rgb.map(function(v){return Math.max(3,Math.round(v*.07)).toString(16).padStart(2,'0');}).join('');themes.seasonal.accent='#'+rgb.map(function(v){return Math.round(v*.45+255*.55).toString(16).padStart(2,'0');}).join('');}
-function applyPreferences(){seasonal();var theme=themes[preferences.theme];document.documentElement.style.setProperty('--accent','#ffffff');document.documentElement.style.setProperty('--accent-rgb','255,255,255');document.documentElement.style.setProperty('--background',theme.background);document.documentElement.style.setProperty('--background-rgb',theme.background.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);}).join(','));document.body.classList.toggle('reduced-motion',preferences.motion==='reduced');wave.setTheme(theme);wave.setStyle({speed:{slow:0.5,normal:1.5,fast:2.25}[preferences.waveSpeed],brightness:{low:0.6,normal:1,high:1.5}[preferences.waveBrightness]});wave.setReducedMotion(preferences.motion==='reduced');}
+function applyPreferences(){seasonal();var theme=themes[preferences.theme];document.documentElement.style.setProperty('--accent','#ffffff');document.documentElement.style.setProperty('--accent-rgb','255,255,255');document.documentElement.style.setProperty('--background',theme.background);document.documentElement.style.setProperty('--background-rgb',theme.background.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);}).join(','));document.body.classList.toggle('reduced-motion',preferences.motion==='reduced');wave.setTheme(theme);wave.setStyle({speed:{slow:0.5,normal:1.5,fast:2.25}[preferences.waveSpeed],brightness:{low:0.6,normal:1,high:1.5}[preferences.waveBrightness]});wave.setQuality({sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness});wave.setReducedMotion(preferences.motion==='reduced');}
 function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){$('toast').classList.remove('show');},4200);}
 function clearToast(){clearTimeout(toastTimer);$('toast').classList.remove('show');if($('toast').textContent)$('toast').textContent='';}
 function invalidateLaunch(){launchGeneration++;busy=false;$('items').removeAttribute('aria-busy');}
@@ -48,18 +54,47 @@ function announceSelection(){
 }
 function navigate(direction){if(busy)return;var next;if(direction==='left'||direction==='right'){next=Math.max(0,Math.min(categories.length-1,selectedCategory+(direction==='right'?1:-1)));if(next===selectedCategory){renderDetail();return;}selectedCategory=next;buildItems();}else{next=Math.max(0,Math.min(categories[selectedCategory].items.length-1,selections[selectedCategory]+(direction==='down'?1:-1)));if(next===selections[selectedCategory]){renderDetail();return;}selections[selectedCategory]=next;}render();tick();}
 function row(label,colour,isSelected,handler,parent){var button=document.createElement('button');button.className='option';button.setAttribute('aria-pressed',String(isSelected));var labelSpan=document.createElement('span');if(colour){var swatch=document.createElement('i');swatch.className='swatch';swatch.style.background=colour;labelSpan.appendChild(swatch);}labelSpan.appendChild(document.createTextNode(label));button.appendChild(labelSpan);var mark=document.createElement('span');mark.className='option-check';mark.setAttribute('aria-hidden','true');mark.textContent=isSelected?'✓':'';button.appendChild(mark);button.addEventListener('click',handler);(parent||$('modalContent')).appendChild(button);return button;}
-function selectChoice(parent,value){[].forEach.call(parent.querySelectorAll('[data-choice]'),function(button){var chosen=button.getAttribute('data-choice')===value;button.setAttribute('aria-pressed',String(chosen));button.querySelector('.option-check').textContent=chosen?'✓':'';});}
+function selectChoice(parent,value){[].forEach.call(parent.querySelectorAll('[data-choice]'),function(button){var chosen=button.getAttribute('data-choice')===String(value);button.setAttribute('aria-pressed',String(chosen));button.querySelector('.option-check').textContent=chosen?'✓':'';});}
 function choiceGroup(label,choices,value,handler){var group=document.createElement('section');group.className='choice-group';group.setAttribute('role','group');group.setAttribute('aria-label',label);var title=document.createElement('h3');title.textContent=label;group.appendChild(title);var options=document.createElement('div');options.className='choice-options';group.appendChild(options);choices.forEach(function(choice){var button=row(choice[1],null,value===choice[0],function(){handler(choice[0]);selectChoice(options,choice[0]);},options);button.setAttribute('data-choice',choice[0]);});$('modalContent').appendChild(group);return group;}
 var modalType='';
-function openModal(type){if(!modalOpen||modalType!==type)clearToast();if(modalType==='background')C5BackgroundSettings.close();if(modalType==='remote')C5RemoteSettings.close();stopInputPreview();modalType=type;$('modal').classList.toggle('background-settings',type==='background');$('modal').classList.toggle('waves-settings',type==='motion');$('modal').classList.toggle('appearance-settings',type==='appearance');modalOpen=true;syncInputPreview();document.querySelector('.screen').setAttribute('aria-hidden','true');$('modalBackdrop').hidden=false;$('modalContent').textContent='';$('modalContent').classList.remove('theme-options');$('modalTitle').textContent={appearance:'Appearance',motion:'Waves',sound:'Navigation sound',previews:'Input previews',background:'Background activity',remote:'Remote buttons',about:'About this menu'}[type];$('modalIntro').textContent={appearance:'',motion:'',sound:'',previews:'Live previews can change HDR mode.',background:'Choose what Home keeps closed. Apps can still be opened and close again when you return.',remote:'Home applies across the TV. Back applies in this menu.',about:'Version 0.1.17'}[type];
+function openModal(type){if(!modalOpen||modalType!==type)clearToast();if(modalType==='background')C5BackgroundSettings.close();if(modalType==='remote')C5RemoteSettings.close();stopInputPreview();modalType=type;$('modal').classList.toggle('background-settings',type==='background');$('modal').classList.toggle('waves-settings',type==='motion');$('modal').classList.toggle('appearance-settings',type==='appearance');modalOpen=true;syncInputPreview();document.querySelector('.screen').setAttribute('aria-hidden','true');$('modalBackdrop').hidden=false;$('modalContent').textContent='';$('modalContent').classList.remove('theme-options');$('modalTitle').textContent={appearance:'Appearance',motion:'Waves',sound:'Navigation sound',previews:'Input previews',background:'Background activity',remote:'Remote buttons',about:'About this menu'}[type];$('modalIntro').textContent={appearance:'',motion:'',sound:'',previews:'Live previews can change HDR mode.',background:'Choose what Home keeps closed. Apps can still be opened and close again when you return.',remote:'Home applies across the TV. Back applies in this menu.',about:'Version 0.1.18'}[type];
 if(type==='appearance'){$('modalContent').classList.add('theme-options');Object.keys(themes).forEach(function(key){var button=row(themes[key].name,key==='seasonal'?monthColours[new Date().getMonth()]:themes[key].wave,preferences.theme===key,function(){preferences.theme=key;applyPreferences();save();selectChoice($('modalContent'),key);});button.setAttribute('data-choice',key);});}
-else if(type==='motion'){choiceGroup('Animation',[['full','On'],['reduced','Off']],preferences.motion,function(value){preferences.motion=value;applyPreferences();save();});choiceGroup('Speed',[['slow','Slow'],['normal','Normal'],['fast','Fast']],preferences.waveSpeed,function(value){preferences.waveSpeed=value;applyPreferences();save();});choiceGroup('Brightness',[['low','Low'],['normal','Normal'],['high','High']],preferences.waveBrightness,function(value){preferences.waveBrightness=value;applyPreferences();save();});}
+else if(type==='motion'){openWaveSettings();}
 else if(type==='sound'){row('Off',null,!preferences.sound,function(){preferences.sound=false;save();openModal(type);});row('On',null,preferences.sound,function(){preferences.sound=true;save();tick();openModal(type);});}
 else if(type==='previews'){row('Cached',null,preferences.previewMode==='cached',function(){preferences.previewMode='cached';save();openModal(type);});row('Live',null,preferences.previewMode==='live',function(){preferences.previewMode='live';save();openModal(type);});helperStatusPanel();}
 else if(type==='background'){C5BackgroundSettings.open();}
 else if(type==='remote'){C5RemoteSettings.open({getBack:function(){return preferences.backBehavior;},setBack:function(value){if(['stay','lg'].indexOf(value)===-1)throw new Error('Choose a valid Back button setting.');var next=Object.assign({},preferences,{backBehavior:value});try{localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(next));}catch(ignore){throw new Error('This device could not save the Back button setting.');}preferences.backBehavior=value;}});}
 else{$('modalContent').innerHTML='<div class="about-copy"><p>A webOS adaptation of phenom64/OpenXMB. Original waves and seasonal colours come from Syndromatic and contributors. The PS3-style spline surface adapts linkev/PlayStation-3-XMB by Mart.</p><p>This launcher adds no advertising or usage logging. Your TV and the apps you open retain their own privacy settings.</p><p>GPL version 3. Full source and licence notices accompany this app.</p></div>';}
 var chosen=$('modalContent').querySelector('[aria-pressed="true"]')||$('modalContent').querySelector('button')||$('closeModal');chosen.focus();}
+function openWaveSettings(){
+  choiceGroup('Animation',[['full','On'],['reduced','Off']],preferences.motion,function(value){preferences.motion=value;applyPreferences();save();});
+  choiceGroup('Speed',[['slow','Slow'],['normal','Normal'],['fast','Fast']],preferences.waveSpeed,function(value){preferences.waveSpeed=value;applyPreferences();save();});
+  choiceGroup('Brightness',[['low','Low'],['normal','Normal'],['high','High']],preferences.waveBrightness,function(value){preferences.waveBrightness=value;applyPreferences();save();});
+  function qualityChoice(label,choices,key){
+    choiceGroup(label,choices,preferences[key],function(value){
+      preferences[key]=value;
+      wave.setQuality({sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness});
+      save();updateWaveStatus();
+    });
+  }
+  qualityChoice('Antialiasing',[[1,'Off'],[1.25,'1.25×'],[1.5,'1.5×'],[2,'2×']],'waveSampling');
+  qualityChoice('Mesh detail',[['standard','Standard'],['high','High'],['fine','Fine']],'waveDetail');
+  qualityChoice('Edge softness',[[0,'Sharp'],[0.75,'Subtle'],[1.5,'Soft']],'waveSoftness');
+  var note=document.createElement('p');note.className='wave-quality-note';
+  note.textContent='Higher antialiasing and mesh detail use more graphics resources. Output stays at 1080p.';
+  $('modalContent').appendChild(note);
+  var status=document.createElement('p');status.id='waveRenderStatus';status.className='wave-quality-note';status.setAttribute('role','status');
+  $('modalContent').appendChild(status);updateWaveStatus();
+}
+function updateWaveStatus(){
+  var status=$('waveRenderStatus');if(!status||!wave)return;
+  var diag=wave.getDiagnostics(),surface=diag.surface;
+  if(diag.mode!=='webgl'||diag.pattern!=='ps3'||!surface||!surface.surfaceWidth){
+    status.textContent=diag.mode==='pending'||diag.mode==='compiling'?'Preparing waves…':'Compatibility renderer active. Extra quality controls apply to PS3 waves only.';return;
+  }
+  status.textContent='Output '+diag.backingWidth+' × '+diag.backingHeight+' · Internal '+surface.surfaceWidth+' × '+surface.surfaceHeight+
+    (surface.samplingFallback?' · '+surface.effectiveScale+'× applied ('+surface.samplingFallback.toLowerCase()+').':'');
+}
 function updateHelperStatus(){
   var status=$('helperStatus'),retry=$('retryHelper');
   if(!status||!window.LGXMBHelper)return;

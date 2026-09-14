@@ -16,15 +16,25 @@ month/day/night presets are not included in this first wave pass.
 
 Changes for LG-XMB:
 
-- Evaluate displacement and smooth normals into a reusable 128-by-48-cell mesh.
+- Evaluate displacement and smooth normals into reusable meshes: 128-by-48
+  (Standard), 256-by-96 (High, app default), or 384-by-128 (Fine).
+  All presets fit 16-bit indices. Mesh changes retain the current spline kernel.
   The WebGL 1 path needs neither float textures nor shader-derivative extensions.
   Fixed buffers replace the reference's per-frame temporary arrays.
 - Apply temporal smoothing using elapsed animation time. Repainting a still,
   changing brightness or resizing cannot advance the spline simulation.
 - Move the surface below the selected item, tint it with the existing theme,
   and soften its edges through a bounded RGBA8 surface and a nine-tap composite.
-  The off-screen surface matches the drawing buffer up to 1920 by 1080
-  (about 7.9 MiB for RGBA8), without a separate 720p cap.
+  The output remains at most 1920 by 1080. The internal surface can use 1×,
+  1.25×, 1.5× (app default), or 2× supersampling, capped at 3840 by 2160
+  and the reported texture/viewport limits. A 2× RGBA8 texture is about 31.6 MiB;
+  during replacement both the old and candidate textures may coexist (at most
+  about 63.3 MiB, excluding the canvas and other GPU resources).
+  Allocation failure steps down through smaller sample factors once per request.
+  The selected preference stays intact and diagnostics report the effective size.
+  Linear filtering and the composite filter operate on premultiplied RGBA together.
+  Edge softness is expressed in output pixels: 0 (Sharp), 0.75 (Subtle, default),
+  or 1.5 (Soft); supersampling retains a half-pixel resolve even at Sharp.
 - Share the existing 30 fps clock, speed/brightness controls, deferred shader
   compilation, hidden/paused suspension and reduced-motion still frame.
   GPU resources are released on destruction and rebuilt after context loss.
@@ -32,7 +42,8 @@ Changes for LG-XMB:
 The PS3 renderer is the default when its module is present. Allocation,
 compilation or framebuffer failures fall back once to the original WebGL
 renderer; failure there falls back to Canvas2D. `getDiagnostics()` reports the
-selected `pattern`, fallback reason and surface size. Scheduling gaps are not
+selected `pattern`, requested/applied sample factor, fallback reason and surface size.
+Quality choices are local appearance preferences, not privileged TV operations. Scheduling gaps are not
 GPU timing measurements, and desktop rendering does not establish TV performance.
 
 ## Original renderer and Canvas fallback
@@ -57,6 +68,8 @@ Create `new C5Wave(canvas, options)`.
 
 - `setTheme({background, wave})`: background and wave colors.
 - `setStyle({speed, brightness})`: speed `0.5`, `1.5`, `2.25`; brightness `0.6`, `1`, `1.5`.
+- `setQuality({sampling, detail, softness})`: validated presets above; resource changes
+  are deferred while hidden/paused and applied on the next draw.
 - `setReducedMotion(boolean)`: freeze/unfreeze the current animation time.
 - `setPaused(boolean)`: suspend/resume scheduled work.
 - `getDiagnostics()`: renderer, pattern, resources and scheduling information.

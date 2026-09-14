@@ -21,7 +21,7 @@
 
   function SplineSurface(columns, rows) {
     if (!Number.isInteger(columns) || !Number.isInteger(rows) || columns < 16 || rows < 8 ||
-        columns > 192 || rows > 64) throw new RangeError('Unsupported spline grid');
+        columns > 384 || rows > 128 || (columns + 1) * (rows + 1) > 65535) throw new RangeError('Unsupported spline grid');
     this.columns = columns; this.rows = rows;
     this.vertices = new Float32Array((columns + 1) * (rows + 1) * 7);
     this.indices = new Uint16Array(columns * rows * 6);
@@ -34,6 +34,7 @@
     this.basis = new Float32Array((columns + 1) * 4);
     this.segments = new Uint8Array(columns + 1);
     this.time = null;
+    this.dirty = true;
     var index = 0, x, y, i;
     for (y = 0; y < rows; y++) {
       for (x = 0; x < columns; x++) {
@@ -105,7 +106,7 @@
 
   SplineSurface.prototype.update = function (time) {
     if (typeof time !== 'number' || !isFinite(time) || time < 0) throw new RangeError('Invalid spline time');
-    if (time === this.time) return false;
+    if (time === this.time && !this.dirty) return false;
     // Resets are deterministic; normal animation only advances the local clock.
     if (this.time !== null && time < this.time) this.time = null;
     this._kernel(time);
@@ -169,6 +170,7 @@
       }
     }
     this.time = time;
+    this.dirty = false;
     return true;
   };
 
@@ -212,7 +214,7 @@
     'void main() { vUV=(aPosition+1.0)*0.5; gl_Position=vec4(aPosition,0.0,1.0); }'
   ].join('\n');
   var COMPOSITE_FRAGMENT = [
-    'precision mediump float; varying vec2 vUV;',
+    'precision PRECISION float; varying vec2 vUV;',
     'uniform sampler2D uSurface; uniform vec2 uTexel;',
     'void main() {',
     // A small separable-kernel equivalent softens the mesh at grazing edges.
@@ -226,10 +228,27 @@
     '}'
   ].join('\n');
 
-  function create(gl, precision) {
+  var GRIDS = {standard:[128,48], high:[256,96], fine:[384,128]};
+  var SAMPLE_SCALES = [2,1.5,1.25,1];
+
+  function quality(options, previous) {
+    options = options || {};
+    previous = previous || {sampling:1,detail:'standard',softness:1.5};
+    return {
+      sampling:SAMPLE_SCALES.indexOf(options.sampling) >= 0 ? options.sampling : previous.sampling,
+      detail:Object.prototype.hasOwnProperty.call(GRIDS,options.detail) ? options.detail : previous.detail,
+      softness:[0,0.75,1.5].indexOf(options.softness) >= 0 ? options.softness : previous.softness
+    };
+  }
+
+  function create(gl, precision, options) {
     var shaders = [], programs = [], buffers = [], texture = null, framebuffer = null;
     var geometry = null, uniformWave, uniformBrightness, attribute, normalAttribute, quadAttribute, texel, sampler;
     var complete = false, dead = false, width = 0, height = 0;
+    var settings = quality(options), meshDetail = null, allocationKey = null, effectiveScale = 0, fallback = null;
+    var maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE), viewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+    var maxWidth = Math.min(3840,maxTexture,viewport[0]), maxHeight = Math.min(2160,maxTexture,viewport[1]);
+    var settingsChanged = true;
     function destroy(lost) {
       if (dead) return;
       dead = true;
@@ -262,24 +281,90 @@
     var meshProgram, compositeProgram, vertexBuffer, indexBuffer, quadBuffer;
     try {
       meshProgram = program(VERTEX,FRAGMENT.replace('PRECISION',precision));
-      compositeProgram = program(COMPOSITE_VERTEX,COMPOSITE_FRAGMENT);
+      compositeProgram = program(COMPOSITE_VERTEX,COMPOSITE_FRAGMENT.replace('PRECISION',precision));
     } catch (error) { destroy(false); throw error; }
+    function updateMesh() {
+      if (meshDetail === settings.detail) return false;
+      var grid = GRIDS[settings.detail], next = new SplineSurface(grid[0],grid[1]);
+      // Changing tessellation must not reset the running spline or its phase.
+      if (geometry) { next.kernel.set(geometry.kernel); next.time = geometry.time; }
+      gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER,next.vertices.byteLength,gl.DYNAMIC_DRAW);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,next.indices,gl.STATIC_DRAW);
+      if (gl.getError() !== gl.NO_ERROR) throw new Error('Spline mesh allocation refused');
+      geometry = next; meshDetail = settings.detail;
+      return true;
+    }
     function resize(targetWidth,targetHeight) {
-      // Match the drawing buffer up to full HD, rather than upscaling a 720p surface.
-      var scale = Math.min(1,1920/targetWidth,1080/targetHeight);
-      var w = Math.max(1,Math.round(targetWidth*scale)), h = Math.max(1,Math.round(targetHeight*scale));
-      if (w === width && h === height) return;
-      gl.bindTexture(gl.TEXTURE_2D,texture);
-      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
-      gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);
-      var valid = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-      gl.bindFramebuffer(gl.FRAMEBUFFER,null);
-      if (!valid) throw new Error('Spline framebuffer unavailable');
-      width = w; height = h;
+      if (!Number.isFinite(targetWidth) || !Number.isFinite(targetHeight) || targetWidth <= 0 || targetHeight <= 0) {
+        throw new RangeError('Invalid spline surface size');
+      }
+      var baseScale = Math.min(1,1920/targetWidth,1080/targetHeight);
+      var baseWidth = Math.max(1,Math.floor(targetWidth*baseScale));
+      var baseHeight = Math.max(1,Math.floor(targetHeight*baseScale));
+      var key = baseWidth+'x'+baseHeight+'@'+settings.sampling;
+      if (allocationKey === key) return false;
+      var reason = null, lastWidth = 0, lastHeight = 0;
+      // Try smaller sample factors only on a real limit/refusal, never on frame timing.
+      // Cache that result so an unsupported size is not retried every frame.
+      for (var i = 0; i < SAMPLE_SCALES.length; i++) {
+        var scale = SAMPLE_SCALES[i];
+        if (scale > settings.sampling) continue;
+        if (baseWidth*scale > maxWidth || baseHeight*scale > maxHeight) {
+          reason = reason || 'GPU limit';
+          if (scale > 1) continue;
+          scale = Math.min(scale,maxWidth/baseWidth,maxHeight/baseHeight);
+        }
+        var w = Math.max(1,Math.floor(baseWidth*scale)), h = Math.max(1,Math.floor(baseHeight*scale));
+        if (w === lastWidth && h === lastHeight) continue;
+        lastWidth = w; lastHeight = h;
+        if (w === width && h === height) {
+          effectiveScale = scale; fallback = reason; allocationKey = key; return true;
+        }
+        // Keep the previous texture alive until a replacement is complete. A failed
+        // texImage2D can leave old storage intact, so completeness alone is not enough.
+        var candidate = gl.createTexture(), candidateFbo = gl.createFramebuffer(), valid = false;
+        try {
+          if (candidate && candidateFbo) {
+            gl.bindTexture(gl.TEXTURE_2D,candidate);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+            var error = gl.getError();
+            if (error === gl.CONTEXT_LOST_WEBGL) throw new Error('Spline context lost');
+            if (error === gl.NO_ERROR) {
+              gl.bindFramebuffer(gl.FRAMEBUFFER,candidateFbo);
+              gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,candidate,0);
+              valid = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE && gl.getError() === gl.NO_ERROR;
+            }
+          }
+        } finally {
+          gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+          if (!valid) {
+            if (candidate) gl.deleteTexture(candidate);
+            if (candidateFbo) gl.deleteFramebuffer(candidateFbo);
+          }
+        }
+        if (valid) {
+          if (texture) gl.deleteTexture(texture);
+          if (framebuffer) gl.deleteFramebuffer(framebuffer);
+          texture = candidate; framebuffer = candidateFbo; width = w; height = h;
+          effectiveScale = scale; fallback = reason; allocationKey = key; return true;
+        }
+        reason = 'Surface allocation refused';
+      }
+      throw new Error('Spline framebuffer unavailable');
     }
     return {
       programs: programs,
+      configure: function (options) {
+        var next = quality(options,settings);
+        if (next.sampling === settings.sampling && next.detail === settings.detail && next.softness === settings.softness) return;
+        settings = next; settingsChanged = true;
+      },
       finish: function () {
         if (complete || dead) return;
         programs.forEach(function(value) {
@@ -292,12 +377,8 @@
           }
         });
         shaders.forEach(function(shader) { gl.deleteShader(shader); }); shaders = [];
-        geometry = new SplineSurface(128,48);
         vertexBuffer = buffer(); indexBuffer = buffer(); quadBuffer = buffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER,geometry.vertices.byteLength,gl.DYNAMIC_DRAW);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,geometry.indices,gl.STATIC_DRAW);
+        updateMesh();
         gl.bindBuffer(gl.ARRAY_BUFFER,quadBuffer);
         gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
         attribute = gl.getAttribLocation(meshProgram,'aPosition');
@@ -308,18 +389,11 @@
         uniformBrightness = gl.getUniformLocation(meshProgram,'uBrightness');
         texel = gl.getUniformLocation(compositeProgram,'uTexel');
         sampler = gl.getUniformLocation(compositeProgram,'uSurface');
-        texture = gl.createTexture(); framebuffer = gl.createFramebuffer();
-        if (!texture || !framebuffer) throw new Error('Could not allocate spline surface');
-        gl.bindTexture(gl.TEXTURE_2D,texture);
-        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
         complete = true;
       },
       draw: function (time,wave,brightness,targetWidth,targetHeight) {
         if (!complete || dead) return;
-        resize(targetWidth,targetHeight);
+        var resized = resize(targetWidth,targetHeight), remeshed = updateMesh();
         try {
           gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
           gl.viewport(0,0,width,height);
@@ -341,7 +415,10 @@
           gl.bindBuffer(gl.ARRAY_BUFFER,quadBuffer);
           gl.enableVertexAttribArray(quadAttribute); gl.vertexAttribPointer(quadAttribute,2,gl.FLOAT,false,0,0);
           gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,texture);
-          gl.uniform1i(sampler,0); gl.uniform2f(texel,1.5/width,1.5/height);
+          // Filter premultiplied RGBA together: alpha-only blur produces dark fringes.
+          // Radius is in output pixels, independent of the internal sample factor.
+          var radius = Math.max(settings.softness,effectiveScale > 1 ? 0.5 : 0);
+          gl.uniform1i(sampler,0); gl.uniform2f(texel,radius/targetWidth,radius/targetHeight);
           // The off-screen surface already contains premultiplied color.
           gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
           gl.drawArrays(gl.TRIANGLES,0,3);
@@ -351,14 +428,17 @@
           gl.viewport(0,0,targetWidth,targetHeight);
           gl.disable(gl.BLEND);
         }
+        var changed = resized || remeshed || settingsChanged; settingsChanged = false;
+        return changed;
       },
       destroy: destroy,
       diagnostics: function () { return {vertices:geometry ? geometry.vertices.length/7 : 0,
         triangles:geometry ? geometry.indices.length/3 : 0, floatTextures:false,
-        surfaceWidth:width,surfaceHeight:height}; }
+        surfaceWidth:width,surfaceHeight:height,requestedScale:settings.sampling,effectiveScale:effectiveScale,
+        detail:meshDetail,softness:settings.softness,samplingFallback:fallback}; }
     };
   }
-  root.LGXMBPS3Wave = Object.freeze({backdrop:BACKDROP, create:create, createGeometry:function(columns,rows) {
+  root.LGXMBPS3Wave = Object.freeze({backdrop:BACKDROP, create:create, quality:quality, createGeometry:function(columns,rows) {
     return new SplineSurface(columns,rows);
   }});
 }(window));

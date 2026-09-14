@@ -33,7 +33,7 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
       assert.equal(diag.targetFps,30);assert.equal(diag.surface.floatTextures,false);
       assert.equal(diag.quality,'1080p');assert.equal(diag.adaptive,false);
       assert.deepEqual([diag.backingWidth,diag.backingHeight],[width,height]);
-      assert.deepEqual([diag.surface.surfaceWidth,diag.surface.surfaceHeight],[width,height]);
+      assert.deepEqual([diag.surface.surfaceWidth,diag.surface.surfaceHeight],[width*1.5,height*1.5]);
       assert.deepEqual(await page.evaluate(()=>[ps3TestWave.gl.drawingBufferWidth,ps3TestWave.gl.drawingBufferHeight]),[width,height]);
       // Feed sustained scheduling gaps without waiting for a slow machine: these
       // must not silently turn the full-HD request back into a 720p/540p buffer.
@@ -45,7 +45,7 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
       diag=await page.evaluate(()=>ps3TestWave.getDiagnostics());
       assert.equal(diag.quality,'1080p');assert.deepEqual(diag.qualityChanges,[]);
       assert.deepEqual([diag.backingWidth,diag.backingHeight],[width,height]);
-      assert.deepEqual([diag.surface.surfaceWidth,diag.surface.surfaceHeight],[width,height]);
+      assert.deepEqual([diag.surface.surfaceWidth,diag.surface.surfaceHeight],[width*1.5,height*1.5]);
       assert.equal(await page.evaluate(()=>ps3TestWave.gl.getError()),0);
       await page.evaluate(()=>{ps3TestWave.setReducedMotion(true);ps3TestWave.time=14;ps3TestWave._draw();});
       const still=await page.locator('#wave').screenshot();
@@ -92,7 +92,7 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
     await page.evaluate(()=>loss.restoreContext());
     await page.waitForFunction(()=>!ps3TestWave.contextLost&&ps3TestWave.mode==='webgl');
     assert.equal(await page.evaluate(()=>ps3TestWave.getDiagnostics().pattern),'ps3');
-    assert.deepEqual(await page.evaluate(()=>{const d=ps3TestWave.getDiagnostics();return [d.backingWidth,d.backingHeight,d.surface.surfaceWidth,d.surface.surfaceHeight];}),[1920,1080,1920,1080]);
+    assert.deepEqual(await page.evaluate(()=>{const d=ps3TestWave.getDiagnostics();return [d.backingWidth,d.backingHeight,d.surface.surfaceWidth,d.surface.surfaceHeight];}),[1920,1080,2880,1620]);
     assert.equal(await page.evaluate(()=>ps3TestWave.gl.getError()),0);
     await page.evaluate(()=>ps3TestWave.destroy());
     assert.equal(await page.evaluate(()=>ps3TestWave.raf||ps3TestWave.compileRaf||ps3TestWave.initRaf),0);
@@ -110,7 +110,7 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
   try {
     const diag=await refused.evaluate(()=>ps3TestWave.getDiagnostics());
     assert.equal(diag.mode,'webgl');assert.equal(diag.pattern,'classic');assert.equal(diag.error,null);
-    assert.match(diag.patternFallback,/allocate spline surface/);
+    assert.match(diag.patternFallback,/Spline framebuffer unavailable/);
     assert.equal(await refused.locator('#items').isVisible(),true);
     checks.push('A refused spline allocation falls back to original WebGL waves without breaking Home');
   } finally {await refused.close();}

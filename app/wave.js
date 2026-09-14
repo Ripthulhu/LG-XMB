@@ -155,6 +155,8 @@
     this.renderer = options && options.renderer === 'canvas2d' ? 'canvas2d' : 'webgl';
     this.qualityIndex = options && options.quality === '720p' ? 1 : options && options.quality === '540p' ? 2 : 0;
     this.adaptive = !(options && options.adaptive === false);
+    this.ps3Quality = {sampling:1,detail:'standard',softness:1.5};
+    this.onRenderStatus = options && typeof options.onRenderStatus === 'function' ? options.onRenderStatus : null;
     this.ps3Surface = null;
     this.ps3Disabled = !!(options && options.pattern === 'classic');
     this.pattern = 'classic';
@@ -258,7 +260,7 @@
       var shaderPrecision = precision && precision.precision ? 'highp' : 'mediump';
       var ps3 = !this.ps3Disabled && global.LGXMBPS3Wave;
       this.pattern = ps3 ? 'ps3' : 'classic';
-      if (this.pattern === 'ps3') this.ps3Surface = ps3.create(gl,shaderPrecision);
+      if (this.pattern === 'ps3') this.ps3Surface = ps3.create(gl,shaderPrecision,this.ps3Quality);
       vertex = this._shader(gl.VERTEX_SHADER, VERTEX);
       fragment = this._shader(gl.FRAGMENT_SHADER,
         (this.ps3Surface ? ps3.backdrop : FRAGMENT).replace('PRECISION', shaderPrecision));
@@ -459,6 +461,7 @@
     return {
       mode:this.mode,requestedRenderer:this.renderer,capabilities:this.capabilities,
       pattern:this.mode === 'webgl' ? this.pattern : 'classic',patternFallback:this.patternFallback,
+      renderQuality:Object.assign({},this.ps3Quality),
       surface:this.ps3Surface ? this.ps3Surface.diagnostics() : null,
       parallelShaderCompile:!!this.parallelCompile,compileMs:this.compileMs,
       quality:this.mode === 'canvas2d' ? '540p' : QUALITY[this.qualityIndex].name,
@@ -489,8 +492,13 @@
       gl.uniform3fv(this.uniforms.wave,this.wave);
       gl.drawArrays(gl.TRIANGLES,0,3);
       if (this.ps3Surface) {
-        try { this.ps3Surface.draw(this.time,this.wave,this.brightness,this.canvas.width,this.canvas.height); }
-        catch (error) { this._cancel(); this._failGpu(error); }
+        var renderChanged = false;
+        try {
+          this.ps3Surface.configure(this.ps3Quality);
+          renderChanged = this.ps3Surface.draw(this.time,this.wave,this.brightness,this.canvas.width,this.canvas.height);
+        }
+        catch (error) { this._cancel(); this._failGpu(error); renderChanged = true; }
+        if (renderChanged && this.onRenderStatus) this.onRenderStatus();
       }
     } else if (this.ctx) this._draw2d();
   };
@@ -613,6 +621,15 @@
     this.speed = speed; this.brightness = brightness;
     // Uniform/clock changes retain the context, geometry, frame and frame cap.
     if (repaint) { this.backgroundSurface = null; this._draw(); }
+  };
+
+  C5Wave.prototype.setQuality = function (options) {
+    if (this.destroyed || !global.LGXMBPS3Wave) return;
+    var next = global.LGXMBPS3Wave.quality(options,this.ps3Quality), previous = this.ps3Quality;
+    if (next.sampling === previous.sampling && next.detail === previous.detail && next.softness === previous.softness) return;
+    this.ps3Quality = next;
+    // Apply resources on the next permitted draw, never while hidden or paused.
+    this._draw();
   };
 
   C5Wave.prototype.setPaused = function (value) {
