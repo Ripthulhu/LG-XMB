@@ -26,8 +26,10 @@ jobs:
           assert hashlib.sha256(packed).hexdigest() == '03df8ad190b79f825271157b5f75489f04caa232a70612f9cf557ca13dfd3ceb'
           Path('/tmp/lg-xmb-ps3.patch').write_bytes(lzma.decompress(packed))
           PY
-          git apply --check /tmp/lg-xmb-ps3.patch
-          git apply /tmp/lg-xmb-ps3.patch
+          # The screenshot workflow change is already committed through the
+          # authorized repository connector; this job changes only source.
+          git apply --exclude=.github/workflows/checks.yml --check /tmp/lg-xmb-ps3.patch
+          git apply --exclude=.github/workflows/checks.yml /tmp/lg-xmb-ps3.patch
           rm .wave-patch/0.b64 .wave-patch/1.b64 .wave-patch/2.b64
           rmdir .wave-patch
           rm .github/workflows/stage-ps3-waves.yml

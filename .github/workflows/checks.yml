@@ -71,7 +71,9 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: lg-xmb-layout
-          path: qa/upper-labels-*.png
+          path: |
+            qa/upper-labels-*.png
+            qa/ps3-waves-*.png
           if-no-files-found: error
           retention-days: 7
 
