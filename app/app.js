@@ -13,7 +13,7 @@ var thumbnail=new C5Thumbnail($('inputThumbnail'),$('thumbnailFallback'),{isTV:f
 var detailItemId=null,launchGeneration=0,pageActive=!document.hidden,lastReturnAt=-Infinity;
 document.querySelector('.input-preview-symbol').innerHTML=C5Icon('hdmi');
 document.querySelector('.thumbnail-symbol').innerHTML=C5Icon('hdmi');
-var audioContext;
+var audioContext, inputLabelRead=null;
 function tick(){if(!preferences.sound||document.hidden)return;try{if(!audioContext)audioContext=new(window.AudioContext||window.webkitAudioContext)();if(audioContext.state==='suspended')audioContext.resume();var oscillator=audioContext.createOscillator(),gain=audioContext.createGain(),now=audioContext.currentTime;oscillator.type='sine';oscillator.frequency.setValueAtTime(660,now);oscillator.frequency.exponentialRampToValueAtTime(440,now+.065);gain.gain.setValueAtTime(.018,now);gain.gain.exponentialRampToValueAtTime(.0001,now+.065);oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start(now);oscillator.stop(now+.07);}catch(ignore){}}
 function save(){try{localStorage.setItem('openxmb-c5-preferences-v1',JSON.stringify(preferences));}catch(ignore){toast('This device could not save your preference.');}}
 function seasonal(){var colour=monthColours[new Date().getMonth()],rgb=colour.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);});themes.seasonal.wave=colour;themes.seasonal.background='#'+rgb.map(function(v){return Math.max(3,Math.round(v*.07)).toString(16).padStart(2,'0');}).join('');themes.seasonal.accent='#'+rgb.map(function(v){return Math.round(v*.45+255*.55).toString(16).padStart(2,'0');}).join('');}
@@ -25,7 +25,15 @@ function currentItem(){return categories[selectedCategory].items[selections[sele
 function currentPort(){var item=currentItem(),match=categories[selectedCategory].id==='inputs'&&item.action==='input'&&/^com\.webos\.app\.hdmi([1-4])$/.exec(item.id);return match?Number(match[1]):null;}
 function stopInputPreview(){inputPreview.stop();$('previewPanel').classList.remove('live-preview');}
 function syncInputPreview(){var port=currentPort(),shown=!!port&&!modalOpen,active=shown&&pageActive&&!document.hidden&&!busy,live=active&&preferences.previewMode==='live';document.querySelector('.detail').classList.toggle('has-input-preview',shown);$('previewPanel').hidden=!shown;$('previewPanel').classList.toggle('live-preview',live);$('previewButton').setAttribute('aria-label','Open '+currentItem().title+' full-screen');if(!active||live){thumbnail.setPaused(true);thumbnail.select(shown?port:null);}else{thumbnail.select(port);thumbnail.setPaused(false);}if(live)inputPreview.select(port);else inputPreview.stop();}
-function renderDetail(){var item=currentItem();if(detailItemId!==item.id){$('detailType').textContent=item.type;$('detailTitle').textContent=item.title;$('detailDescription').textContent=item.description;$('detailEmblem').innerHTML=C5Icon(item.icon);detailItemId=item.id;}syncInputPreview();}
+function renderDetail(){
+  var item=currentItem();
+  // Labels can change while the selected physical input stays the same.
+  if($('detailType').textContent!==item.type)$('detailType').textContent=item.type;
+  if($('detailTitle').textContent!==item.title)$('detailTitle').textContent=item.title;
+  if($('detailDescription').textContent!==item.description)$('detailDescription').textContent=item.description;
+  if(detailItemId!==item.id){$('detailEmblem').innerHTML=C5Icon(item.icon);detailItemId=item.id;}
+  syncInputPreview();
+}
 function buildCategories(){var nav=$('categories');categories.forEach(function(cat,index){var b=document.createElement('button');b.className='category';b.setAttribute('aria-label',cat.title);b.innerHTML='<span class="category-icon">'+C5Icon(cat.icon)+'</span><span class="category-label"></span>';b.querySelector('.category-label').textContent=cat.title;b.addEventListener('click',function(){if(!busy){selectedCategory=index;buildItems();render();tick();}});nav.appendChild(b);});}
 function buildItems(){var list=$('items');list.textContent='';list.setAttribute('aria-label',categories[selectedCategory].title);categories[selectedCategory].items.forEach(function(item,index){var b=document.createElement('button');b.className='item';b.id='item-'+index;b.setAttribute('role','option');b.tabIndex=-1;b.innerHTML='<span class="item-icon">'+C5Icon(item.icon)+'</span><span class="item-text"></span>';b.querySelector('.item-text').textContent=item.title;b.addEventListener('click',function(){if(busy)return;selections[selectedCategory]=index;render();tick();activate();});list.appendChild(b);});}
 function render(){var cat=categories[selectedCategory],index=selections[selectedCategory],item=cat.items[index];[].forEach.call($('categories').children,function(button,i){var offset=i-selectedCategory;button.style.transform='translateX(calc(-50% + '+(offset*10.6)+'vw))';button.classList.toggle('active',offset===0);button.style.opacity=offset===0?'1':Math.abs(offset)>2?'.36':'.5';button.setAttribute('aria-current',offset===0?'true':'false');button.tabIndex=offset===0?0:-1;});[].forEach.call($('items').children,function(button,i){var offset=i-index;button.style.setProperty('--offset',offset);button.classList.toggle('selected',offset===0);button.setAttribute('aria-selected',offset===0?'true':'false');var visible=offset>=-1&&offset<=3;button.style.visibility=visible?'visible':'hidden';button.style.opacity=!visible?'0':offset===0?'1':offset===-1?'.38':String(.64-offset*.09);button.setAttribute('aria-hidden',visible?'false':'true');});$('items').setAttribute('aria-activedescendant','item-'+index);renderDetail();clearTimeout(announceTimer);announceTimer=setTimeout(function(){$('selectionLive').textContent=cat.title+', '+item.title+', '+(index+1)+' of '+cat.items.length;},180);}
@@ -53,14 +61,49 @@ $('closeModal').addEventListener('click',closeModal);$('modalBackdrop').addEvent
 $('previewButton').addEventListener('click',function(){if(busy||modalOpen)return;activate();});
 function updateClock(){var now=new Date(),time=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}),date=now.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});if($('time').textContent!==time){$('time').textContent=time;$('time').dateTime=now.toISOString();}if($('date').textContent!==date)$('date').textContent=date;}
 function restoreFocus(){if(modalOpen){if(!$('modal').contains(document.activeElement)){var control=$('modalContent').querySelector('[aria-pressed="true"]')||$('modalContent').querySelector('button')||$('closeModal');control.focus();}}else if(document.activeElement!==$('items'))$('items').focus();}
-function restorePage(refreshStill){if(document.hidden)return;var now=performance.now(),wasActive=pageActive,before=thumbnail.getState();pageActive=true;wave.setPaused(false);renderDetail();if(refreshStill&&wasActive&&now-lastReturnAt>=250&&preferences.previewMode==='cached'&&before.port===currentPort()&&before.port!==null&&before.status!=='loading')thumbnail.refresh();lastReturnAt=now;updateClock();restoreFocus();}
-function suspendPage(){var wasActive=pageActive;pageActive=false;invalidateLaunch();clearToast();clearTimeout(announceTimer);if(wasActive){stopInputPreview();thumbnail.setPaused(true);wave.setPaused(true);}}
+async function refreshInputLabels(){
+  if(!pageActive||document.hidden||inputLabelRead)return;
+  var read;
+  try{
+    read=C5TV.listInputLabels();
+    inputLabelRead=read;
+    var result=await read;
+    if(inputLabelRead!==read||!pageActive||document.hidden||result.preview)return;
+    var inputCategory=categories.find(function(category){return category.id==='inputs';});
+    var visible=categories[selectedCategory]===inputCategory, changed=false;
+    inputCategory.items.forEach(function(item,index){
+      var input=result.inputs.find(function(entry){return entry.id===item.id;});
+      if(!input)return;
+      var type=input.label==='HDMI '+input.port?'INPUT':'HDMI '+input.port;
+      if(item.title===input.label&&item.type===type)return;
+      item.title=input.label;
+      item.type=type;
+      changed=true;
+      // Update text in place: keep row nodes, selection, focus and port bindings.
+      if(visible)$('items').children[index].querySelector('.item-text').textContent=item.title;
+    });
+    if(visible&&changed)render();
+  }catch(error){
+    // Optional firmware API: keep defaults or the last successful names.
+  }finally{
+    if(inputLabelRead===read)inputLabelRead=null;
+  }
+}
+function cancelInputLabels(){
+  var read=inputLabelRead;
+  inputLabelRead=null;
+  if(read&&typeof read.cancel==='function'){
+    try{read.cancel();}catch(ignore){}
+  }
+}
+function restorePage(refreshStill){if(document.hidden)return;var now=performance.now(),wasActive=pageActive,before=thumbnail.getState();pageActive=true;wave.setPaused(false);renderDetail();if(refreshStill&&wasActive&&now-lastReturnAt>=250&&preferences.previewMode==='cached'&&before.port===currentPort()&&before.port!==null&&before.status!=='loading')thumbnail.refresh();lastReturnAt=now;updateClock();restoreFocus();if(!wasActive||refreshStill)refreshInputLabels();}
+function suspendPage(){var wasActive=pageActive;pageActive=false;cancelInputLabels();invalidateLaunch();clearToast();clearTimeout(announceTimer);if(wasActive){stopInputPreview();thumbnail.setPaused(true);wave.setPaused(true);}}
 function handleRelaunch(){invalidateLaunch();clearToast();if(modalOpen)closeModal();restorePage(true);}
 // handlesRelaunch stays false: webOS brings the app forward automatically.
 // A Home press while already visible still needs to leave any open dialog.
 document.addEventListener('webOSRelaunch',handleRelaunch,true);
 async function discoverApps(){try{var result=await C5TV.listApps();if(result.preview)return;var appCategory=categories.find(function(c){return c.id==='apps';}),known=new Set(categories.reduce(function(all,c){return all.concat(c.items.map(function(i){return i.id;}));},[]));result.apps.forEach(function(app){if(known.has(app.id)||app.id==='org.local.openxmb.c5')return;appCategory.items.push({id:app.id,title:app.title,icon:'apps',type:'ON YOUR TV',description:'Open '+app.title+'.',note:'Your app, with its existing settings.'});known.add(app.id);});if(categories[selectedCategory].id==='apps'){buildItems();render();}}catch(error){/* Curated, verified shortcuts remain usable if enumeration is not permitted. */}}
-buildCategories();buildItems();applyPreferences();render();updateClock();var clockTimer=setInterval(updateClock,10000);$('items').focus();discoverApps();
+buildCategories();buildItems();applyPreferences();render();updateClock();var clockTimer=setInterval(updateClock,10000);$('items').focus();discoverApps();refreshInputLabels();
 document.addEventListener('visibilitychange',function(){if(document.hidden){suspendPage();if(audioContext&&audioContext.state==='running')audioContext.suspend();}else restorePage(false);});
 window.addEventListener('pagehide',suspendPage);window.addEventListener('pageshow',function(){restorePage(false);});window.addEventListener('beforeunload',function(){clearInterval(clockTimer);suspendPage();thumbnail.destroy();inputPreview.destroy();wave.destroy();});
 window.C5App={getState:function(){return{category:categories[selectedCategory].id,item:currentItem().id,modal:modalOpen?modalType:null,remote:modalOpen&&modalType==='remote'?C5RemoteSettings.getState():null,preferences:Object.assign({},preferences),busy:busy,detailPending:false,detailItem:detailItemId,thumbnail:thumbnail.getState(),inputPreview:inputPreview.getState(),waveMode:wave.mode,waveError:wave.error||null,waveDiagnostics:wave.getDiagnostics()};}};

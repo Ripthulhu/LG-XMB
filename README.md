@@ -11,6 +11,11 @@ HDMI pictures are cached by an optional root helper; live previews are opt-in
 because they can change HDR mode. The launcher does not include a media player
 or emulator.
 
+HDMI names follow the TV's input labels when its input service allows the read.
+Names refresh at startup and when returning to Home; the port number remains
+visible in the details. Unavailable reads keep the default or last known name.
+This feature does not need the root helper or change names on the TV.
+
 ## Compatibility
 
 Development targets **webOS 22–26**. Version 0.1.11 was tested on an **LG C5 with

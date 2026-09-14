@@ -7,7 +7,7 @@
   "scripts": {
     "preview": "node tools/preview.cjs",
     "test": "node --test tests/*.test.cjs",
-    "test:browser": "node tools/browser-check.cjs",
+    "test:browser": "node tools/browser-check.cjs && node tests/input-labels-browser.cjs",
     "package": "node tools/package.mjs",
     "verify:package": "node tools/package.mjs --verify-only",
     "test:compat": "node tests/compat-layout-browser.cjs",
