@@ -75,3 +75,31 @@ test('directory permission errors show the log only when the helper wrote it',as
     }
   }
 });
+
+test('a prolonged setup lock wait is transient, shared by callers, and rechecked on the next menu request',async()=>{
+  const h=setup(),first=h.helper.ensure();
+  assert.equal(h.helper.ensure(),first);
+  h.reply(0,{returnValue:false,errorCode:'setup_in_progress'},{returnValue:false,error:'Command failed'});
+  await assert.rejects(first,e=>e.code==='SETUP_PENDING');
+  assert.equal(h.helper.getState().phase,'waiting');
+  assert.equal(h.helper.isReady(),false);
+  assert.equal(h.calls.length,1,'No automatic RPC or uncertain-write retry loop');
+  const next=h.helper.ensure();
+  assert.equal(h.helper.ensure(),next);
+  assert.equal(h.calls.length,2);
+  assert.equal(h.helper.getState().phase,'starting');
+  assert.equal(h.helper.getState().code,null);
+  h.reply(1,ready);await next;
+  assert.equal(h.helper.isReady(),true);
+  assert.equal(h.helper.getState().code,null);
+});
+
+test('a true worker lock conflict stays distinct and cannot trigger an automatic second worker',async()=>{
+  const h=setup(),p=h.helper.ensure();
+  h.reply(0,{returnValue:false,errorCode:'worker_lock_busy'},{returnValue:false,error:'Command failed'});
+  await assert.rejects(p,e=>e.code==='WORKER_BUSY');
+  await assert.rejects(h.helper.ensure(),e=>e.code==='WORKER_BUSY');
+  assert.equal(h.helper.isReady(),false);
+  assert.equal(h.calls.length,1);
+  assert.match(h.helper.getState().message,/No additional worker/);
+});

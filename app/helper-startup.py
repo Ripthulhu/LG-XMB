@@ -23,6 +23,7 @@ LOG_DIR = "/var/lib/webosbrew"
 LOG_NAME = "lg-xmb-startup.log"
 WORKER_LOCK_NAME = "lg-xmb-worker.lock"
 LOG_LIMIT = 16384
+SETUP_WAIT_SECONDS = 30  # Below the frontend RPC deadline; never wait indefinitely.
 PYTHON = "/usr/bin/python3"
 FILES = ("process_control.py", "thumbnail_cache.py", "stop_thumbnail_helper.py")
 BUNDLE_SHA256 = "@BUNDLE_SHA256@"  # Replaced by the packager, not read from helper/.
@@ -213,7 +214,7 @@ def load_bundle():
             try:
                 fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise SetupError("helper_busy") from None
+                raise SetupError("bundle_lock_busy") from None
             bundle = read_bundle(app, directory)
             if meta.st_uid != 0 or stat.S_IMODE(meta.st_mode) != 0o755:
                 repair_helper_directory(app, directory, meta, bundle)
@@ -313,7 +314,7 @@ def record_startup(event, error=None, **details):
         regular_file(os.fstat(log))
         fcntl.flock(log, fcntl.LOCK_EX | fcntl.LOCK_NB)
         os.fchmod(log, 0o600)
-        value = {"time": int(time.time()), "event": event, **details}
+        value = {"time": int(time.time()), "event": event, "pid": os.getpid(), **details}
         if error is not None:
             value["exception"] = type(error).__name__
             value["frames"] = [{"file": os.path.basename(f.filename), "line": f.lineno,
@@ -363,7 +364,7 @@ def launch_worker(recovery):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise SetupError("helper_busy") from None
+            raise SetupError("worker_lock_busy") from None
         record_startup("worker_start")
         child = subprocess.Popen([PYTHON, "-I", "-B", APP_DIR + "/helper/thumbnail_cache.py",
                                   "--allow-home-preview", "--process-controls"],
@@ -383,10 +384,36 @@ def launch_worker(recovery):
         os.close(lock)
 
 
+def acquire_setup_lock(base, lock):
+    """Serialize boot/app invocations, then read the winning setup's new state."""
+    deadline = time.monotonic() + SETUP_WAIT_SECONDS
+    waiting = False
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if not waiting:
+                record_startup("setup_waiting")
+                waiting = True
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, "setup_in_progress")
+            time.sleep(min(.1, remaining))
+            continue
+        # Never proceed on an unlinked/replaced lock inode. Lock files are kept
+        # in place: deleting a held lock could allow two owners to run at once.
+        opened = os.fstat(lock)
+        named = os.stat("setup.lock", dir_fd=base, follow_symlinks=False)
+        regular_file(named)
+        require((opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino),
+                "setup_lock_changed")
+        if waiting:
+            record_startup("setup_resumed")
+        return
+
+
 def start():
     require(os.geteuid() == 0, "root_required")
     require(sys.version_info >= (3, 7), "python_too_old")
-    control, recovery, bundle = load_bundle()
     parent = open_directory(os.path.dirname(BASE))
     try:
         base = make_directory(parent, os.path.basename(BASE))
@@ -399,10 +426,10 @@ def start():
         lock = os.open("setup.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
                        0o600, dir_fd=base)
         regular_file(os.fstat(lock))
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise SetupError("helper_busy") from None
+        acquire_setup_lock(base, lock)
+        # Verification/repair belongs inside the lock too. Do not use a bundle
+        # or installed record read before waiting for another upgrade to finish.
+        control, recovery, bundle = load_bundle()
         raw = read_file(base, "installed.json", 4096, optional=True)
         previous = json.loads(raw) if raw is not None else None
         require(previous is None or (isinstance(previous, dict)
@@ -420,7 +447,11 @@ def start():
         require(all(recovery.helper_argument(p[2]) == recovery.HELPER for p in running)
                 and len(running) <= 1, "unexpected_helper_process")
         capture_running = bool(running) or launch_worker(recovery)
-        write_file(base, "installed.json", json.dumps({"bundle": bundle, "legacyMigrated": True}).encode())
+        if running:
+            record_startup("worker_reused")
+        installed = {"bundle": bundle, "legacyMigrated": True}
+        if installed != previous:
+            write_file(base, "installed.json", json.dumps(installed).encode())
         return {"returnValue": True, "ready": True, "captureRunning": capture_running}
     finally:
         if lock is not None:
@@ -432,7 +463,7 @@ def main():
     if sys.argv[1:] not in ([], ["ensure"]):
         print(json.dumps({"returnValue": False, "errorCode": "invalid_command"}))
         return 2
-    record_startup("setup_start")
+    record_startup("setup_start", command="ensure" if sys.argv[1:] else "startup")
     try:
         result = start()
     except SetupError as error:

@@ -219,19 +219,22 @@ class SetupFixture(unittest.TestCase):
         (self.bundle / 'process_control.py').unlink()
         with self.assertRaisesRegex(startup.SetupError, 'bundle_incomplete'):
             self.run_setup()
-        self.assertFalse(self.base.exists())
+        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse((self.base / 'installed.json').exists())
 
     def test_changed_bundle_bytes_are_rejected(self):
         (self.bundle / 'process_control.py').write_text('# changed bytes\n')
         with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
             self.run_setup()
-        self.assertFalse(self.base.exists())
+        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse((self.base / 'installed.json').exists())
 
     def test_changed_app_manifest_is_rejected(self):
         (self.app / 'appinfo.json').write_text('{"id":"foreign"}')
         with self.assertRaisesRegex(startup.SetupError, 'untrusted_app_manifest'):
             self.run_setup()
-        self.assertFalse(self.base.exists())
+        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse((self.base / 'installed.json').exists())
 
     def test_symlinked_bundle_member_is_rejected_without_following_it(self):
         member = self.bundle / 'process_control.py'
@@ -271,13 +274,16 @@ class SetupFixture(unittest.TestCase):
             self.run_setup()
         self.assertFalse((self.root / 'foreign').exists())
 
-    def test_duplicate_setup_lock_is_refused_without_overwriting_files(self):
+    def test_busy_setup_has_a_bounded_wait_without_modifying_configuration(self):
         import fcntl
         self.base.mkdir()
         with (self.base / 'setup.lock').open('w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with self.assertRaisesRegex(startup.SetupError, 'helper_busy'):
+            with patch.object(startup, 'SETUP_WAIT_SECONDS', 0), \
+                 patch.object(startup, 'load_bundle') as load, \
+                 self.assertRaisesRegex(startup.SetupError, 'setup_in_progress'):
                 self.run_setup()
+            load.assert_not_called()
         self.assertFalse((self.base / 'background.json').exists())
 
     def test_app_removal_breaks_boot_link_without_removing_recovery_values(self):
@@ -296,6 +302,8 @@ class SetupFixture(unittest.TestCase):
         worker = self.bundle / 'thumbnail_cache.py'
         worker.write_text('import os,time\nopen(' + repr(str(self.root / 'session')) + ',"w").write(str(os.getsid(0)))\ntime.sleep(15)\n')
         children = []
+        self.base.mkdir()
+        setup_lock = os.open(self.base / 'setup.lock', os.O_RDWR | os.O_CREAT, 0o600)
         real_popen = subprocess.Popen
         def spawn(*args, **kwargs):
             child = real_popen(*args, **kwargs)
@@ -307,10 +315,16 @@ class SetupFixture(unittest.TestCase):
                 self.assertTrue(startup.launch_worker(recovery))
                 self.assertEqual(int((self.root / 'session').read_text()), children[0].pid)
                 self.assertTrue(startup.record_startup('test_while_worker_runs'))
-                with self.assertRaisesRegex(startup.SetupError, 'helper_busy'):
+                descriptors = Path('/proc') / str(children[0].pid) / 'fd'
+                paths = [os.readlink(fd) for fd in descriptors.iterdir()]
+                self.assertIn(str(self.log / startup.WORKER_LOCK_NAME), paths)
+                self.assertNotIn(str(self.base / 'setup.lock'), paths,
+                                 'A live worker must not retain the short-lived setup lock')
+                with self.assertRaisesRegex(startup.SetupError, 'worker_lock_busy'):
                     startup.launch_worker(recovery)
             self.assertEqual(len(children), 1)
         finally:
+            os.close(setup_lock)
             for child in children:
                 child.terminate()
                 child.wait(timeout=3)
@@ -343,7 +357,8 @@ class SetupFixture(unittest.TestCase):
         self.assertEqual(reply['errorCode'], 'helper_owner_mismatch')
         self.assertEqual(self.log_records()[-1]['uid'], 1001)
         chown.assert_not_called()
-        self.assertFalse(self.base.exists())
+        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse((self.base / 'installed.json').exists())
 
     def test_missing_bundle_logs_without_a_running_capture_worker(self):
         shutil.rmtree(self.bundle)
@@ -490,7 +505,7 @@ class SetupFixture(unittest.TestCase):
         fd = os.open(self.bundle, os.O_RDONLY | os.O_DIRECTORY)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with self.assertRaisesRegex(startup.SetupError, 'helper_busy'):
+            with self.assertRaisesRegex(startup.SetupError, 'bundle_lock_busy'):
                 startup.load_bundle()
         finally:
             os.close(fd)
@@ -540,6 +555,151 @@ class SetupFixture(unittest.TestCase):
         with patch.object(startup, 'repair_helper_directory') as repair:
             self.run_setup()
         repair.assert_not_called()
+
+
+    def test_existing_unlocked_setup_file_is_not_a_busy_helper(self):
+        self.base.mkdir()
+        lock = self.base / 'setup.lock'
+        lock.write_text('old setup file')
+        identity = (lock.stat().st_dev, lock.stat().st_ino)
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual((lock.stat().st_dev, lock.stat().st_ino), identity)
+        self.assertEqual(lock.read_text(), 'old setup file')
+
+    def test_replaced_setup_lock_cannot_authorize_setup(self):
+        self.base.mkdir()
+        lock = self.base / 'setup.lock'
+        lock.touch()
+        directory = os.open(self.base, os.O_RDONLY | os.O_DIRECTORY)
+        descriptor = os.open(lock, os.O_RDWR)
+        try:
+            lock.rename(self.base / 'old.lock')
+            lock.touch()
+            with self.assertRaisesRegex(startup.SetupError, 'setup_lock_changed'):
+                startup.acquire_setup_lock(directory, descriptor)
+        finally:
+            os.close(descriptor)
+            os.close(directory)
+        self.assertFalse((self.base / 'background.json').exists())
+
+    def test_reused_worker_does_not_rewrite_installation_record(self):
+        self.run_setup()
+        record = self.base / 'installed.json'
+        before = (record.read_bytes(), record.stat().st_ino, record.stat().st_mtime_ns)
+        self.recovery.find_helpers = lambda: [(12, 34, self.recovery.HELPER)]
+        result, launch = self.run_setup()
+        self.assertTrue(result['captureRunning'])
+        launch.assert_not_called()
+        self.assertEqual((record.read_bytes(), record.stat().st_ino, record.stat().st_mtime_ns), before)
+        self.assertEqual(self.log_records()[-1]['event'], 'worker_reused')
+
+    def test_foreign_or_duplicate_workers_are_never_reused(self):
+        self.run_setup()
+        for workers in [[(12, 34, b'/foreign.py')],
+                        [(12, 34, self.recovery.HELPER), (13, 35, self.recovery.HELPER)]]:
+            with self.subTest(workers=workers), patch.object(startup, 'load_module', side_effect=self.modules), \
+                 patch.object(startup, 'launch_worker') as launch:
+                self.recovery.find_helpers = lambda: workers
+                with self.assertRaisesRegex(startup.SetupError, 'unexpected_helper_process'):
+                    startup.start()
+                launch.assert_not_called()
+
+    def concurrent_setup(self, upgrade=False, fail_first=False):
+        # Real independent processes and flock, but inert native operations. The
+        # worker marker models only a verified worker; launch identity is covered
+        # separately by recovery tests and the detached-worker test above.
+        import multiprocessing
+        context = multiprocessing.get_context('fork')
+        started, waiting, release = (context.Event() for _ in range(3))
+        marker = self.root / 'worker.fixture'
+        launches = self.root / 'launches.fixture'
+        stops = self.root / 'stops.fixture'
+        if upgrade:
+            self.run_setup()
+            (self.bundle / 'thumbnail_cache.py').write_text('# upgraded fixture\n')
+            self.update_manifest()
+        saved = (self.base / 'background.json').read_bytes() if upgrade else None
+        def stop(**kwargs):
+            if not kwargs.get('legacy_only'):
+                with stops.open('a') as file:
+                    file.write('stop\n')
+        self.recovery.stop = stop
+        self.recovery.find_helpers = lambda: [(12, 34, self.recovery.HELPER)] if marker.exists() else []
+        def child(connection, first):
+            record = startup.record_startup
+            def record_event(event, *args, **kwargs):
+                if event == 'setup_waiting':
+                    waiting.set()
+                return record(event, *args, **kwargs)
+            def launch(recovery):
+                started.set()
+                if first:
+                    if not release.wait(5):
+                        raise RuntimeError('fixture release timed out')
+                    if fail_first:
+                        raise startup.SetupError('fixture_start_failure')
+                with launches.open('a') as file:
+                    file.write('launch\n')
+                marker.touch()
+                return True
+            try:
+                with patch.object(startup, 'load_module', side_effect=self.modules), \
+                     patch.object(startup, 'launch_worker', side_effect=launch), \
+                     patch.object(startup, 'record_startup', side_effect=record_event), \
+                     patch.object(startup, 'SETUP_WAIT_SECONDS', 4):
+                    connection.send(startup.start())
+            except Exception as error:
+                connection.send({'error': str(error)})
+            finally:
+                connection.close()
+        processes, readers = [], []
+        try:
+            for first in (True, False):
+                reader, writer = context.Pipe(duplex=False)
+                process = context.Process(target=child, args=(writer, first))
+                process.start()
+                writer.close()
+                processes.append(process)
+                readers.append(reader)
+                if first:
+                    self.assertTrue(started.wait(3), 'First setup must hold the lock')
+            self.assertTrue(waiting.wait(3), 'Second setup must actually encounter the held lock')
+            self.assertFalse(readers[1].poll(), 'Contender must wait rather than return Busy/success')
+            release.set()
+            results = []
+            for reader, process in zip(readers, processes):
+                self.assertTrue(reader.poll(6), 'Setup must terminate within the bounded fixture wait')
+                results.append(reader.recv())
+                process.join(timeout=2)
+                self.assertEqual(process.exitcode, 0)
+            expected = {'returnValue': True, 'ready': True, 'captureRunning': True}
+            self.assertEqual(results, [{'error': 'fixture_start_failure'} if fail_first else expected, expected])
+            self.assertEqual(launches.read_text(), 'launch\n')
+            self.assertEqual(stops.read_text(), 'stop\n' * (2 if fail_first else 1))
+            if saved is not None:
+                self.assertEqual((self.base / 'background.json').read_bytes(), saved)
+            events = [entry['event'] for entry in self.log_records()]
+            self.assertIn('setup_waiting', events)
+            self.assertIn('setup_resumed', events)
+            self.assertEqual('worker_reused' in events, not fail_first)
+        finally:
+            release.set()
+            for process in processes:
+                if process.is_alive():
+                    process.terminate()
+                process.join(timeout=2)
+            for reader in readers:
+                reader.close()
+
+    def test_simultaneous_clean_setups_start_one_worker_and_both_succeed(self):
+        self.concurrent_setup()
+
+    def test_simultaneous_upgrade_setups_restart_once_and_preserve_settings(self):
+        self.concurrent_setup(upgrade=True)
+
+    def test_waiter_revalidates_after_an_unsuccessful_owner_instead_of_assuming_ready(self):
+        self.concurrent_setup(fail_first=True)
 
 
 if __name__ == '__main__':

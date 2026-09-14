@@ -17,7 +17,9 @@
     HELPER_PERMISSIONS:'The installed helper directory is writable by other users. Install a corrected lg-xmb IPK.',
     HELPER_OWNER:'The installed helper directory is not owned by root. Its ownership was not changed.',
     CONFIG_CONFLICT:'Old and new helper settings differ. Both were preserved; resolve the migration before continuing.',
-    BUSY:'Another helper setup is running. Wait for it to finish before retrying.',
+    BUSY:'Helper setup is busy. Wait for it to finish before retrying.',
+    SETUP_PENDING:'Another lg-xmb setup is still finishing. Open this menu again to check its progress.',
+    WORKER_BUSY:'The worker lock is held without a verified reusable helper. No additional worker was started.',
     TIMEOUT:'Helper setup was not confirmed. It may still be running; no retry was sent.',
     SETUP_FAILED:'Helper setup failed. Existing settings were preserved. Check the helper files before retrying.'
   };
@@ -38,7 +40,8 @@
         bundle_incomplete:'BUNDLE_INCOMPLETE',invalid_helper_bundle:'BUNDLE_MISMATCH',
         helper_bundle_mismatch:'BUNDLE_MISMATCH',untrusted_app_manifest:'BUNDLE_MISMATCH',
         helper_directory_writable:'HELPER_PERMISSIONS',helper_owner_mismatch:'HELPER_OWNER',
-        legacy_config_conflict:'CONFIG_CONFLICT',helper_busy:'BUSY'};
+        legacy_config_conflict:'CONFIG_CONFLICT',helper_busy:'BUSY',
+        setup_in_progress:'SETUP_PENDING',bundle_lock_busy:'SETUP_PENDING',worker_lock_busy:'WORKER_BUSY'};
       if(value.errorCode==='root_required'&&Number.isInteger(value.effectiveUid)&&value.effectiveUid>0)throw problem('ROOT_REQUIRED');
       var error=problem(codes[value.errorCode]||'SETUP_FAILED');
       if(value.logWritten===true)error.message+=' Log: /var/lib/webosbrew/lg-xmb-startup.log';
@@ -52,9 +55,12 @@
   function ensure(){
     if(confirmed)return Promise.resolve(confirmed);
     if(pending)return pending;
-    if(failure)return Promise.reject(failure);
+    // A bounded lock wait can expire before another setup finishes. This is
+    // not a sticky session failure; the next caller may recheck. Other errors,
+    // including an uncertain RPC timeout, still require an explicit retry.
+    if(failure&&failure.code!=='SETUP_PENDING')return Promise.reject(failure);
     if(!root.C5TV||!root.C5TV.isTV()||typeof root.PalmServiceBridge!=='function')return Promise.reject(problem('EXEC_UNAVAILABLE'));
-    phase='starting';emit();
+    failure=null;phase='starting';emit();
     // Keep the bridge alive until it replies. There are no downloads, generic
     // caller-supplied commands, root exploits or restart loops. Setup does not
     // assign Home or enable new background restrictions.
@@ -72,7 +78,7 @@
         bridge.call(URI,JSON.stringify({command:COMMAND}));
       }catch(ignore){finish(problem('EXEC_UNAVAILABLE'));}
     });
-    pending=operation.then(function(value){confirmed=value;phase='ready';pending=null;emit();return value;},function(error){failure=error;phase='failed';pending=null;emit();throw error;});
+    pending=operation.then(function(value){confirmed=value;phase='ready';pending=null;emit();return value;},function(error){failure=error;phase=error.code==='SETUP_PENDING'?'waiting':'failed';pending=null;emit();throw error;});
     return pending;
   }
   function status(){
