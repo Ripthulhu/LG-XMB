@@ -8,6 +8,7 @@ const path=require('node:path');
  const dir=path.resolve(__dirname,'../qa');fs.mkdirSync(dir,{recursive:true});
  const checks=[],errors=[],requests=[];
  try{
+ console.log('Browser suite: main UI');
  const page=await browser.newPage({viewport:{width:1920,height:1080}});
  page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
  await page.goto('http://127.0.0.1:8765');await page.waitForFunction(()=>window.C5App&&!['pending','compiling'].includes(C5App.getState().waveMode));
@@ -76,16 +77,27 @@ const path=require('node:path');
  assert.equal((await page.evaluate(()=>C5App.getState())).item,'about');await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'about');assert.match(await page.locator('#modalIntro').innerText(),/\b0\.1\.18\b/);await page.keyboard.press('Escape');checks.push('About identifies version 0.1.18');
  const prefs=await page.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')));assert.deepEqual(Object.keys(prefs).sort(),['backBehavior','motion','previewMode','sound','theme','waveBrightness','waveDetail','waveSampling','waveSoftness','waveSpeed']);checks.push('Only appearance, wave, sound, preview and Back preferences stored; no usage history');
  assert.ok(requests.every(url=>url.startsWith('http://127.0.0.1:8765/')));assert.deepEqual(errors,[]);checks.push('No external requests or JavaScript errors');
+ // Release completed pages before running the independent renderer fixtures.
+ await page.close();
+ console.log('Browser suite: Canvas fallback');
  const fallback=await browser.newPage({viewport:{width:1920,height:1080}});
  await fallback.addInitScript(()=>{window.webglRequests=0;const old=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){if(/webgl/i.test(type)){window.webglRequests++;return null;}return old.call(this,type,...args);};});
  fallback.on('pageerror',e=>errors.push(e.message));await fallback.goto('http://127.0.0.1:8765');await fallback.waitForFunction(()=>window.C5App&&!['pending','compiling'].includes(C5App.getState().waveMode));
  assert.equal((await fallback.evaluate(()=>C5App.getState())).waveMode,'canvas2d');assert.ok(await fallback.evaluate(()=>window.webglRequests)>0);await fallback.waitForTimeout(300);await fallback.screenshot({path:path.join(dir,'fallback-1080.png')});assert.deepEqual(errors,[]);checks.push('Canvas compatibility fallback renders when WebGL is unavailable');
+ await fallback.close();
+ console.log('Browser suite: PS3 rendering and lifetime');
  await require('../tests/ps3-wave-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ console.log('Browser suite: wave quality controls');
  await require('../tests/wave-quality-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ console.log('Browser suite: input previews');
  await require('../tests/input-preview-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ console.log('Browser suite: launch and return');
  await require('../tests/launch-return-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ console.log('Browser suite: background settings');
  await require('../tests/background-settings-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ console.log('Browser suite: appearance settings');
  await require('../tests/settings-appearance-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
+ console.log('Browser suite: remote settings');
  await require('../tests/remote-settings-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
  fs.writeFileSync(path.join(dir,'browser-check.json'),JSON.stringify({passed:checks.length,checks,browser:await browser.version(),testedOnTV:false},null,2));console.log(JSON.stringify({passed:checks.length,checks},null,2));
  }finally{await browser.close();}
