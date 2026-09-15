@@ -7,114 +7,94 @@ const fs = require('node:fs');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../app/category-transition.js'), 'utf8');
 function fixture() {
-  const animations = [], timers = new Map(); let nextTimer = 1;
+  const animations = [], timers = new Map(); let nextTimer = 1, updates = 0;
   class Element {
-    constructor(tag = 'DIV') {
-      this.tagName = tag; this.attrs = {}; this.children = []; this.style = {}; this.className = '';
-      this.classList = {add: c => { this.className += ' ' + c; }, remove: c => { this.className = this.className.split(' ').filter(n => n !== c).join(' '); }};
-    }
-    setAttribute(n, v) { this.attrs[n] = String(v); }
-    getAttribute(n) { return this.attrs[n] ?? null; }
-    hasAttribute(n) { return n in this.attrs; }
-    removeAttribute(n) { delete this.attrs[n]; }
-    appendChild(e) { this.children.push(e); e.parentNode = this; return e; }
-    insertBefore(e, before) { this.children.splice(this.children.indexOf(before), 0, e); e.parentNode = this; }
-    removeChild(e) { this.children.splice(this.children.indexOf(e), 1); e.parentNode = null; }
-    querySelectorAll() { return this.children.flatMap(e => [e, ...e.querySelectorAll()]); }
-    cloneNode(deep) {
-      const e = new Element(this.tagName); Object.assign(e.attrs, this.attrs); Object.assign(e.style, this.style); e.className = this.className;
-      if (deep) this.children.forEach(c => e.appendChild(c.cloneNode(true))); return e;
-    }
+    constructor() { this.classes = new Set(); this.classList = {add:c=>this.classes.add(c), remove:c=>this.classes.delete(c)}; }
+    cloneNode() { throw Error('No snapshots'); }
+    getBoundingClientRect() { throw Error('No layout reads'); }
+    querySelectorAll() { throw Error('No per-item traversal'); }
     animate(frames, options) {
       if (this.failAnimation) throw Error('Animation refused');
-      const a = {target: this, frames, options, cancelled: false, cancel() { this.cancelled = true; if (this.oncancel) this.oncancel(); }};
-      animations.push(a); return a;
+      const a = {target:this, frames, options, progress:0, cancelled:false,
+        cancel() {this.cancelled=true; if(this.oncancel)this.oncancel();}};
+      a.effect = {getComputedTiming:()=>({progress:a.progress})}; animations.push(a); return a;
     }
   }
-  const root = {document: {hidden: false, timeline: {currentTime: 1234}}, reduced: false, matchMedia() { return {matches:this.reduced}; },
-    getComputedStyle(e) { return {transform: e.style.transform || 'none', opacity: e.style.opacity || '1', visibility: e.style.visibility || 'visible'}; },
-    setTimeout(fn, delay) { const id = nextTimer++; timers.set(id, {fn, delay}); return id; }, clearTimeout(id) { timers.delete(id); }};
-  vm.runInNewContext(source, {window:root});
-  const parent = new Element(), list = parent.appendChild(new Element());
-  list.setAttribute('id', 'items'); list.setAttribute('role', 'listbox'); list.setAttribute('tabindex', '0');
-  list.setAttribute('aria-activedescendant', 'item-0');
-  const row = list.appendChild(new Element('BUTTON')); row.setAttribute('id', 'item-0'); row.setAttribute('role', 'option'); row.setAttribute('aria-label', 'Old');
-  row.setAttribute('aria-selected', 'true'); row.setAttribute('tabindex', '-1'); row.style.transform = 'matrix(1,0,0,1,0,-240)';
-  row.appendChild(new Element('SPAN'));
-  const hidden = list.appendChild(new Element('BUTTON')); hidden.style.visibility = 'hidden';
-  const preview = parent.appendChild(new Element('VIDEO'));
-  const transition = new root.LGXMBCategoryTransition(list);
-  let updates = 0; const update = () => { updates++; list.children.length = 0; list.appendChild(new Element('BUTTON')); };
-  return {root, list, parent, row, preview, transition, animations, timers, update, updates: () => updates};
+  const root = {document:{hidden:false,timeline:{currentTime:1234}},innerWidth:1920,reduced:false,
+    matchMedia(){return {matches:this.reduced};}, getComputedStyle(){throw Error('No style reads');},
+    setTimeout(fn,delay){const id=nextTimer++;timers.set(id,{fn,delay});return id;},clearTimeout(id){timers.delete(id);}};
+  vm.runInNewContext(source,{window:root});
+  const list=new Element(),bar=new Element(),transition=new root.LGXMBCategoryTransition(list,bar);
+  return {root,list,bar,transition,animations,timers,update:()=>updates++,updates:()=>updates};
 }
-test('category switch commits synchronously and animates mirrored slide/fade keyframes', () => {
-  for (const direction of [-1, 1]) {
-    const f = fixture(); f.transition.change(direction, f.update, true);
-    assert.equal(f.updates(), 1); assert.equal(f.animations.length, 2); assert.equal(f.parent.children[1], f.list);
-    assert.equal(f.animations[0].frames[1].transform, `translateX(${-direction * 10.6}vw)`);
-    assert.equal(f.animations[1].frames[0].transform, `translateX(${direction * 10.6}vw)`);
-    assert.equal(f.animations[1].frames[0].opacity, 0); assert.equal(f.animations[1].frames[1].opacity, 1);
-    assert.equal(f.animations[1].startTime, 1234); assert.equal(f.animations[0].startTime, 1234);
-    assert.equal(f.animations[1].options.easing, f.animations[0].options.easing);
-    assert.equal(f.animations[1].options.duration, 180); assert.equal(f.animations[0].options.duration, 180);
+test('category change commits immediately with only a short live-column reveal and one bar animation',()=>{
+  for(const steps of [-4,-1,1,4]){
+    const f=fixture();f.transition.change(steps,f.update,true);
+    assert.equal(f.updates(),1);assert.equal(f.animations.length,2);
+    assert.equal(f.animations[0].target,f.list);assert.equal(f.animations[1].target,f.bar);
+    assert.equal(f.animations[0].frames[0].transform,`translateX(${Math.sign(steps)*26.88}px)`);
+    assert.equal(f.animations[0].frames[0].opacity,0.5);assert.equal(f.animations[0].frames[1].opacity,1);
+    assert.equal(f.animations[1].frames[0].transform,`translateX(${steps*10.6*1920/100}px)`);
+    for(const a of f.animations){assert.equal(a.startTime,1234);assert.equal(a.options.duration,180);assert.equal(a.options.easing,f.root.LGXMBCategoryTransition.EASING);}
   }
 });
-test('outgoing snapshot has no duplicate IDs, accessible options, focus targets or native media', () => {
-  const f = fixture(); f.transition.change(1, f.update, true); const g = f.transition.ghost;
-  assert.equal(g.children.length, 1); assert.equal(g.getAttribute('aria-hidden'), 'true'); assert.ok(g.hasAttribute('inert'));
-  assert.equal(g.getAttribute('tabindex'), null); assert.equal(g.children[0].disabled, true); assert.equal(g.children[0].tabIndex, -1);
-  assert.equal(g.children[0].style.transform, 'matrix(1,0,0,1,0,-240)');
-  for (const e of [g, ...g.querySelectorAll('*')]) { assert.equal(e.getAttribute('id'), null); assert.equal(e.getAttribute('role'), null); assert.notEqual(e.tagName, 'VIDEO'); }
-  assert.ok(f.parent.children.includes(f.preview));
+test('reversals preserve in-flight bar position and never restart the column fade at zero',()=>{
+  const f=fixture();f.transition.change(1,f.update,true);const old=f.animations[0].onfinish;
+  f.animations.forEach(a=>a.progress=0.4);
+  f.transition.change(-1,f.update,true);
+  assert.equal(f.updates(),2);assert.equal(f.transition.animations.length,2);assert.equal(f.timers.size,1);
+  assert.ok(f.animations.slice(0,2).every(a=>a.cancelled));
+  assert.equal(f.animations[2].frames[0].opacity,0.7);
+  assert.equal(f.transition.columnFrom,26.88*0.6);
+  assert.ok(Math.abs(f.transition.barFrom-(-203.52+203.52*0.6))<1e-8);
+  old();assert.equal(f.transition.animations.length,2);assert.equal(f.timers.size,1);
 });
-test('rapid reversals cancel old effects and stale completion cannot delete the new transition', () => {
-  const f = fixture(); f.transition.change(1, f.update, true); const old = f.animations[1].onfinish;
-  f.list.style.transform = 'matrix(1,0,0,1,76,0)'; f.list.style.opacity = '0.6';
-  f.transition.change(-1, f.update, true); const ghost = f.transition.ghost;
-  assert.equal(f.updates(), 2); assert.equal(f.timers.size, 1); assert.equal(f.parent.children.length, 3);
-  assert.ok(f.animations.slice(0, 2).every(a => a.cancelled)); assert.equal(f.animations[2].frames[0].opacity, '0.6');
-  old(); assert.equal(f.transition.ghost, ghost); assert.equal(f.timers.size, 1);
-});
-test('completion and watchdog each remove the visual layer and release animation resources', () => {
-  for (const watchdog of [false, true]) {
-    const f = fixture(); f.transition.change(1, f.update, true);
-    if (watchdog) [...f.timers.values()][0].fn(); else f.animations[1].onfinish();
-    assert.equal(f.transition.ghost, null); assert.equal(f.timers.size, 0); assert.equal(f.parent.children.length, 2);
-    assert.ok(f.animations.every(a => a.cancelled)); assert.equal(f.list.className.includes('items-arriving'), false);
+test('completion, watchdog and cancellation release only the two temporary group effects',()=>{
+  for(const method of ['finish','watchdog','cancel']){
+    const f=fixture();f.transition.change(1,f.update,true);
+    if(method==='finish')f.animations[0].onfinish();else if(method==='watchdog')[...f.timers.values()][0].fn();else f.transition.cancel();
+    assert.equal(f.transition.animations.length,0);assert.equal(f.timers.size,0);
+    assert.equal(f.list.classes.size,0);assert.equal(f.bar.classes.size,0);
+    assert.ok(f.animations.every(a=>a.cancelled));
   }
 });
-test('hidden, reduced-motion, disabled, missing API and invalid direction use the immediate update', () => {
-  for (const mode of ['hidden', 'system-reduced', 'disabled', 'no-api', 'invalid']) {
-    const f = fixture(); if (mode === 'hidden') f.root.document.hidden = true; if (mode === 'system-reduced') f.root.reduced = true;
-    if (mode === 'no-api') f.list.animate = undefined;
-    f.transition.change(mode === 'invalid' ? 0 : 1, f.update, mode !== 'disabled');
-    assert.equal(f.updates(), 1); assert.equal(f.animations.length, 0); assert.equal(f.transition.ghost, null);
+test('rapid repeats have bounded live effects and no scheduled render work',()=>{
+  const f=fixture();
+  for(let i=0;i<100;i++){
+    f.transition.animations.forEach(a=>a.progress=0.3);
+    f.transition.change(i%2?1:-1,f.update,true);
+    assert.equal(f.transition.animations.length,2);assert.equal(f.timers.size,1);
+    assert.ok(f.transition.opacityFrom>=0.5);
+  }
+  assert.equal(f.updates(),100);assert.equal(f.animations.filter(a=>!a.cancelled).length,2);
+});
+test('hidden, reduced-motion, disabled, missing API/timeline and invalid input all update immediately',()=>{
+  for(const mode of ['hidden','system-reduced','disabled','no-api','no-timeline','invalid','bad-width']){
+    const f=fixture();if(mode==='hidden')f.root.document.hidden=true;if(mode==='system-reduced')f.root.reduced=true;
+    if(mode==='no-api')f.list.animate=undefined;if(mode==='no-timeline')delete f.root.document.timeline;
+    if(mode==='bad-width')f.root.innerWidth=NaN;
+    f.transition.change(mode==='invalid'?0:1,f.update,mode!=='disabled');
+    assert.equal(f.updates(),1);assert.equal(f.animations.length,0);assert.equal(f.timers.size,0);
   }
 });
-test('animation refusal and rendering exceptions do not leave a blank or duplicated column', () => {
-  const f = fixture(); f.list.failAnimation = true; f.transition.change(1, f.update, true);
-  assert.equal(f.updates(), 1); assert.equal(f.transition.ghost, null); assert.equal(f.parent.children.length, 2);
-  assert.ok(f.animations.every(a => a.cancelled));
-  assert.throws(() => f.transition.change(1, () => { throw Error('render'); }, true), /render/);
-  assert.equal(f.transition.ghost, null); assert.equal(f.list.className.includes('items-arriving'), false);
-});
-test('cancel and destroy are idempotent and destroy permanently disables effects', () => {
-  const f = fixture(); f.transition.change(1, f.update, true); f.transition.cancel(); f.transition.cancel();
-  f.transition.destroy(); f.transition.destroy(); f.transition.change(1, f.update, true);
-  assert.equal(f.updates(), 2); assert.equal(f.animations.length, 2); assert.equal(f.timers.size, 0);
-  assert.throws(() => f.transition.change(1, null, true), /synchronous/);
-});
-
-test('multi-category jumps use the whole displacement on the same clock', () => {
-  for (const steps of [-3, 3]) {
-    const f = fixture(); f.transition.change(steps, f.update, true);
-    assert.equal(f.animations[1].frames[0].transform, `translateX(${steps * 10.6}vw)`);
-    assert.equal(f.animations[0].frames[1].transform, `translateX(${-steps * 10.6}vw)`);
-    assert.ok(f.animations.every(a => a.startTime === 1234 && a.options.duration === 180));
+test('optional animation refusals and rendering errors cannot leave a dimmed or displaced menu',()=>{
+  for(const target of ['list','bar']){
+    const f=fixture();f[target].failAnimation=true;f.transition.change(1,f.update,true);
+    assert.equal(f.updates(),1);assert.equal(f.transition.animations.length,0);
+    assert.equal(f.list.classes.size,0);assert.equal(f.bar.classes.size,0);assert.ok(f.animations.every(a=>a.cancelled));
+    assert.throws(()=>f.transition.change(1,()=>{throw Error('render');},true),/render/);
+    assert.equal(f.transition.animations.length,0);
   }
 });
-test('an unavailable shared timeline falls back without starting just one arm', () => {
-  const f = fixture(); delete f.root.document.timeline;
-  f.transition.change(1, f.update, true);
-  assert.equal(f.updates(), 1); assert.equal(f.animations.length, 0);
+test('destroy is idempotent and permanently disables effects, not synchronous selection',()=>{
+  const f=fixture();f.transition.change(1,f.update,true);f.transition.destroy();f.transition.destroy();f.transition.change(1,f.update,true);
+  assert.equal(f.updates(),2);assert.equal(f.animations.length,2);assert.equal(f.timers.size,0);
+  assert.throws(()=>f.transition.change(1,null,true),/synchronous/);
+});
+test('column travel is capped on very large viewports',()=>{
+  const f=fixture();f.root.innerWidth=7680;f.transition.change(1,f.update,true);assert.equal(f.transition.columnFrom,28);
+});
+test('transition implementation never clones, queries layout/styles or animates individual children',()=>{
+  assert.doesNotMatch(source,/cloneNode|getBoundingClientRect|getComputedStyle|querySelector|\.children|requestAnimationFrame|setInterval/);
+  assert.doesNotMatch(source,/\.finished|filter:|color:|boxShadow:/);
 });

@@ -74,8 +74,8 @@ const path=require('node:path');
  assert.deepEqual(await page.evaluate(()=>window.mainBackCalls),['stock']);assert.match(await page.locator('#toast').innerText(),/LG Home/);
  await page.evaluate(()=>{window.C5TV=window.mainBackBridge;delete window.mainBackBridge;delete window.mainBackCalls;});checks.push('The Settings LG Home shortcut explicitly opens the original launcher');
  for(let i=0;i<8&&(await page.evaluate(()=>C5App.getState())).item!=='about';i++)await page.keyboard.press('ArrowDown');
- assert.equal((await page.evaluate(()=>C5App.getState())).item,'about');await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'about');assert.match(await page.locator('#modalIntro').innerText(),/\b0\.1\.25\b/);await page.keyboard.press('Escape');checks.push('About identifies version 0.1.25');
- const prefs=await page.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')));assert.deepEqual(Object.keys(prefs).sort(),['backBehavior','motion','musicEnabled','musicVolume','previewMode','sound','theme','waveBrightness','waveColors','waveDetail','waveParticleCount','waveParticles','wavePostprocess','waveSampling','waveSmoothing','waveSoftness','waveSpeed']);checks.push('Only appearance, wave, sound, preview and Back preferences stored; no usage history');
+ assert.equal((await page.evaluate(()=>C5App.getState())).item,'about');await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'about');assert.match(await page.locator('#modalIntro').innerText(),/\b0\.1\.28\b/);await page.keyboard.press('Escape');checks.push('About identifies version 0.1.28');
+ const prefs=await page.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')));assert.deepEqual(Object.keys(prefs).sort(),['backBehavior','motion','musicEnabled','musicVolume','previewMode','sound','theme','waveBrightness','waveColors','waveDetail','waveMSAA','waveParticleCount','waveParticles','wavePostprocess','waveSampling','waveSmoothing','waveSoftness','waveSpeed']);checks.push('Only appearance, wave, sound, preview and Back preferences stored; no usage history');
  assert.ok(requests.every(url=>url.startsWith('http://127.0.0.1:8765/')));assert.deepEqual(errors,[]);checks.push('No external requests or JavaScript errors');
  // Release completed pages before running the independent renderer fixtures.
  await page.close();
@@ -88,6 +88,7 @@ const path=require('node:path');
  assert.equal((await fallback.evaluate(()=>C5App.getState())).waveMode,'canvas2d');assert.ok(await fallback.evaluate(()=>window.webglRequests)>0);await fallback.waitForTimeout(300);await fallback.screenshot({path:path.join(dir,'fallback-1080.png')});assert.deepEqual(errors,[]);checks.push('Canvas compatibility fallback renders when WebGL is unavailable');
  await fallback.close();
  console.log('Browser suite: PS3 rendering and lifetime');
+ await require('../tests/wave-msaa-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
  await require('../tests/ps3-wave-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
  console.log('Browser suite: wave quality controls');
  await require('../tests/wave-quality-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);

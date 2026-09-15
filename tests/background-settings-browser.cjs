@@ -100,12 +100,27 @@ module.exports = async function checkBackgroundSettings(browser, checks, errors)
     assert.equal(await pendingPage.evaluate(() => document.activeElement.getAttribute('data-process-id')), 'search');
     assert.equal(await pendingPage.locator('[data-process-id="browser"]').getAttribute('aria-checked'), 'false');
     await pendingPage.keyboard.press('Enter');
-    await pendingPage.evaluate(() => backgroundTest.calls[1].reject(new Error('Setting could not be saved.')));
+    const recoveryReads = await pendingPage.evaluate(async () => {
+      // Measure this failed-write recovery in the same browser task sequence.
+      // A periodic five-second refresh between remote assertions is not an
+      // extra recovery read and must not make this test depend on runner speed.
+      const before = backgroundTest.gets;
+      const root = document.getElementById('modalContent');
+      const settled = new Promise(resolve => {
+        const observer = new MutationObserver(() => {
+          if (root.getAttribute('aria-busy') === 'false') { observer.disconnect(); resolve(); }
+        });
+        observer.observe(root, {attributes:true, attributeFilter:['aria-busy']});
+      });
+      backgroundTest.calls[1].reject(new Error('Setting could not be saved.'));
+      await settled;
+      return backgroundTest.gets - before;
+    });
     await pendingPage.waitForFunction(() => document.getElementById('modalContent').getAttribute('aria-busy') === 'false');
     assert.equal(await pendingPage.locator('[data-process-id="search"]').getAttribute('aria-checked'), 'true');
     assert.match(await pendingPage.locator('.background-error').innerText(), /could not be saved/);
     assert.equal(await pendingPage.evaluate(() => document.activeElement.getAttribute('data-process-id')), 'search');
-    assert.equal(await pendingPage.evaluate(() => backgroundTest.gets), 2);
+    assert.equal(recoveryReads, 1, 'A failed write re-reads its actual value exactly once');
     await pendingPage.locator('[data-process-id="ads"]').click({force: true});
     assert.equal(await pendingPage.evaluate(() => backgroundTest.calls.length), 2, 'Unsupported privacy row cannot change settings');
     checks.push('Background saves reject duplicate activation, retain current focus, show inline errors with re-read actual values, and prevent unsupported changes');

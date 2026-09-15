@@ -161,3 +161,34 @@ a widening vertical envelope, and analytically soft, dimmer out-of-focus discs.
 No blur textures, sound effects, audio analysis or second animation loop are
 added. The inherited extra 10% upward shift and synchronized 180 ms menu timeline
 from 0.1.24 remain unchanged.
+
+
+## Cropped surface and optional MSAA (0.1.27)
+
+The 0.1.26 source-only crop has been corrected to preserve the full virtual
+sample grid (including fractional supersampling). A shifted, full-sized virtual
+viewport renders into the cropped texture; output UVs map back to the original
+screen coordinates. The band has a 20-output-pixel guard and grows in buckets,
+never shrinking/reallocating as animation oscillates. Its location may change;
+that does not change the sample grid. Particles regain the full output viewport.
+The optional FXAA pass once again sees display RGB plus wave coverage, as in
+0.1.25, not a wave-only RGB edge signal. Postprocessing remains cropped.
+
+MSAA is Off by default. WebGL 2 is tried first, with WebGL 1 and Canvas fallbacks.
+The existing GLSL ES 1.00 shaders are supported by both WebGL versions.
+`wave-msaa.js` queries RGBA8's supported renderbuffer sample counts, accepts
+Off/2/4, and never silently rounds upwards. A color-only multisample renderbuffer
+is resolved with a same-size NEAREST blit into an RGBA8 texture. Supersampling
+and FXAA are independent later stages; combining them adds cost. The menu reports
+requested versus applied sampling when support/allocation/resolve fails.
+Refusal disables only MSAA, reuses the single-sample path, and is not retried
+per frame. Off releases storage. Context restoration builds new resources.
+No native service, recording, theme, mesh or animation-timing change is involved.
+
+For visual/performance comparison start with supersampling Off and MSAA 4x.
+This is not a guarantee of lower GPU time or identical SSAA appearance on a TV.
+The sample-count query is format-specific; MAX_SAMPLES alone is not sufficient.
+
+Reference: Khronos WebGL 2 specification, framebuffer/renderbuffer objects and
+GLSL ES 3.00 support (which also documents GLSL ES 1.00 compatibility):
+https://registry.khronos.org/webgl/specs/latest/2.0/

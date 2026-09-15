@@ -2,42 +2,29 @@
 (function (root) {
   'use strict';
   var DURATION = 180, DISTANCE = 10.6, EASING = 'cubic-bezier(.22,.8,.2,1)';
+  var COLUMN_DISTANCE = 1.4, MAX_COLUMN_PIXELS = 28, INITIAL_OPACITY = 0.5;
 
-  // Only the list is copied: never native video, audio, preview images or handlers.
-  // The real listbox keeps its identity/focus and changes selection synchronously.
-  function snapshot(list) {
-    var copy = list.cloneNode(false);
-    copy.className = 'items-outgoing';
-    Array.prototype.forEach.call(list.children, function (row) {
-      var style = root.getComputedStyle(row);
-      if (style.visibility === 'hidden' || Number(style.opacity) === 0) return;
-      var clone = row.cloneNode(true);
-      clone.style.transform = style.transform;
-      clone.style.opacity = style.opacity;
-      copy.appendChild(clone);
-    });
-    var nodes = [copy].concat(Array.prototype.slice.call(copy.querySelectorAll('*')));
-    nodes.forEach(function (node) {
-      ['id', 'role', 'aria-label', 'aria-activedescendant', 'aria-selected', 'aria-current'].forEach(function (name) {
-        node.removeAttribute(name);
-      });
-      if (node.tagName === 'BUTTON') node.disabled = true;
-      if (node.hasAttribute('tabindex') || node.tagName === 'BUTTON') node.tabIndex = -1;
-    });
-    copy.removeAttribute('tabindex');
-    copy.setAttribute('aria-hidden', 'true');
-    copy.setAttribute('inert', ''); // Supplementary; disabled controls work on older engines too.
-    return copy;
+  function progress(animation) {
+    if (!animation) return 1;
+    try {
+      // Read the animation clock, not layout or resolved styles. Progress already
+      // includes easing and also works when a test pauses/seeks the animation.
+      var value = animation.effect.getComputedTiming().progress;
+      if (typeof value === 'number' && isFinite(value)) return Math.max(0, Math.min(1, value));
+    } catch (ignore) {}
+    return 1;
   }
 
   function CategoryTransition(list, bar) {
     this.list = list;
     this.bar = bar || null;
-    this.ghost = null;
     this.animations = [];
     this.timer = null;
     this.generation = 0;
     this.destroyed = false;
+    this.barFrom = 0;
+    this.columnFrom = 0;
+    this.opacityFrom = 1;
   }
 
   CategoryTransition.prototype.cancel = function () {
@@ -45,105 +32,63 @@
     if (this.timer !== null) root.clearTimeout(this.timer);
     this.timer = null;
     this.animations.forEach(function (animation) {
-      // Do not use finished promises: cancelling them would reject with AbortError.
       animation.onfinish = null;
       animation.oncancel = null;
       try { animation.cancel(); } catch (ignore) {}
     });
     this.animations = [];
-    if (this.ghost && this.ghost.parentNode) this.ghost.parentNode.removeChild(this.ghost);
-    this.ghost = null;
     this.list.classList.remove('items-arriving');
+    if (this.bar) this.bar.classList.remove('categories-moving');
+    this.barFrom = 0;
+    this.columnFrom = 0;
+    this.opacityFrom = 1;
   };
-
-  // Read values, not the live CSSStyleDeclaration, before changing selection.
-  function appearance(node) {
-    var style = root.getComputedStyle(node);
-    return {transform:style.transform, opacity:style.opacity, color:style.color};
-  }
-
-  function barSnapshot(bar) {
-    if (!bar) return [];
-    return Array.prototype.map.call(bar.children, function (node) {
-      var icon = node.querySelector('.category-icon');
-      return {node:node, left:node.getBoundingClientRect().left,
-        active:node.getAttribute('aria-current') === 'true',
-        opacity:root.getComputedStyle(node).opacity,
-        icon:icon, iconStyle:icon && appearance(icon)};
-    });
-  }
 
   CategoryTransition.prototype.change = function (steps, update, enabled) {
     if (typeof update !== 'function') throw new TypeError('A synchronous list update is required');
     var reduced = root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var timeline = root.document.timeline;
+    var timeline = root.document.timeline, width = root.innerWidth;
     var allowed = !this.destroyed && enabled && !reduced && !root.document.hidden &&
       Number.isInteger(steps) && steps !== 0 && Math.abs(steps) <= 64 &&
+      typeof width === 'number' && isFinite(width) && width > 0 &&
       typeof this.list.animate === 'function' && (!this.bar || typeof this.bar.animate === 'function') &&
       timeline && typeof timeline.currentTime === 'number';
-    var ghost = null, from = null, before = [];
-    if (allowed) {
-      try {
-        // Capture the current rendered positions, including a half-finished reversal.
-        from = appearance(this.list);
-        before = barSnapshot(this.bar);
-        ghost = snapshot(this.list);
-      } catch (ignore) { allowed = false; }
-    }
+    var continuing = this.animations.length > 0;
+    var columnProgress = progress(this.animations[0]);
+    var barProgress = progress(this.animations[1]);
+    var columnFrom = continuing ? this.columnFrom * (1 - columnProgress) :
+      Math.sign(steps) * Math.min(MAX_COLUMN_PIXELS, width * COLUMN_DISTANCE / 100);
+    var opacityFrom = continuing ? this.opacityFrom + (1 - this.opacityFrom) * columnProgress : INITIAL_OPACITY;
+    // The child category positions change synchronously by a known vw spacing.
+    // Retain the current in-flight parent offset when reversing or skipping tabs.
+    var barFrom = steps * DISTANCE * width / 100 + this.barFrom * (1 - barProgress);
     this.cancel();
     if (allowed) this.list.classList.add('items-arriving');
     try { update(); } catch (error) { this.cancel(); throw error; }
     if (!allowed) return;
+    this.columnFrom = columnFrom; this.opacityFrom = opacityFrom; this.barFrom = barFrom;
     var self = this, generation = this.generation;
     function finish() { if (self.generation === generation) self.cancel(); }
     try {
-      var arrival = (steps * DISTANCE) + 'vw', departure = (-steps * DISTANCE) + 'vw';
-      if (this.bar) {
-        var active = before.find(function (entry) { return entry.node.getAttribute('aria-current') === 'true'; });
-        var old = before.find(function (entry) { return entry.active; });
-        if (!active || !old) throw new Error('Missing category anchor');
-        var anchor = active.node.getBoundingClientRect().left;
-        // Both columns stay horizontally attached to their own category icons.
-        // Measured offsets also handle a pointer jump over multiple categories.
-        arrival = (active.left - anchor) + 'px';
-        departure = (old.node.getBoundingClientRect().left - anchor) + 'px';
-      }
-      this.ghost = ghost;
-      this.list.parentNode.insertBefore(ghost, this.list);
-      function animate(node, frames) {
-        var animation = node.animate(frames, {duration:DURATION, easing:EASING, fill:'both'});
-        self.animations.push(animation);
-        return animation;
-      }
-      animate(ghost, [from, {transform:'translateX(' + departure + ')', opacity:0}]);
-      var incoming = animate(this.list, [
-        {transform:'translateX(' + arrival + ')', opacity:0},
+      // One live list: old content is replaced immediately, never cloned into an
+      // overlapping outgoing layer. Repeated keys do not restart the fade at zero.
+      var incoming = this.list.animate([
+        {transform:'translateX(' + columnFrom + 'px)', opacity:opacityFrom},
         {transform:'translateX(0)', opacity:1}
-      ]);
+      ], {duration:DURATION, easing:EASING, fill:'both'});
+      this.animations.push(incoming);
       if (this.bar) {
-        animate(this.bar, [{transform:'translateX(' + arrival + ')'}, {transform:'translateX(0)'}]);
-        before.forEach(function (entry) {
-          var opacity = root.getComputedStyle(entry.node).opacity;
-          if (entry.opacity !== opacity) animate(entry.node, [{opacity:entry.opacity}, {opacity:opacity}]);
-          if (entry.icon) {
-            var target = appearance(entry.icon);
-            if (entry.iconStyle.transform !== target.transform || entry.iconStyle.color !== target.color) {
-              animate(entry.icon, [entry.iconStyle, target]);
-            }
-          }
-        });
+        this.bar.classList.add('categories-moving');
+        this.animations.push(this.bar.animate([
+          {transform:'translateX(' + barFrom + 'px)'}, {transform:'translateX(0)'}
+        ], {duration:DURATION, easing:EASING, fill:'both'}));
       }
-      // One timeline, start, duration and easing for bar, columns and selection.
-      // Do not mix CSS transitions with WAAPI: reversals shorten CSS transitions.
       var start = timeline.currentTime;
       this.animations.forEach(function (animation) { animation.startTime = start; });
       incoming.onfinish = finish;
       incoming.oncancel = finish;
       this.timer = root.setTimeout(finish, DURATION + 100);
-    } catch (ignore) {
-      // Animation support is optional. Selection and focus are already current.
-      this.cancel();
-    }
+    } catch (ignore) { this.cancel(); }
   };
 
   CategoryTransition.prototype.destroy = function () {

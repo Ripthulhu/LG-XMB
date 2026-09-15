@@ -19,8 +19,8 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
     await page.waitForFunction(()=>window.C5App&&C5App.getState().waveMode==='webgl');
     await page.evaluate(()=>{postTestWave.time=14;postTestWave._draw();});
     let d=await diag();assert.equal(d.surface.postprocess,'fxaa');assert.equal(d.surface.strength,'normal');
-    assert.deepEqual([d.surface.postWidth,d.surface.postHeight,d.backingWidth,d.backingHeight],[1920,1080,1920,1080]);
-    assert.deepEqual([d.surface.surfaceWidth,d.surface.surfaceHeight],[3840,2160]);
+    assert.deepEqual([d.surface.postWidth,d.surface.postHeight,d.backingWidth,d.backingHeight],[1920,d.surface.bandHeight,1920,1080]);
+    assert.equal(d.surface.surfaceWidth,3840);assert.equal(d.surface.virtualHeight,2160);assert.ok(d.surface.surfaceHeight<2160);
     const geometry=await page.locator('#categories').boundingBox();
     const frames={};
     for(const mode of ['off','fxaa','wave']) {
@@ -48,14 +48,14 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
     await page.waitForFunction(()=>postTestWave.contextLost);assert.equal(await page.evaluate(()=>postTestWave.raf),0);
     await page.evaluate(()=>postLoss.restoreContext());
     await page.waitForFunction(()=>!postTestWave.contextLost&&postTestWave.getDiagnostics().surface&&postTestWave.getDiagnostics().surface.postprocess==='fxaa');
-    d=await diag();assert.deepEqual([d.surface.postWidth,d.surface.postHeight],[1920,1080]);
+    d=await diag();assert.deepEqual([d.surface.postWidth,d.surface.postHeight],[1920,d.surface.bandHeight]);
     await page.getByRole('button',{name:'Settings',exact:true}).click();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
     const group=name=>page.getByRole('group',{name,exact:true});
     await group('Post-process antialiasing').getByRole('button',{name:'Wave FXAA',exact:true}).click();
     await group('Smoothing strength').getByRole('button',{name:'Strong',exact:true}).click();
     const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')));
     assert.equal(stored.wavePostprocess,'wave');assert.equal(stored.waveSmoothing,'strong');assert.equal(stored.waveSampling,2);assert.equal(stored.previewMode,'live');
-    assert.match(await page.locator('#waveRenderStatus').innerText(),/Wave FXAA at 1920 × 1080/);
+    assert.ok((await page.locator('#waveRenderStatus').innerText()).includes('Wave FXAA at 1920 × '+(await diag()).surface.bandHeight));
     for(const width of [1920,1280]) {
       await page.setViewportSize({width,height:width*9/16});
       await group('Smoothing strength').getByRole('button',{name:'Strong',exact:true}).focus();
@@ -100,7 +100,7 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
       const old=HTMLCanvasElement.prototype.getContext;window.postRefusals=0;
       HTMLCanvasElement.prototype.getContext=function(...args){const gl=old.apply(this,args);if(!gl||!/webgl/.test(args[0]))return gl;
         const image=gl.texImage2D.bind(gl),getError=gl.getError.bind(gl);let failed=false;
-        gl.texImage2D=function(...a){if(a[3]===1920&&a[4]===1080){failed=true;postRefusals++;return;}return image(...a);};
+        gl.texImage2D=function(...a){if(a[3]===1920){failed=true;postRefusals++;return;}return image(...a);};
         gl.getError=function(){if(failed){failed=false;return gl.OUT_OF_MEMORY;}return getError();};return gl;};
     }:()=>{
       const old=HTMLCanvasElement.prototype.getContext;window.postRefusals=0;

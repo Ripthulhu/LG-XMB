@@ -156,9 +156,10 @@ void main() {
         texture=t;framebuffer=f;width=w;height=h;failedSize=null;failure=null;return true;
       },
       target:function(){return framebuffer;},
-      render:function(mode,strength) {
+      render:function(mode,strength,region) {
         if(dead||!texture)return;
-        gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,width,height);gl.disable(gl.BLEND);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+        gl.viewport(region ? region.x : 0,region ? region.y : 0,width,height);gl.disable(gl.BLEND);
         gl.useProgram(program);gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
         gl.enableVertexAttribArray(position);gl.vertexAttribPointer(position,2,gl.FLOAT,false,0,0);
         gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);

@@ -17,12 +17,11 @@ This feature does not need the root helper or change names on the TV.
 
 ## Menu motion
 
-Switching categories moves the horizontal bar and crossfades/slides the vertical
-column together on one 180 ms timeline in the direction
-of travel, including the items above the category bar. Selection and launching
-remain immediate; rapid reversals replace the current transition rather than
-queuing animations. Reduced motion disables this effect. Selected icons stay
-larger and brighter, without a background glow.
+Switching categories moves the horizontal bar and gently slides/fades the new
+vertical column on a shared 180 ms timeline. Only one list is drawn; there is no
+overlapping outgoing copy. Repeated navigation retains the current fade and bar
+position, and selection/launching remain immediate. Reduced motion disables the
+transition. Selected icons stay larger and brighter, without a background glow.
 
 ## Wave particles
 

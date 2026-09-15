@@ -159,7 +159,7 @@
     this.renderer = options && options.renderer === 'canvas2d' ? 'canvas2d' : 'webgl';
     this.qualityIndex = options && options.quality === '720p' ? 1 : options && options.quality === '540p' ? 2 : 0;
     this.adaptive = !(options && options.adaptive === false);
-    this.ps3Quality = {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal',particles:false,particleCount:2000};
+    this.ps3Quality = {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal',particles:false,particleCount:2000,msaa:0};
     this.onRenderStatus = options && typeof options.onRenderStatus === 'function' ? options.onRenderStatus : null;
     this.ps3Surface = null;
     this.ps3Disabled = !!(options && options.pattern === 'classic');
@@ -175,6 +175,8 @@
     this.timing = {last:0,start:0,windowStart:0,samples:0,gaps:0,worst:0,badWindows:0,windows:0,lastGapRatio:0};
     this.mode = 'pending';
     this.error = null;
+    this.contextVersion = 0;
+    this.forceWebGL1 = !!(options && options.webglVersion === 1);
     this.gl = null;
     this.ctx = null;
     this.program = null;
@@ -254,7 +256,14 @@
     var vertex = null;
     var fragment = null;
     try {
-      this.gl = this.canvas.getContext('webgl', options) || this.canvas.getContext('experimental-webgl', options);
+      if (!this.gl && !this.forceWebGL1) {
+        try { this.gl = this.canvas.getContext('webgl2', options); } catch (ignore) {}
+        if (this.gl) this.contextVersion = 2;
+      }
+      if (!this.gl) {
+        this.gl = this.canvas.getContext('webgl', options) || this.canvas.getContext('experimental-webgl', options);
+        if (this.gl) this.contextVersion = 1;
+      }
       if (!this.gl) { this._fallback(); this._resize(); this._resume(); return; }
       var gl = this.gl;
       this._inspectGpu();
@@ -464,7 +473,7 @@
   C5Wave.prototype.getDiagnostics = function () {
     // Local diagnostic data only. Scheduling gaps are not GPU execution time.
     return {
-      mode:this.mode,requestedRenderer:this.renderer,capabilities:this.capabilities,
+      mode:this.mode,requestedRenderer:this.renderer,contextVersion:this.contextVersion,capabilities:this.capabilities,
       pattern:this.mode === 'webgl' ? this.pattern : 'classic',patternFallback:this.patternFallback,
       renderQuality:Object.assign({},this.ps3Quality),
       surface:this.ps3Surface ? this.ps3Surface.diagnostics() : null,
@@ -637,7 +646,7 @@
   C5Wave.prototype.setQuality = function (options) {
     if (this.destroyed || !global.LGXMBPS3Wave) return;
     var next = global.LGXMBPS3Wave.quality(options,this.ps3Quality), previous = this.ps3Quality;
-    if (next.sampling === previous.sampling && next.detail === previous.detail && next.softness === previous.softness &&
+    if (next.msaa === previous.msaa && next.sampling === previous.sampling && next.detail === previous.detail && next.softness === previous.softness &&
         next.postprocess === previous.postprocess && next.strength === previous.strength && next.particles === previous.particles && next.particleCount === previous.particleCount) return;
     this.ps3Quality = next;
     // Apply resources on the next permitted draw, never while hidden or paused.
