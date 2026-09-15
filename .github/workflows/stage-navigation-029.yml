@@ -1,0 +1,64 @@
+name: Stage reviewed navigation source
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/stage-navigation-029.yml]
+permissions:
+  contents: read
+jobs:
+  stage:
+    if: github.repository == 'Ripthulhu/LG-XMB' && github.event.before == '56d1fe8791c72e0237fe417a5ad0c7c70da630dc'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Store the exact reviewed tree without changing any ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, subprocess
+          from pathlib import Path
+          repo = 'Ripthulhu/LG-XMB'
+          base = '56d1fe8791c72e0237fe417a5ad0c7c70da630dc'
+          expected = 'f0b237674e44087f299caaf34a85091bda04a1b5'
+          def git(*args):
+              return subprocess.check_output(['git', *args]).decode().strip()
+          def api(path, payload=None):
+              args = ['gh', 'api', 'repos/' + repo + '/' + path]
+              if payload is not None:
+                  args += ['--method', 'POST', '--input', '-']
+              return json.loads(subprocess.check_output(args, input=None if payload is None else json.dumps(payload).encode()))
+          assert git('rev-parse', 'HEAD^') == base
+          assert api('git/ref/heads/main')['object']['sha'] == os.environ['GITHUB_SHA']
+          blob = api('git/blobs/6f73f3d0863bba4de7d569355fb0fb3d9be566d2')
+          raw = base64.b64decode(base64.b64decode(blob['content']), validate=True)
+          assert hashlib.sha256(raw).hexdigest() == '6f781097d2e89543d33d89c0a6f4f0ad4a7d1bba1c68bc5483b1929711609160'
+          patch = Path(os.environ['RUNNER_TEMP']) / 'navigation.patch'
+          patch.write_bytes(lzma.decompress(raw))
+          subprocess.run(['git', 'checkout', '--detach', base], check=True)
+          subprocess.run(['git', 'apply', '--check', '--unidiff-zero', str(patch)], check=True)
+          subprocess.run(['git', 'apply', '--unidiff-zero', str(patch)], check=True)
+          subprocess.run(['git', 'add', '-A'], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          assert git('write-tree') == expected
+          paths = git('diff', '--cached', '--name-only').splitlines()
+          assert len(paths) == 13 and not any(p.startswith('.github/') for p in paths)
+          entries = []
+          for path in paths:
+              mode = git('ls-files', '-s', '--', path).split()[0]
+              entries.append({'path': path, 'mode': mode, 'type': 'blob', 'content': Path(path).read_text()})
+          result = api('git/trees', {'base_tree': '971ef7fcbaef32a25631f0b70bcf152d1f9d2c87', 'tree': entries})
+          assert result['sha'] == expected
+          print('Verified source-only tree stored: ' + expected)
+          print('No branch, PR, tag, release or ref was created or moved by this job.')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+              stream.write('Verified navigation tree `' + expected + '`. Ready for the direct-main source commit. This one-time workflow is absent from that tree.\n')
+          PY
