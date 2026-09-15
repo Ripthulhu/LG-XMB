@@ -121,3 +121,10 @@ also control particles. Off/reduced motion freezes them, hidden Home draws
 nothing, and context restoration rebuilds identical seeds. An optional particle
 shader/buffer failure leaves the waves usable and is not retried every frame.
 The classic and Canvas2D fallbacks intentionally omit particles.
+
+## Band placement (0.1.23)
+
+The spline and particle band move up by 0.20 clip-space units (10% of output
+height: 108 pixels at 1080p), towards the PS3 menu reference. The classic shader
+and Canvas2D fallback move by the same fraction. Geometry, sampling, lighting,
+FXAA, timing and particle trajectories are unchanged.

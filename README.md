@@ -15,6 +15,14 @@ Names refresh at startup and when returning to Home; the port number remains
 visible in the details. Unavailable reads keep the default or last known name.
 This feature does not need the root helper or change names on the TV.
 
+## Menu motion
+
+Switching categories slides and crossfades the vertical column in the direction
+of travel, including the items above the category bar. Selection and launching
+remain immediate; rapid reversals replace the current transition rather than
+queuing animations. Reduced motion disables this effect. Selected icons stay
+larger and brighter, without a background glow.
+
 ## Wave particles
 
 Settings → Waves includes **Particles: On / Off** and **Particle density:

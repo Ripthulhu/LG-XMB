@@ -51,6 +51,11 @@ preview server, using generated silent PCM for audio lifecycle checks. No record
 Native launches
 and HDMI playback are simulated; actual audio handoff still needs a TV test.
 
+`npm run test:menu` runs the focused category-motion and wave-renderer checks
+against a local preview server. It tests both UI sizes, interrupted transitions,
+reduced motion, selection styling and renderer lifetime. It does not replace the
+full browser suite or on-TV testing.
+
 ## Releases
 
 Build with `npm run package`, then `npm run verify:package`. Review manifest

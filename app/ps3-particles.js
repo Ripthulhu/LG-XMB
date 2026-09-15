@@ -21,7 +21,7 @@
     '    sin(time*(aSeed.y+1.5)*6.0+aSeed.x*4.0),y*0.5+0.5)*aSeed.x+aSeed.y;',
     '  vAlpha=opVar*opVar*(1.0-fract(aSeed.x+time*0.00285));',
     // Match the vertical shift of our spline; keep the upstream trajectories.
-    '  gl_Position=vec4(x,y-0.37,0.0,1.0);',
+    '  gl_Position=vec4(x,y-0.17,0.0,1.0);',
     '}'
   ].join('\n');
   var FRAGMENT = [
