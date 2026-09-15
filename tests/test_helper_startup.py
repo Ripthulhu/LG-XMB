@@ -134,6 +134,52 @@ class SetupFixture(unittest.TestCase):
         self.assertFalse((self.base / 'thumbnail-cache.py').exists())
         launch.assert_called_once()
 
+    def test_optional_music_path_is_created_without_a_track(self):
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual(os.readlink(self.app / 'user-music.mp3'), str(self.base / 'music/background.mp3'))
+        self.assertTrue((self.base / 'music').is_dir())
+        self.assertFalse((self.base / 'music/background.mp3').exists())
+        self.assertEqual(stat.S_IMODE((self.base / 'music').stat().st_mode), 0o755)
+
+    def test_music_survives_link_loss_and_repeated_upgrade_preparation(self):
+        self.run_setup()
+        track = self.base / 'music/background.mp3'
+        track.write_bytes(b'user owned recording fixture')
+        before = (track.stat().st_ino, track.read_bytes())
+        (self.app / 'user-music.mp3').unlink()  # installer replaced the app tree
+        self.run_setup()
+        self.run_setup()
+        self.assertEqual((track.stat().st_ino, track.read_bytes()), before)
+        self.assertEqual((self.app / 'user-music.mp3').read_bytes(), before[1])
+
+    def test_conflicting_music_file_does_not_disable_helper_or_get_overwritten(self):
+        link = self.app / 'user-music.mp3'
+        link.write_bytes(b'keep me')
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual(link.read_bytes(), b'keep me')
+        self.assertIn('music_path_unavailable', (self.log / startup.LOG_NAME).read_text())
+
+    def test_foreign_music_link_is_not_followed_or_replaced(self):
+        outside = self.root / 'outside'
+        outside.write_bytes(b'not music')
+        (self.app / 'user-music.mp3').symlink_to(outside)
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual(os.readlink(self.app / 'user-music.mp3'), str(outside))
+        self.assertEqual(outside.read_bytes(), b'not music')
+
+    def test_symlinked_music_directory_is_not_followed_and_is_nonfatal(self):
+        self.base.mkdir()
+        outside = self.root / 'outside-dir'
+        outside.mkdir()
+        (self.base / 'music').symlink_to(outside)
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertFalse(os.path.lexists(self.app / 'user-music.mp3'))
+
     def test_existing_settings_and_rollback_values_migrate_byte_for_byte(self):
         self.legacy.mkdir()
         raw = b'{"schema":1,"revision":9,"enabled":{"home":true},"saved":{"home":{"enabled":true,"permanentRestore":true}}}\n'

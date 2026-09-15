@@ -155,7 +155,7 @@
     this.renderer = options && options.renderer === 'canvas2d' ? 'canvas2d' : 'webgl';
     this.qualityIndex = options && options.quality === '720p' ? 1 : options && options.quality === '540p' ? 2 : 0;
     this.adaptive = !(options && options.adaptive === false);
-    this.ps3Quality = {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal'};
+    this.ps3Quality = {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal',particles:false,particleCount:2000};
     this.onRenderStatus = options && typeof options.onRenderStatus === 'function' ? options.onRenderStatus : null;
     this.ps3Surface = null;
     this.ps3Disabled = !!(options && options.pattern === 'classic');
@@ -627,7 +627,7 @@
     if (this.destroyed || !global.LGXMBPS3Wave) return;
     var next = global.LGXMBPS3Wave.quality(options,this.ps3Quality), previous = this.ps3Quality;
     if (next.sampling === previous.sampling && next.detail === previous.detail && next.softness === previous.softness &&
-        next.postprocess === previous.postprocess && next.strength === previous.strength) return;
+        next.postprocess === previous.postprocess && next.strength === previous.strength && next.particles === previous.particles && next.particleCount === previous.particleCount) return;
     this.ps3Quality = next;
     // Apply resources on the next permitted draw, never while hidden or paused.
     this._draw();

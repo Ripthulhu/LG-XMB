@@ -240,13 +240,15 @@
 
   function quality(options, previous) {
     options = options || {};
-    previous = previous || {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal'};
+    previous = previous || {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal',particles:false,particleCount:2000};
     return {
       sampling:SAMPLE_SCALES.indexOf(options.sampling) >= 0 ? options.sampling : previous.sampling,
       detail:Object.prototype.hasOwnProperty.call(GRIDS,options.detail) ? options.detail : previous.detail,
       softness:[0,0.75,1.5].indexOf(options.softness) >= 0 ? options.softness : previous.softness,
       postprocess:['off','fxaa','wave'].indexOf(options.postprocess) >= 0 ? options.postprocess : previous.postprocess || 'off',
-      strength:['gentle','normal','strong'].indexOf(options.strength) >= 0 ? options.strength : previous.strength || 'normal'
+      strength:['gentle','normal','strong'].indexOf(options.strength) >= 0 ? options.strength : previous.strength || 'normal',
+      particles:typeof options.particles === 'boolean' ? options.particles : previous.particles === true,
+      particleCount:[500,2000,4000].indexOf(options.particleCount) >= 0 ? options.particleCount : previous.particleCount || 2000
     };
   }
 
@@ -255,6 +257,7 @@
     var geometry = null, uniformWave, uniformBrightness, attribute, normalAttribute, quadAttribute, texel, sampler;
     var complete = false, dead = false, width = 0, height = 0;
     var resolvedUniform, backgroundUniform, tintUniform;
+    var particles = null, particlesTried = false, particleError = null, particleCount = 0;
     var post = null, postTried = false, postError = null, postMode = 'off', postReason = null;
     var settings = quality(options), meshDetail = null, allocationKey = null, effectiveScale = 0, fallback = null;
     var maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE), viewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
@@ -264,6 +267,7 @@
       if (dead) return;
       dead = true;
       if (post) post.destroy(lost); post = null;
+      if (particles) particles.destroy(lost); particles = null; particleCount = 0;
       if (!lost) {
         shaders.forEach(function(shader) { gl.deleteShader(shader); });
         programs.forEach(function(program) { gl.deleteProgram(program); });
@@ -308,6 +312,27 @@
       if (!post) { postReason = postError; return false; }
       if (!post.prepare(w,h)) { postReason = post.diagnostics().failure; return false; }
       postMode = settings.postprocess; return true;
+    }
+    function drawParticles(time,w,h,wave,brightness) {
+      particleCount = 0;
+      if (!settings.particles) return;
+      if (!particlesTried) {
+        particlesTried = true;
+        try {
+          if (!root.LGXMBPS3Particles) throw new Error('Particle module unavailable');
+          particles = root.LGXMBPS3Particles.create(gl,precision);
+        } catch (error) { particleError = error.message; }
+      }
+      if (!particles) return;
+      // Render analytically feathered sprites after FXAA so it cannot erase them.
+      // This is the same output-sized pass whether waves use 1x or 2x sampling.
+      try {
+        particles.draw(time,w,h,wave,brightness,settings.particleCount);
+        particleCount = settings.particleCount;
+      } catch (error) {
+        particles.destroy(!!gl.isContextLost()); particles = null;
+        particleError = 'Particle rendering unavailable';
+      }
     }
     function updateMesh() {
       if (meshDetail === settings.detail) return false;
@@ -388,7 +413,7 @@
       programs: programs,
       configure: function (options) {
         var next = quality(options,settings);
-        if (next.sampling === settings.sampling && next.detail === settings.detail && next.softness === settings.softness && next.postprocess === settings.postprocess && next.strength === settings.strength) return;
+        if (next.sampling === settings.sampling && next.detail === settings.detail && next.softness === settings.softness && next.postprocess === settings.postprocess && next.strength === settings.strength && next.particles === settings.particles && next.particleCount === settings.particleCount) return;
         settings = next; settingsChanged = true;
       },
       finish: function () {
@@ -458,6 +483,8 @@
           else gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
           gl.drawArrays(gl.TRIANGLES,0,3);
           if (filtered) post.render(settings.postprocess,settings.strength);
+          gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+          drawParticles(time,targetWidth,targetHeight,wave,brightness);
         } finally {
           gl.disableVertexAttribArray(normalAttribute);
           gl.bindFramebuffer(gl.FRAMEBUFFER,null);
@@ -473,6 +500,8 @@
         surfaceWidth:width,surfaceHeight:height,requestedScale:settings.sampling,effectiveScale:effectiveScale,
         detail:meshDetail,softness:settings.softness,samplingFallback:fallback,
         postprocess:postMode,requestedPostprocess:settings.postprocess,postprocessFallback:postReason,
+        requestedParticles:settings.particles,particleCount:particleCount,requestedParticleCount:settings.particleCount,
+        particlesFallback:settings.particles ? particleError : null,
         strength:settings.strength,postWidth:post ? post.diagnostics().width : 0,postHeight:post ? post.diagnostics().height : 0}; }
     };
   }

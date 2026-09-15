@@ -42,3 +42,6 @@ body{transition:background 1s ease}button{font:inherit;color:inherit;border:0;cu
 .cross-content{overflow:visible}
 
 .wave-quality-note{color:#fff;font-size:clamp(14px,1.1vw,21px);line-height:1.5;margin:0.6em 0;}
+
+/* Keep the manual music path readable on both supported UI sizes. */
+.music-file-path{font-family:monospace;overflow-wrap:anywhere;word-break:break-word;user-select:text;}

@@ -411,6 +411,35 @@ def acquire_setup_lock(base, lock):
         return
 
 
+def prepare_user_music(base):
+    """Expose user data through one fixed app-relative link; never read or copy it.
+
+    This is optional preparation, not a prerequisite for the capture/controller
+    worker. A missing track, conflicting entry or refused path cannot disable it.
+    """
+    try:
+        directory = make_directory(base, "music")
+        os.close(directory)
+        app = open_directory(APP_DIR, app_path=True)
+        try:
+            name = "user-music.mp3"
+            target = BASE + "/music/background.mp3"
+            try:
+                info = os.stat(name, dir_fd=app, follow_symlinks=False)
+            except FileNotFoundError:
+                os.symlink(target, name, dir_fd=app)
+            else:
+                require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0
+                        and os.readlink(name, dir_fd=app) == target,
+                        "music_path_conflict")
+            return True
+        finally:
+            os.close(app)
+    except (OSError, SetupError) as error:
+        record_startup("music_path_unavailable", error)
+        return False
+
+
 def start():
     require(os.geteuid() == 0, "root_required")
     require(sys.version_info >= (3, 7), "python_too_old")
@@ -430,6 +459,7 @@ def start():
         # Verification/repair belongs inside the lock too. Do not use a bundle
         # or installed record read before waiting for another upgrade to finish.
         control, recovery, bundle = load_bundle()
+        prepare_user_music(base)
         raw = read_file(base, "installed.json", 4096, optional=True)
         previous = json.loads(raw) if raw is not None else None
         require(previous is None or (isinstance(previous, dict)

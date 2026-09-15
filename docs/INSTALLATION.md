@@ -131,3 +131,8 @@ python3 tools/verify-helper-package.py
 A manifest change requires updating the controller's reviewed manifest pin in
 the same commit. Packaging rejects a mismatched pin. Keep matching source with
 each build, and do not commit device credentials, cached pictures or TV state.
+
+## Optional music
+
+Music is not included. See [music setup](MUSIC.md) to copy your own MP3 to
+`/var/lib/lg-xmb/music/background.mp3`, outside the app installation.

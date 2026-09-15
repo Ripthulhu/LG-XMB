@@ -1,6 +1,6 @@
 {
   "name": "lg-xmb",
-  "version": "0.1.20",
+  "version": "0.1.22",
   "private": true,
   "description": "A webOS web-app adaptation of OpenXMB's interface and wave shader",
   "license": "GPL-3.0-only",
@@ -11,7 +11,9 @@
     "package": "node tools/package.mjs",
     "verify:package": "node tools/package.mjs --verify-only",
     "test:compat": "node tests/compat-layout-browser.cjs",
-    "tools:download": "node tools/dev-tools.cjs"
+    "tools:download": "node tools/dev-tools.cjs",
+    "test:music": "node tests/background-music-browser.cjs",
+    "test:effects": "node tests/effects-browser.cjs"
   },
   "engines": {
     "node": ">=20.0.0"

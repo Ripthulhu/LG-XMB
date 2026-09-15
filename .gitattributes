@@ -2,3 +2,4 @@
 *.png binary
 *.ipk binary
 app/licenses/UPSTREAM* -text whitespace=cr-at-eol
+*.mp3 binary

@@ -11,8 +11,7 @@ The port retains the synthetic descriptor/table/kernel flow, cubic B-spline
 basis, travelling displacement, free-form deformation and Fresnel-style surface
 lighting. These are the reference project's reconstruction, not Sony code or a
 complete reproduction of its runtime data. No firmware, extracted textures,
-logos, debug panels or external resources are bundled. Particles and PS3
-month/day/night presets are not included in this first wave pass.
+logos, debug panels or external resources are bundled. PS3 month/day/night presets are not included.
 
 Changes for LG-XMB:
 
@@ -103,3 +102,22 @@ factors are unchanged in this increment, to isolate the post-process comparison.
 This spatial filter cannot correct a genuinely irregular mesh contour and uses
 no previous-frame history. The final texture has one sample per output pixel;
 the selected supersampling factor affects the preceding wave surface only.
+
+## Particles (0.1.22)
+
+`app/ps3-particles.js` adapts `ps3xmbwave/particles.js` and
+`particles-settings.js` from the same Mart/linkev revision and MIT licence above.
+It retains the drifting point-sprite trajectories, twinkling opacity and soft
+radial sparkle profile. This is that project's approximation, not recovered Sony
+particle code or assets. The normal preset uses its 2,000 particles, 0.75 opacity,
+2.6/1.5 size parameters and 0.18 flow factor. Low/High select 500/4,000 points.
+
+The WebGL 1 port replaces VAOs with ordinary attributes, seeds one deterministic
+48,000-byte static buffer, clamps point sizes to GPU limits, and shifts the band
+to match LG-XMB's spline. Size is relative to 1080p output, not supersampling.
+Particles add light after the wave post-process, without modifying canvas alpha
+or filtering the menu. Wave speed/brightness and the existing animation clock
+also control particles. Off/reduced motion freezes them, hidden Home draws
+nothing, and context restoration rebuilds identical seeds. An optional particle
+shader/buffer failure leaves the waves usable and is not retried every frame.
+The classic and Canvas2D fallbacks intentionally omit particles.

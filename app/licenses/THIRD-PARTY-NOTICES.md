@@ -56,3 +56,12 @@ authors). Upstream credits NVIDIA's FXAA algorithm, Jasper Flick's implementatio
 and Dave Hoskins' GLSL port. The full MIT notice is in
 `app/licenses/THREE-FXAA-MIT.txt`. No Three.js runtime dependency is included.
 See `WAVE-PROVENANCE.md` for WebGL 1 changes and the wave-opacity variant.
+
+## User-provided background music
+
+No music recording is distributed. Users supply their own file separately; the
+software licence does not grant rights to any recording.
+
+The PS3-style particle layer also adapts Mart/linkev's `particles.js` and
+`particles-settings.js` at the revision documented in WAVE-PROVENANCE.md; its
+MIT notice is included as `app/licenses/PS3-XMB-MIT.txt`.

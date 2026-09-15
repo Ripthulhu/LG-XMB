@@ -28,7 +28,7 @@ module.exports = async function checkWaveQuality(browser, checks, errors) {
     assert.equal(before.preferences.waveSampling,1.5);assert.equal(before.preferences.waveDetail,'high');assert.equal(before.preferences.waveSoftness,0.75);
     assert.equal(before.preferences.theme,'rose');assert.equal(before.preferences.previewMode,'live');assert.equal(before.preferences.backBehavior,'lg');
     await open();
-    assert.equal(await page.locator('.choice-group').count(),8);
+    assert.equal(await page.locator('.choice-group').count(),10);
     assert.equal(await group('Supersampling').getByRole('button',{name:'1.5×',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await group('Mesh detail').getByRole('button',{name:'High',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await group('Edge softness').getByRole('button',{name:'Subtle',exact:true}).getAttribute('aria-pressed'),'true');

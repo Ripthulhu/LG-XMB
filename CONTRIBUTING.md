@@ -46,6 +46,11 @@ then run `npm run test:browser` and `node tests/wave-retention-browser.cjs`.
 These use installed Edge by default; `PLAYWRIGHT_CHANNEL=chrome` selects Chrome.
 CI installs the required browsers explicitly.
 
+`npm run test:music` runs the focused background-music browser checks against the
+preview server, using generated silent PCM for audio lifecycle checks. No recording is required.
+Native launches
+and HDMI playback are simulated; actual audio handoff still needs a TV test.
+
 ## Releases
 
 Build with `npm run package`, then `npm run verify:package`. Review manifest
