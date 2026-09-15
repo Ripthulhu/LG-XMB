@@ -75,8 +75,23 @@ or compatibility claims.
 ### Publish a prerelease
 
 Add notes in `docs/releases/<app-version>.md`, including known limitations.
-In GitHub Actions, run **Publish prerelease** on `main` with the successful
-**Checks** push run ID and its full source commit SHA. The workflow promotes
-that exact IPK and matching source, verifies the files before and after upload,
-and publishes a prerelease with SHA-256 checksums. It does not rebuild the app,
-replace an existing release or tag, or publish automatically on normal pushes.
+After **Checks** succeeds for a push to `main`, either run **Publish prerelease**
+in GitHub Actions with that run ID and full source commit SHA, or update
+`.github/release-request.json` on `main` with the same two string fields:
+
+```json
+{
+  "run_id": "<successful Checks push run ID>",
+  "source_sha": "<full tested commit SHA>"
+}
+```
+
+Only changes to that request file trigger publishing on a push; ordinary code
+pushes do not. No release branch or PR is required. The referenced source must
+already be on `main`, with a successful Checks build and release notes.
+
+The workflow promotes that exact IPK and matching source, verifies the files
+before and after upload, and publishes a prerelease with SHA-256 checksums. Notes
+come from the tested commit. It does not rebuild the app or replace an existing
+release or tag. Changing the request is an explicit release action, not a way to
+skip checks.

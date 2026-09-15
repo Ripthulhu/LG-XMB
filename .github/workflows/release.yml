@@ -1,6 +1,9 @@
 name: Publish prerelease
 
 on:
+  push:
+    branches: [main]
+    paths: [.github/release-request.json]
   workflow_dispatch:
     inputs:
       run_id:
@@ -53,7 +56,7 @@ jobs:
           import subprocess
           import zipfile
 
-          repo, run_id, sha = (os.environ[key] for key in ('GITHUB_REPOSITORY', 'RUN_ID', 'SOURCE_SHA'))
+          repo = os.environ['GITHUB_REPOSITORY']
           def require(condition, message):
               if not condition:
                   raise SystemExit(message)
@@ -61,8 +64,20 @@ jobs:
               return subprocess.check_output(['gh', 'api', 'repos/' + repo + '/' + path])
           def digest(raw):
               return hashlib.sha256(raw).hexdigest()
-          require(re.fullmatch(r'[1-9][0-9]*', run_id), 'Invalid run ID')
-          require(re.fullmatch(r'[0-9a-f]{40}', sha), 'A full source SHA is required')
+          if os.environ['GITHUB_EVENT_NAME'] == 'push':
+              request_path = Path('.github/release-request.json')
+              require(request_path.is_file() and not request_path.is_symlink()
+                      and request_path.stat().st_size <= 4096, 'Invalid release request file')
+              request = json.loads(request_path.read_text())
+              require(isinstance(request, dict) and set(request) == {'run_id', 'source_sha'},
+                      'Release request must contain only run_id and source_sha')
+              run_id, sha = request['run_id'], request['source_sha']
+          elif os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch':
+              run_id, sha = os.environ['RUN_ID'], os.environ['SOURCE_SHA']
+          else:
+              raise SystemExit('Unsupported release trigger')
+          require(isinstance(run_id, str) and re.fullmatch(r'[1-9][0-9]*', run_id), 'Invalid run ID')
+          require(isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha), 'A full source SHA is required')
           run = json.loads(api('actions/runs/' + run_id))
           require(run['name'] == 'Checks' and run['path'] == '.github/workflows/checks.yml'
                   and run['event'] == 'push' and run['head_branch'] == 'main'
@@ -107,7 +122,8 @@ jobs:
               ipk = candidate.read(ipk_name)
               checksum = digest(ipk) + '  ' + ipk_name
               require(checksum in candidate.read('SHA256SUMS').decode().splitlines(), 'IPK checksum mismatch')
-          notes = Path('docs/releases/' + version + '.md').read_text()
+          notes = subprocess.check_output(
+              ['git', 'show', sha + ':docs/releases/' + version + '.md'], text=True)
           require(notes.strip(), 'Reviewed release notes are required')
           output = Path('release-assets')
           output.mkdir()
