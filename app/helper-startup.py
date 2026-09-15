@@ -16,6 +16,7 @@ import traceback
 # Retained as the upgrade identifier; runtime files use the project name.
 APP_DIR = "/media/developer/apps/usr/palm/applications/org.local.openxmb.c5"
 BASE = "/var/lib/lg-xmb"
+MUSIC_DIR = "/media/internal/lg-xmb"
 LEGACY_BASE = "/var/lib/openxmb-c5"
 CACHE = "/tmp/lg-xmb-thumbnails"
 LEGACY_CACHE = "/tmp/openxmb-c5-thumbnails"
@@ -411,27 +412,45 @@ def acquire_setup_lock(base, lock):
         return
 
 
-def prepare_user_music(base):
+def prepare_user_music():
     """Expose user data through one fixed app-relative link; never read or copy it.
 
     This is optional preparation, not a prerequisite for the capture/controller
     worker. A missing track, conflicting entry or refused path cannot disable it.
     """
     try:
-        directory = make_directory(base, "music")
-        os.close(directory)
+        # /media/internal is writable user storage, not executable helper code.
+        parent = open_directory(os.path.dirname(MUSIC_DIR), app_path=True)
+        try:
+            directory = make_directory(parent, os.path.basename(MUSIC_DIR))
+            os.close(directory)
+        finally:
+            os.close(parent)
         app = open_directory(APP_DIR, app_path=True)
         try:
             name = "user-music.mp3"
-            target = BASE + "/music/background.mp3"
+            target = MUSIC_DIR + "/background.mp3"
             try:
                 info = os.stat(name, dir_fd=app, follow_symlinks=False)
             except FileNotFoundError:
                 os.symlink(target, name, dir_fd=app)
             else:
-                require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0
-                        and os.readlink(name, dir_fd=app) == target,
+                require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0,
                         "music_path_conflict")
+                previous = os.readlink(name, dir_fd=app)
+                require(previous in (target, BASE + "/music/background.mp3"),
+                        "music_path_conflict")
+                if previous != target:
+                    # Only replace our recognized legacy link, never either track.
+                    temporary = ".user-music-" + str(os.getpid())
+                    os.symlink(target, temporary, dir_fd=app)
+                    try:
+                        os.replace(temporary, name, src_dir_fd=app, dst_dir_fd=app)
+                    finally:
+                        try:
+                            os.unlink(temporary, dir_fd=app)
+                        except FileNotFoundError:
+                            pass
             return True
         finally:
             os.close(app)
@@ -459,7 +478,7 @@ def start():
         # Verification/repair belongs inside the lock too. Do not use a bundle
         # or installed record read before waiting for another upgrade to finish.
         control, recovery, bundle = load_bundle()
-        prepare_user_music(base)
+        prepare_user_music()
         raw = read_file(base, "installed.json", 4096, optional=True)
         previous = json.loads(raw) if raw is not None else None
         require(previous is None or (isinstance(previous, dict)

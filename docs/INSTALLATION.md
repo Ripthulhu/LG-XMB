@@ -135,4 +135,4 @@ each build, and do not commit device credentials, cached pictures or TV state.
 ## Optional music
 
 Music is not included. See [music setup](MUSIC.md) to copy your own MP3 to
-`/var/lib/lg-xmb/music/background.mp3`, outside the app installation.
+`/media/internal/lg-xmb/background.mp3`, outside the app installation.

@@ -1,7 +1,7 @@
 /* lg-xmb web application, 2026. SPDX-License-Identifier: GPL-3.0-or-later */
 (function (root) {
   'use strict';
-  var DURATION = 260, EXIT_DURATION = 180, DISTANCE = 10.6;
+  var DURATION = 180, DISTANCE = 10.6, EASING = 'cubic-bezier(.22,.8,.2,1)';
 
   // Only the list is copied: never native video, audio, preview images or handlers.
   // The real listbox keeps its identity/focus and changes selection synchronously.
@@ -30,8 +30,9 @@
     return copy;
   }
 
-  function CategoryTransition(list) {
+  function CategoryTransition(list, bar) {
     this.list = list;
+    this.bar = bar || null;
     this.ghost = null;
     this.animations = [];
     this.timer = null;
@@ -55,17 +56,37 @@
     this.list.classList.remove('items-arriving');
   };
 
-  CategoryTransition.prototype.change = function (direction, update, enabled) {
+  // Read values, not the live CSSStyleDeclaration, before changing selection.
+  function appearance(node) {
+    var style = root.getComputedStyle(node);
+    return {transform:style.transform, opacity:style.opacity, color:style.color};
+  }
+
+  function barSnapshot(bar) {
+    if (!bar) return [];
+    return Array.prototype.map.call(bar.children, function (node) {
+      var icon = node.querySelector('.category-icon');
+      return {node:node, left:node.getBoundingClientRect().left,
+        active:node.getAttribute('aria-current') === 'true',
+        opacity:root.getComputedStyle(node).opacity,
+        icon:icon, iconStyle:icon && appearance(icon)};
+    });
+  }
+
+  CategoryTransition.prototype.change = function (steps, update, enabled) {
     if (typeof update !== 'function') throw new TypeError('A synchronous list update is required');
     var reduced = root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var timeline = root.document.timeline;
     var allowed = !this.destroyed && enabled && !reduced && !root.document.hidden &&
-      (direction === -1 || direction === 1) && typeof this.list.animate === 'function';
-    var ghost = null, from = null;
+      Number.isInteger(steps) && steps !== 0 && Math.abs(steps) <= 64 &&
+      typeof this.list.animate === 'function' && (!this.bar || typeof this.bar.animate === 'function') &&
+      timeline && typeof timeline.currentTime === 'number';
+    var ghost = null, from = null, before = [];
     if (allowed) {
       try {
-        // Read the in-flight position before cancelling a previous swipe.
-        var style = root.getComputedStyle(this.list);
-        from = {transform:style.transform, opacity:style.opacity};
+        // Capture the current rendered positions, including a half-finished reversal.
+        from = appearance(this.list);
+        before = barSnapshot(this.bar);
         ghost = snapshot(this.list);
       } catch (ignore) { allowed = false; }
     }
@@ -76,24 +97,51 @@
     var self = this, generation = this.generation;
     function finish() { if (self.generation === generation) self.cancel(); }
     try {
+      var arrival = (steps * DISTANCE) + 'vw', departure = (-steps * DISTANCE) + 'vw';
+      if (this.bar) {
+        var active = before.find(function (entry) { return entry.node.getAttribute('aria-current') === 'true'; });
+        var old = before.find(function (entry) { return entry.active; });
+        if (!active || !old) throw new Error('Missing category anchor');
+        var anchor = active.node.getBoundingClientRect().left;
+        // Both columns stay horizontally attached to their own category icons.
+        // Measured offsets also handle a pointer jump over multiple categories.
+        arrival = (active.left - anchor) + 'px';
+        departure = (old.node.getBoundingClientRect().left - anchor) + 'px';
+      }
       this.ghost = ghost;
       this.list.parentNode.insertBefore(ghost, this.list);
-      var outgoing = ghost.animate([
-        from,
-        {transform:'translateX(' + (-direction * DISTANCE) + 'vw)', opacity:0}
-      ], {duration:EXIT_DURATION, easing:'cubic-bezier(.22,.8,.2,1)', fill:'both'});
-      this.animations.push(outgoing);
-      var incoming = this.list.animate([
-        {transform:'translateX(' + (direction * DISTANCE) + 'vw)', opacity:0},
+      function animate(node, frames) {
+        var animation = node.animate(frames, {duration:DURATION, easing:EASING, fill:'both'});
+        self.animations.push(animation);
+        return animation;
+      }
+      animate(ghost, [from, {transform:'translateX(' + departure + ')', opacity:0}]);
+      var incoming = animate(this.list, [
+        {transform:'translateX(' + arrival + ')', opacity:0},
         {transform:'translateX(0)', opacity:1}
-      ], {duration:DURATION, easing:'cubic-bezier(.22,.8,.2,1)', fill:'both'});
-      this.animations.push(incoming);
+      ]);
+      if (this.bar) {
+        animate(this.bar, [{transform:'translateX(' + arrival + ')'}, {transform:'translateX(0)'}]);
+        before.forEach(function (entry) {
+          var opacity = root.getComputedStyle(entry.node).opacity;
+          if (entry.opacity !== opacity) animate(entry.node, [{opacity:entry.opacity}, {opacity:opacity}]);
+          if (entry.icon) {
+            var target = appearance(entry.icon);
+            if (entry.iconStyle.transform !== target.transform || entry.iconStyle.color !== target.color) {
+              animate(entry.icon, [entry.iconStyle, target]);
+            }
+          }
+        });
+      }
+      // One timeline, start, duration and easing for bar, columns and selection.
+      // Do not mix CSS transitions with WAAPI: reversals shorten CSS transitions.
+      var start = timeline.currentTime;
+      this.animations.forEach(function (animation) { animation.startTime = start; });
       incoming.onfinish = finish;
       incoming.oncancel = finish;
-      // A missing finish notification must not leave stale layers in the DOM.
       this.timer = root.setTimeout(finish, DURATION + 100);
     } catch (ignore) {
-      // Animation support is optional. The new category is already usable.
+      // Animation support is optional. Selection and focus are already current.
       this.cancel();
     }
   };
@@ -104,6 +152,7 @@
   };
   CategoryTransition.DURATION = DURATION;
   CategoryTransition.DISTANCE = DISTANCE;
+  CategoryTransition.EASING = EASING;
   root.LGXMBCategoryTransition = CategoryTransition;
   if (typeof module === 'object' && module.exports) module.exports = CategoryTransition;
 })(typeof window !== 'undefined' ? window : globalThis);

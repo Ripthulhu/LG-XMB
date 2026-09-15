@@ -69,7 +69,7 @@
     '  vec2 uv = vUV;',
     '  vec2 p = uv * 2.0 - 1.0;',
     '  p.x *= uResolution.x / max(uResolution.y, 1.0);',
-    '  p.y += 0.23;',
+    '  p.y += 0.03;',
     '  float leftGlow = exp(-length((p - vec2(-1.28,0.22)) * vec2(0.64,1.05)) * 1.35);',
     '  float horizon = exp(-abs(p.y + 0.03) * 3.0);',
     '  float vignette = 1.0 - smoothstep(0.18,1.65,length((uv - 0.5) * vec2(1.4,1.8)));',
@@ -515,7 +515,7 @@
       for (var i=0;i<row.length;i+=2) {
         var px = row[i];
         var y = curve(row[i+1],SEEDS[j],this.time)+SEEDS[j]*0.045-0.055-OFFSETS[j][1];
-        var py = (1-(y-0.23))*h*0.5;
+        var py = (1-(y-0.03))*h*0.5;
         if (px===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
       }
       // Three soft strokes approximate the fragment mask, without expensive

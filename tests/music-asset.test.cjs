@@ -13,7 +13,7 @@ test('package staging excludes personal recordings, old audio folders and the ru
     fs.writeFileSync(path.join(app,'audio','README.md'),'obsolete bundled asset');
     fs.writeFileSync(path.join(app,'other','sound.MP3'),'personal recording');
     fs.writeFileSync(path.join(app,'background-music.js'),'keep code');
-    fs.symlinkSync('/var/lib/lg-xmb/music/background.mp3',path.join(app,'user-music.mp3'));
+    fs.symlinkSync('/media/internal/lg-xmb/background.mp3',path.join(app,'user-music.mp3'));
     fs.cpSync(app,out,{recursive:true,filter:source=>includeAppFile(app,source)});
     assert.deepEqual(fs.readdirSync(out).sort(),['background-music.js','other']);
     assert.equal(fs.readdirSync(path.join(out,'other')).length,0);

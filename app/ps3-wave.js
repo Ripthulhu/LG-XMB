@@ -194,8 +194,8 @@
     'varying vec3 vNormal; varying float vDepth;',
     'void main() {',
     '  vNormal = aNormal; vDepth = aPosition.w;',
-    // Raise the band by 10% of output height; match the particle layer offset.
-    '  gl_Position = vec4(aPosition.x*1.04, aPosition.y-0.17, aPosition.z*0.65,1.0);',
+    // Raise the band by 20% of output height from 0.1.22; match particles.
+    '  gl_Position = vec4(aPosition.x*1.04, aPosition.y+0.03, aPosition.z*0.65,1.0);',
     '}'
   ].join('\n');
   var FRAGMENT = [

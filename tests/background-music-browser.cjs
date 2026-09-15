@@ -172,7 +172,7 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
       await missing.unroute('**/user-music.mp3');
       await missing.route('**/user-music.mp3',route=>route.fulfill({status:404,body:'Not found'}));
       await settings(missing,'Background music');
-      assert.equal(await missing.locator('#musicFilePath').innerText(),'/var/lib/lg-xmb/music/background.mp3');
+      assert.equal(await missing.locator('#musicFilePath').innerText(),'/media/internal/lg-xmb/background.mp3');
       await musicSwitch(missing,'On').click();
       await missing.waitForFunction(()=>C5App.getState().music.phase==='unavailable');
       assert.equal(await missing.locator('audio').count(),0);

@@ -7,15 +7,15 @@ LG-XMB does not include or download a recording. Supply your own MP3.
 1. Install LG-XMB and open Home once. Setup creates the music directory and one
    app-relative link. Preparing music is optional: failure cannot block the helper.
 2. In Dev Manager's file browser or your existing root file-transfer connection,
-   copy the MP3 to `/var/lib/lg-xmb/music/background.mp3` (exact lowercase name).
+   copy the MP3 to `/media/internal/lg-xmb/background.mp3` (exact lowercase name).
 3. Open **Settings → Background music → On**. Set volume as desired. Music is
    initially off, with 25% volume selected. After copying a missing file, select
    **Retry playback** or toggle Off and On.
 
 The directory must be traversable and the MP3 readable by the media player:
 `0755` for the music directory, `0644` for the file. Do not recursively change
-permissions on `/var/lib/lg-xmb` or its settings. If the directory is not present,
-create just `/var/lib/lg-xmb/music` using the TV's existing root connection.
+permissions on shared TV directories or private helper settings. If the directory is not present,
+create just `/media/internal/lg-xmb` using the TV's existing root connection.
 
 The file is user data, never executable helper code. The app reads it through
 `user-music.mp3`, a fixed link prepared on launch. Setup never replaces, copies,
@@ -24,6 +24,13 @@ manage the external music directory, so normal app upgrades leave it in place;
 Home recreates its own link after an upgrade. It also remains after uninstall.
 An unexpected existing link/file is not overwritten; setup logs
 `music_path_unavailable` while continuing with the rest of the helper.
+
+## Earlier builds
+
+The canonical path is `/media/internal/lg-xmb/background.mp3`. A recognized
+app-relative link from 0.1.22/0.1.23 is retargeted during setup. No recording is
+moved or overwritten: a file previously placed in `/var/lib/lg-xmb/music/`
+remains there until you copy it to the canonical path yourself.
 
 ## Replacing the recording
 

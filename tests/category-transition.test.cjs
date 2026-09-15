@@ -31,7 +31,7 @@ function fixture() {
       animations.push(a); return a;
     }
   }
-  const root = {document: {hidden: false}, reduced: false, matchMedia() { return {matches:this.reduced}; },
+  const root = {document: {hidden: false, timeline: {currentTime: 1234}}, reduced: false, matchMedia() { return {matches:this.reduced}; },
     getComputedStyle(e) { return {transform: e.style.transform || 'none', opacity: e.style.opacity || '1', visibility: e.style.visibility || 'visible'}; },
     setTimeout(fn, delay) { const id = nextTimer++; timers.set(id, {fn, delay}); return id; }, clearTimeout(id) { timers.delete(id); }};
   vm.runInNewContext(source, {window:root});
@@ -54,7 +54,9 @@ test('category switch commits synchronously and animates mirrored slide/fade key
     assert.equal(f.animations[0].frames[1].transform, `translateX(${-direction * 10.6}vw)`);
     assert.equal(f.animations[1].frames[0].transform, `translateX(${direction * 10.6}vw)`);
     assert.equal(f.animations[1].frames[0].opacity, 0); assert.equal(f.animations[1].frames[1].opacity, 1);
-    assert.equal(f.animations[1].options.duration, 260); assert.equal(f.animations[0].options.duration, 180);
+    assert.equal(f.animations[1].startTime, 1234); assert.equal(f.animations[0].startTime, 1234);
+    assert.equal(f.animations[1].options.easing, f.animations[0].options.easing);
+    assert.equal(f.animations[1].options.duration, 180); assert.equal(f.animations[0].options.duration, 180);
   }
 });
 test('outgoing snapshot has no duplicate IDs, accessible options, focus targets or native media', () => {
@@ -101,4 +103,18 @@ test('cancel and destroy are idempotent and destroy permanently disables effects
   f.transition.destroy(); f.transition.destroy(); f.transition.change(1, f.update, true);
   assert.equal(f.updates(), 2); assert.equal(f.animations.length, 2); assert.equal(f.timers.size, 0);
   assert.throws(() => f.transition.change(1, null, true), /synchronous/);
+});
+
+test('multi-category jumps use the whole displacement on the same clock', () => {
+  for (const steps of [-3, 3]) {
+    const f = fixture(); f.transition.change(steps, f.update, true);
+    assert.equal(f.animations[1].frames[0].transform, `translateX(${steps * 10.6}vw)`);
+    assert.equal(f.animations[0].frames[1].transform, `translateX(${-steps * 10.6}vw)`);
+    assert.ok(f.animations.every(a => a.startTime === 1234 && a.options.duration === 180));
+  }
+});
+test('an unavailable shared timeline falls back without starting just one arm', () => {
+  const f = fixture(); delete f.root.document.timeline;
+  f.transition.change(1, f.update, true);
+  assert.equal(f.updates(), 1); assert.equal(f.animations.length, 0);
 });

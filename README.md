@@ -17,7 +17,8 @@ This feature does not need the root helper or change names on the TV.
 
 ## Menu motion
 
-Switching categories slides and crossfades the vertical column in the direction
+Switching categories moves the horizontal bar and crossfades/slides the vertical
+column together on one 180 ms timeline in the direction
 of travel, including the items above the category bar. Selection and launching
 remain immediate; rapid reversals replace the current transition rather than
 queuing animations. Reduced motion disables this effect. Selected icons stay
@@ -33,7 +34,7 @@ stops with the renderer when Home is hidden. Classic/Canvas fallback omits it.
 ## Background music
 
 No recording is included in the repository or IPK. Open Home once to prepare
-`/var/lib/lg-xmb/music/`, then copy your own MP3 there as `background.mp3`.
+`/media/internal/lg-xmb/`, then copy your own MP3 there as `background.mp3`.
 Open **Settings → Background music → On**. The menu shows the path and volume
 controls. Music is off by default, starting at 25% volume when enabled.
 

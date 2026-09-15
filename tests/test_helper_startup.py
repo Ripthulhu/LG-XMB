@@ -35,6 +35,8 @@ class SetupFixture(unittest.TestCase):
         self.bundle = self.app / 'helper'
         self.bundle.mkdir(parents=True)
         self.base = self.root / 'lg-xmb'
+        self.music = self.root / 'media/internal/lg-xmb'
+        self.music.parent.mkdir(parents=True)
         self.legacy = self.root / 'openxmb-c5'
         self.log = self.root / 'webosbrew'
         self.log.mkdir()
@@ -70,7 +72,7 @@ class SetupFixture(unittest.TestCase):
             self.owners[target] = (uid, gid)
         os_view.fchown = change_owner
         os_view.geteuid = lambda: 0
-        self.patches = patch.multiple(startup, os=os_view, APP_DIR=str(self.app), BASE=str(self.base),
+        self.patches = patch.multiple(startup, os=os_view, APP_DIR=str(self.app), BASE=str(self.base), MUSIC_DIR=str(self.music),
             LEGACY_BASE=str(self.legacy), CACHE=self.cache, LEGACY_CACHE=self.old_cache,
             LOG_DIR=str(self.log), BUNDLE_SHA256='fixture')
         self.patches.start()
@@ -137,14 +139,14 @@ class SetupFixture(unittest.TestCase):
     def test_optional_music_path_is_created_without_a_track(self):
         result, _ = self.run_setup()
         self.assertTrue(result['ready'])
-        self.assertEqual(os.readlink(self.app / 'user-music.mp3'), str(self.base / 'music/background.mp3'))
-        self.assertTrue((self.base / 'music').is_dir())
-        self.assertFalse((self.base / 'music/background.mp3').exists())
-        self.assertEqual(stat.S_IMODE((self.base / 'music').stat().st_mode), 0o755)
+        self.assertEqual(os.readlink(self.app / 'user-music.mp3'), str(self.music / 'background.mp3'))
+        self.assertTrue(self.music.is_dir())
+        self.assertFalse((self.music / 'background.mp3').exists())
+        self.assertEqual(stat.S_IMODE(self.music.stat().st_mode), 0o755)
 
     def test_music_survives_link_loss_and_repeated_upgrade_preparation(self):
         self.run_setup()
-        track = self.base / 'music/background.mp3'
+        track = self.music / 'background.mp3'
         track.write_bytes(b'user owned recording fixture')
         before = (track.stat().st_ino, track.read_bytes())
         (self.app / 'user-music.mp3').unlink()  # installer replaced the app tree
@@ -174,11 +176,32 @@ class SetupFixture(unittest.TestCase):
         self.base.mkdir()
         outside = self.root / 'outside-dir'
         outside.mkdir()
-        (self.base / 'music').symlink_to(outside)
+        self.music.symlink_to(outside)
         result, _ = self.run_setup()
         self.assertTrue(result['ready'])
         self.assertEqual(list(outside.iterdir()), [])
         self.assertFalse(os.path.lexists(self.app / 'user-music.mp3'))
+
+    def test_legacy_music_link_is_repointed_without_moving_or_overwriting_tracks(self):
+        legacy = self.base / 'music/background.mp3'
+        legacy.parent.mkdir(parents=True)
+        legacy.write_bytes(b'old private track')
+        self.music.mkdir()
+        current = self.music / 'background.mp3'
+        current.write_bytes(b'existing public track')
+        before = [(p.stat().st_ino, p.read_bytes()) for p in (legacy, current)]
+        (self.app / 'user-music.mp3').symlink_to(legacy)
+        self.run_setup()
+        self.assertEqual(os.readlink(self.app / 'user-music.mp3'), str(current))
+        self.assertEqual([(p.stat().st_ino, p.read_bytes()) for p in (legacy, current)], before)
+        self.assertFalse(list(self.app.glob('.user-music-*')))
+
+    def test_unavailable_media_storage_is_optional_and_does_not_create_private_music(self):
+        self.music.parent.rmdir()
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertFalse((self.base / 'music').exists())
+        self.assertIn('music_path_unavailable', (self.log / startup.LOG_NAME).read_text())
 
     def test_existing_settings_and_rollback_values_migrate_byte_for_byte(self):
         self.legacy.mkdir()

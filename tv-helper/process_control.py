@@ -19,7 +19,7 @@ HOME = 'org.local.openxmb.c5'
 BASE = '/var/lib/lg-xmb'
 RUNTIME = '/tmp/lg-xmb-controls'
 APPINFO = '/media/developer/apps/usr/palm/applications/' + HOME + '/appinfo.json'
-PIN_APPINFO_SHA256 = '1aaeb80b98594b30fec8423a12eb9c90f2d03c07923b0a2e8d544230ad5089d2'
+PIN_APPINFO_SHA256 = '29d4addb60f2dabbc18e4019c3af21661e4ba49bf3c406c8c0017cf29e2638b1'
 PRELOAD_FILE = '/var/preferences/webos-preload-manager-conf.json'
 ITEMS = {
  'home': {'title': 'LG Home', 'group': 'apps', 'app': 'com.webos.app.home', 'exe': '/usr/bin/flutter-client', 'description': 'Open it from Settings when needed. It closes again after you return.'},

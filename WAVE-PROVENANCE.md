@@ -128,3 +128,10 @@ The spline and particle band move up by 0.20 clip-space units (10% of output
 height: 108 pixels at 1080p), towards the PS3 menu reference. The classic shader
 and Canvas2D fallback move by the same fraction. Geometry, sampling, lighting,
 FXAA, timing and particle trajectories are unchanged.
+
+## Band placement (0.1.24)
+
+Move the spline and particles up another 0.20 clip-space units: 10% of the output
+height relative to 0.1.23, 20% relative to 0.1.22. Both now add 0.03 to their Y
+coordinate. Classic WebGL and Canvas2D use a 0.03 lookup offset instead of 0.23.
+Sampling, geometry, colours and filtering are unchanged.
