@@ -15,7 +15,7 @@ const cliStateDir = path.join(projectDir, '.build', 'cli-state');
 const cliDir = path.join(projectDir, 'node_modules', '@webos-tools', 'cli');
 const cli = path.join(cliDir, 'bin', 'ares-package.js');
 const expectedId = 'org.local.openxmb.c5';
-const expectedVersion = '0.1.28';
+const expectedVersion = '0.1.29';
 const packagePath = path.join(outputDir, `${expectedId}_${expectedVersion}_all.ipk`);
 const verifyOnly = process.argv.includes('--verify-only');
 

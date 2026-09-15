@@ -17,11 +17,11 @@ This feature does not need the root helper or change names on the TV.
 
 ## Menu motion
 
-Switching categories moves the horizontal bar and gently slides/fades the new
-vertical column on a shared 180 ms timeline. Only one list is drawn; there is no
-overlapping outgoing copy. Repeated navigation retains the current fade and bar
-position, and selection/launching remain immediate. Reduced motion disables the
-transition. Selected icons stay larger and brighter, without a background glow.
+Left/right uses the same short CSS transform transition as up/down. The
+horizontal bar glides to the selected category; its icon scales into focus.
+The vertical list stays anchored instead of sliding sideways or fading as a
+whole. Repeated input retargets the current transition, without queuing effects
+or resetting the final position. Reduced motion disables menu transitions.
 
 ## Wave particles
 
