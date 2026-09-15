@@ -135,3 +135,29 @@ Move the spline and particles up another 0.20 clip-space units: 10% of the outpu
 height relative to 0.1.23, 20% relative to 0.1.22. Both now add 0.03 to their Y
 coordinate. Classic WebGL and Canvas2D use a 0.03 lookup offset instead of 0.23.
 Sampling, geometry, colours and filtering are unchanged.
+
+## Monthly gradients and particle depth (0.1.25)
+
+`app/wave-colors.js` adapts the exact 24 endpoint colours and angles from
+`ps3xmbwave/background-gradients-day.js` and `background-gradients-night.js` at
+reference commit `1ec453a9dddec5448d615116ff428349f42d454e`. It preserves the
+reference's top-down UV projection, corner normalization and smoothstep blend
+from `spline.js`. Original mode preserves RGB defaults 37/89/179, top/bottom
+multipliers 0.09/0.62 and the top blue-channel factor 1.2. The source project's
+MIT notice is retained. No extracted DDS assets are included.
+
+Current theme is the upgrade default. Explicit Day/Night selection is manual;
+there is no time-based switching. Preset/RGB modes replace only the renderer's
+background and softly tint its waves/particles. The settings panel stays dark
+for readability. Both backdrop and FXAA's composited background use the same
+uniforms. Classic WebGL also uses them; Canvas2D approximates the same smoothstep
+with 17 stops. Changing a colour does not recreate geometry or framebuffers,
+advance a frozen clock, or override stored quality settings.
+
+The particle extension is our approximation of the requested left-to-right fan
+and depth-of-field, not recovered PS3 particle code. It retains the upstream seed
+layout and twinkle, but adds depth-scaled drift/size, horizontal density shaping,
+a widening vertical envelope, and analytically soft, dimmer out-of-focus discs.
+No blur textures, sound effects, audio analysis or second animation loop are
+added. The inherited extra 10% upward shift and synchronized 180 ms menu timeline
+from 0.1.24 remain unchanged.

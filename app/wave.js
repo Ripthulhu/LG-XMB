@@ -26,6 +26,7 @@
   // Vulkan push constants become WebGL uniforms; the composition is darkened
   // and moved below the menu. Deferred WebGL restores the original rich mask
   // and crossing detail; Canvas2D is only a compatibility fallback.
+  var colors = global.LGXMBWaveColors;
   var FRAGMENT = [
     'precision PRECISION float;',
     'varying vec2 vUV;',
@@ -34,6 +35,7 @@
     'uniform float uBrightness;',
     'uniform vec3 uBackground;',
     'uniform vec3 uWave;',
+    colors ? colors.shader : '',
     'float hash12(vec2 p) {',
     '  vec3 p3 = fract(vec3(p.xyx) * 0.1031);',
     '  p3 += dot(p3, p3.yzx + 33.33);',
@@ -75,6 +77,7 @@
     '  float vignette = 1.0 - smoothstep(0.18,1.65,length((uv - 0.5) * vec2(1.4,1.8)));',
     '  vec3 color = uBackground * mix(0.5,1.0,uv.y);',
     '  color += uWave * (leftGlow * 0.035 + horizon * 0.016);',
+    colors ? '  if(uColorEnabled) { color=presetBackground(uv); vignette=1.0; }' : '',
     '  float g0; float g1; float g2; float g3; float g4;',
     '  float c0 = ribbon_mask(p + vec2(0.00,0.012),0.2,uTime,0.022,g0);',
     '  float c1 = ribbon_mask(p + vec2(0.16,-0.018),1.1,uTime,0.017,g1);',
@@ -138,6 +141,7 @@
     this.canvas = canvas;
     this.background = color('#08101c');
     this.wave = color('#518aab');
+    this.palette = null;
     this.reducedMotion = false;
     this.paused = false;
     this.documentHidden = !!document.hidden;
@@ -340,6 +344,7 @@
       background:gl.getUniformLocation(this.program,'uBackground'),wave:gl.getUniformLocation(this.program,'uWave'),
       brightness:gl.getUniformLocation(this.program,'uBrightness')
     };
+    if(colors) this.colorUniforms=colors.locations(gl,this.program);
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
     this.mode = 'webgl'; this.error = null;
     this._resetTiming(); this._resize(); this._resume();
@@ -490,12 +495,13 @@
       gl.uniform1f(this.uniforms.brightness,this.brightness);
       gl.uniform3fv(this.uniforms.background,this.background);
       gl.uniform3fv(this.uniforms.wave,this.wave);
+      if(colors) colors.upload(gl,this.colorUniforms,this.palette);
       gl.drawArrays(gl.TRIANGLES,0,3);
       if (this.ps3Surface) {
         var renderChanged = false;
         try {
           this.ps3Surface.configure(this.ps3Quality);
-          renderChanged = this.ps3Surface.draw(this.time,this.wave,this.brightness,this.canvas.width,this.canvas.height,this.background);
+          renderChanged = this.ps3Surface.draw(this.time,this.wave,this.brightness,this.canvas.width,this.canvas.height,this.background,this.palette);
         }
         catch (error) { this._cancel(); this._failGpu(error); renderChanged = true; }
         if (renderChanged && this.onRenderStatus) this.onRenderStatus();
@@ -532,6 +538,8 @@
     var surface = document.createElement('canvas');
     surface.width = w; surface.height = h;
     var ctx = surface.getContext('2d',{alpha:false});
+    if(colors && this.palette) colors.paint(ctx,w,h,this.palette);
+    else {
     var bg = ctx.createLinearGradient(0,0,w*0.4,h);
     bg.addColorStop(0,rgb(this.background,1));
     bg.addColorStop(1,rgb(this.background.map(function (v) { return v*0.5; }),1));
@@ -539,6 +547,7 @@
     var halo = ctx.createRadialGradient(w*0.25,h*0.69,0,w*0.25,h*0.69,w*0.65);
     halo.addColorStop(0,rgb(this.wave,0.07)); halo.addColorStop(1,rgb(this.wave,0));
     ctx.fillStyle = halo; ctx.fillRect(0,0,w,h);
+    }
     this.backgroundSurface = surface;
     var tint = this.wave.map(function (v,i) { return v*0.75+[0.70,0.84,0.96][i]*0.25; });
     this.strokeStyles = []; this.points = [];
@@ -600,6 +609,8 @@
     theme = theme || {};
     this.background = color(theme.background,this.background);
     this.wave = color(theme.wave,this.wave);
+    this.palette = colors ? colors.resolve(theme.colors) : null;
+    if(this.palette) this.wave = this.palette.tint.slice();
     this.backgroundSurface = null;
     this._draw();
   };

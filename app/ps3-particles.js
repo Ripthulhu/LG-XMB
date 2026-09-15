@@ -10,27 +10,42 @@
   var VERTEX = [
     'precision highp float; attribute vec3 aSeed;',
     'uniform float uTime; uniform float uRatio; uniform float uSizeScale;',
-    'uniform vec2 uPointRange; varying mediump float vAlpha;',
+    'uniform vec2 uPointRange; varying mediump float vAlpha; varying mediump float vDefocus;',
     'void main() {',
-    '  gl_PointSize=clamp((aSeed.z*1.5+2.6)*uSizeScale,uPointRange.x,uPointRange.y);',
+    // Recover a uniform depth seed from the reference's size-biased random seed.
+    '  float depth=pow(clamp(aSeed.z-0.1,0.0,1.0),0.125);',
+    '  float perspective=2.6/(1.2+depth*3.2);',
+    '  vDefocus=smoothstep(0.08,0.55,abs(depth-0.52));',
+    '  float sharpSize=(aSeed.z*1.5+2.6)*perspective;',
+    '  float spread=vDefocus*(2.0+(1.0-depth)*7.0);',
+    '  float spriteSize=sharpSize+spread;',
+    '  gl_PointSize=clamp(spriteSize*uSizeScale,uPointRange.x,uPointRange.y);',
     '  float time=uTime*0.18;',
-    '  float x=fract(time*(aSeed.x-0.5)/15.0+aSeed.y*50.0)*2.0-1.0;',
+    // A narrow distant stream on the left broadens towards the viewer/right.
+    '  float travel=fract(time*(aSeed.x-0.5)*perspective/15.0+aSeed.y*50.0);',
+    '  float across=pow(travel,1.25);',
+    '  float x=across*2.0-1.0;',
     '  float y=sin(sign(aSeed.y)*time*(aSeed.y+1.5)/4.0+aSeed.x*100.0)',
     '          /((6.0-aSeed.x*4.0*aSeed.y)/uRatio);',
     '  float opVar=mix(sin(time*(aSeed.x+0.5)*12.0+aSeed.y*10.0),',
     '    sin(time*(aSeed.y+1.5)*6.0+aSeed.x*4.0),y*0.5+0.5)*aSeed.x+aSeed.y;',
-    '  vAlpha=opVar*opVar*(1.0-fract(aSeed.x+time*0.00285));',
-    // Match the vertical shift of our spline; keep the upstream trajectories.
+    '  y*=mix(0.46,1.65,across)*perspective;',
+    // Larger out-of-focus discs carry less peak energy; wrap out of view softly.
+    '  float energy=clamp(sharpSize*sharpSize/(spriteSize*spriteSize),0.18,1.0);',
+    '  float wrapFade=smoothstep(0.0,0.045,travel)*(1.0-smoothstep(0.955,1.0,travel));',
+    '  vAlpha=opVar*opVar*(1.0-fract(aSeed.x+time*0.00285))*energy*wrapFade;',
+    // Share the spline's raised band; this is independent of audio.
     '  gl_Position=vec4(x,y+0.03,0.0,1.0);',
     '}'
   ].join('\n');
   var FRAGMENT = [
-    'precision PRECISION float; varying mediump float vAlpha;',
+    'precision PRECISION float; varying mediump float vAlpha; varying mediump float vDefocus;',
     'uniform vec3 uWave; uniform float uBrightness;',
     'void main() {',
     '  vec2 c=gl_PointCoord*2.0-1.0; float d=dot(c,c);',
     '  if(d>1.0) discard;',
-    '  float sparkle=(1.0-d)*(1.0-d);',
+    '  float edge=1.0-smoothstep(0.45,1.0,d);',
+    '  float sparkle=mix((1.0-d)*(1.0-d),exp(-d*3.0)*edge,vDefocus);',
     '  float a=clamp(vAlpha*0.75*sparkle*uBrightness,0.0,1.0);',
     '  gl_FragColor=vec4(mix(vec3(1.0),uWave,0.16)*a,0.0);',
     '}'

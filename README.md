@@ -101,3 +101,16 @@ This project is not affiliated with LG or Sony.
 
 The wave background uses a PS3-style spline surface with an OpenXMB/Canvas fallback.
 See [renderer provenance](WAVE-PROVENANCE.md) for sources and limitations.
+
+## Wave colours
+
+Open **Settings → Waves → Wave colours**. **Current theme** keeps the existing
+Appearance palette. **Monthly presets** provides January–December and explicit
+Day/Night variants from the reference project. **Original (RGB Sliders)** exposes
+red, green, blue, top intensity and bottom intensity. Choices apply immediately
+and are saved independently of quality settings. Day/Night is a manual choice,
+not an automatic schedule. Back returns to Waves.
+
+Particles now form a narrower field on the left that spreads towards the right.
+Depth-dependent movement, size and soft focus create a floating-space effect;
+this is a visual approximation, not an audio-reactive effect.

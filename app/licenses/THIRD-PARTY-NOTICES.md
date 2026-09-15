@@ -65,3 +65,8 @@ software licence does not grant rights to any recording.
 The PS3-style particle layer also adapts Mart/linkev's `particles.js` and
 `particles-settings.js` at the revision documented in WAVE-PROVENANCE.md; its
 MIT notice is included as `app/licenses/PS3-XMB-MIT.txt`.
+
+The monthly Day/Night colour tables and gradient interpolation in
+`app/wave-colors.js` also adapt Mart/linkev's MIT-licensed reference at the
+revision listed in WAVE-PROVENANCE.md. No DDS images or music recordings are
+included. The depth-of-field particle extension is an LG-XMB adaptation.

@@ -174,8 +174,11 @@
     return true;
   };
 
+  var colors = root.LGXMBWaveColors;
   var BACKGROUND_COLOR = [
+    colors ? colors.shader : '',
     'vec3 backgroundColor(vec2 uv,vec3 background,vec3 wave) {',
+    colors ? '  if(uColorEnabled) return presetBackground(uv);' : '',
     '  float gradient = smoothstep(0.0,1.0,1.0-uv.y);',
     '  vec3 top = background*0.75 + wave*0.035;',
     '  vec3 bottom = background*0.9 + wave*0.15;',
@@ -256,7 +259,7 @@
     var shaders = [], programs = [], buffers = [], texture = null, framebuffer = null;
     var geometry = null, uniformWave, uniformBrightness, attribute, normalAttribute, quadAttribute, texel, sampler;
     var complete = false, dead = false, width = 0, height = 0;
-    var resolvedUniform, backgroundUniform, tintUniform;
+    var resolvedUniform, backgroundUniform, tintUniform, colorUniforms;
     var particles = null, particlesTried = false, particleError = null, particleCount = 0;
     var post = null, postTried = false, postError = null, postMode = 'off', postReason = null;
     var settings = quality(options), meshDetail = null, allocationKey = null, effectiveScale = 0, fallback = null;
@@ -443,9 +446,10 @@
         resolvedUniform = gl.getUniformLocation(compositeProgram,'uResolved');
         backgroundUniform = gl.getUniformLocation(compositeProgram,'uBackground');
         tintUniform = gl.getUniformLocation(compositeProgram,'uWave');
+        if(colors) colorUniforms=colors.locations(gl,compositeProgram);
         complete = true;
       },
-      draw: function (time,wave,brightness,targetWidth,targetHeight,background) {
+      draw: function (time,wave,brightness,targetWidth,targetHeight,background,palette) {
         if (!complete || dead) return;
         var resized = resize(targetWidth,targetHeight), remeshed = updateMesh();
         var beforePost = postMode+'|'+postReason;
@@ -477,6 +481,7 @@
           gl.uniform1i(sampler,0); gl.uniform2f(texel,radius/targetWidth,radius/targetHeight);
           gl.uniform1i(resolvedUniform,filtered ? 1 : 0);
           gl.uniform3fv(backgroundUniform,background || [0,0,0]); gl.uniform3fv(tintUniform,wave);
+          if(colors) colors.upload(gl,colorUniforms,palette);
           // With postprocessing, write display RGB and coverage once, without blending.
           // Otherwise retain the original premultiplied composite directly to canvas.
           if (filtered) gl.disable(gl.BLEND);
