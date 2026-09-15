@@ -87,6 +87,20 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#items>.item')].every((n,i)=>n===inputRows[i])),true);
       assert.equal(await page.locator('#items .above-bar').count(),3);
       assert.equal(await page.evaluate(()=>C5App.getState().item),'com.webos.app.hdmi4');
+      const verticalWork=await page.evaluate(()=>{
+        const bar=document.getElementById('categories'),emblem=document.getElementById('detailEmblem');
+        const icon=emblem.firstChild,observer=new MutationObserver(()=>{});
+        observer.observe(bar,{attributes:true,childList:true,subtree:true});
+        menuPress('ArrowUp');menuPress('ArrowDown');
+        const writes=observer.takeRecords().length;observer.disconnect();
+        return {writes,sameIcon:emblem.firstChild===icon,
+          selected:document.querySelector('#items [aria-selected="true"]').id,
+          detail:C5App.getState().detailItem};
+      });
+      assert.equal(verticalWork.writes,0,'vertical navigation must not rewrite the horizontal bar');
+      assert.equal(verticalWork.sameIcon,true,'HDMI rows share the existing detail SVG');
+      assert.equal(verticalWork.selected,'item-3');
+      assert.equal(verticalWork.detail,'com.webos.app.hdmi4');
       const burst=await page.evaluate(()=>{
         for(let i=0;i<40;i++)menuPress(i%2?'ArrowLeft':'ArrowRight');
         const bar=document.getElementById('categories');

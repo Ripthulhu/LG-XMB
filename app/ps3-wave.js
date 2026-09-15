@@ -28,11 +28,13 @@
     this.heights = new Float32Array((columns + 1) * (rows + 1));
     this.descriptors = new Uint8Array(0x2200);
     this.table = new Float32Array(TABLE_SIZE * 4);
+    this.tableReady = new Uint8Array(TABLE_SIZE);
     this.kernel = new Float32Array(KERNEL_SIZE * 4);
     this.samples = new Float32Array(16);
     this.controls = new Float32Array(CONTROL_COUNT);
     this.basis = new Float32Array((columns + 1) * 4);
     this.segments = new Uint8Array(columns + 1);
+    this.columnWork = new Float64Array((columns + 1) * 5);
     this.time = null;
     this.dirty = true;
     this.bounds = {minY:0,maxY:0};
@@ -60,23 +62,29 @@
     }
   }
 
-  SplineSurface.prototype._kernel = function (time) {
-    var table = this.table, descriptors = this.descriptors, kernel = this.kernel;
-    var phase = time * 0.18 * 0.65;
-    var entry, lane, block;
-    for (entry = 0; entry < TABLE_SIZE; entry++) {
-      for (lane = 0; lane < 4; lane++) {
-        var raw = 0;
-        for (block = 0; block < 4; block++) {
-          var at = (entry*0x130 + block*16 + lane*4 + entry%7) % descriptors.length;
-          var centered = descriptors[at]/255*2 - 1;
-          var harmonic = Math.sin(entry*0.07 + block*0.91 + lane*1.37 + phase*0.23);
-          raw += (centered*0.75 + harmonic*0.25) * WEIGHTS[block];
-        }
-        var divisor = Math.max(Math.abs(NORM_B[lane]), 0.05) * (NORM_B[lane] < 0 ? -1 : 1);
-        table[entry*4 + lane] = Math.tanh((raw - NORM_A[lane]) / divisor * 0.08);
+  SplineSurface.prototype._tableEntry = function (entry, phase) {
+    if (this.tableReady[entry]) return;
+    var table = this.table, descriptors = this.descriptors;
+    for (var lane = 0; lane < 4; lane++) {
+      var raw = 0;
+      for (var block = 0; block < 4; block++) {
+        var at = (entry*0x130 + block*16 + lane*4 + entry%7) % descriptors.length;
+        var centered = descriptors[at]/255*2 - 1;
+        var harmonic = Math.sin(entry*0.07 + block*0.91 + lane*1.37 + phase*0.23);
+        raw += (centered*0.75 + harmonic*0.25) * WEIGHTS[block];
       }
+      var divisor = Math.max(Math.abs(NORM_B[lane]), 0.05) * (NORM_B[lane] < 0 ? -1 : 1);
+      table[entry*4 + lane] = Math.tanh((raw - NORM_A[lane]) / divisor * 0.08);
     }
+    this.tableReady[entry] = 1;
+  };
+
+  SplineSurface.prototype._kernel = function (time) {
+    var table = this.table, kernel = this.kernel;
+    var tablePhase = time * 0.18 * 0.65, phase, lane, block;
+    // Only the two entries at each of 32 cursors are read. Evaluate those
+    // exact entries once per frame, rather than all 361 (no time quantization).
+    this.tableReady.fill(0);
     // Use elapsed animation time, not render count: repainting a still frame
     // must not move it, and the 30 fps cap must not change the smoothing rate.
     var temporal = this.time === null ? 0 : Math.pow(0.84, Math.max(0, time - this.time)*60);
@@ -88,6 +96,7 @@
         var base = (19*(word >> 4) + (word & 15)) % TABLE_SIZE;
         var cursor = wrap(base + Math.sin(phase + lane*0.77)*0.006*TABLE_SIZE, TABLE_SIZE);
         var first = Math.floor(cursor), second = (first + 1) % TABLE_SIZE;
+        this._tableEntry(first, tablePhase); this._tableEntry(second, tablePhase);
         for (var component = 0; component < 4; component++) {
           samples[lane*4 + component] = mix(table[first*4 + component], table[second*4 + component], cursor-first);
         }
@@ -138,22 +147,34 @@
       }
     }
     var vertices = this.vertices, minY = Infinity, maxY = -Infinity;
+    // These terms depend on the column, not the row. Float64 retains the
+    // original Number precision; no lookup-table approximation or mesh change.
+    var work = this.columnWork;
+    for (x = 0; x <= columns; x++) {
+      var px = x/columns*2 - 1, column = x*5;
+      var shifted = wrap(x/columns - flow*0.04, 1)*columns;
+      work[column] = px;
+      work[column+1] = (Math.cos(px*2 - time*0.5)*0.09 - 0.1)*0.9999 +
+        0.12*Math.sin(px*0.306001 + flow*0.25);
+      work[column+2] = Math.sin(px*5.67726 + flow)*0.05;
+      work[column+3] = Math.floor(shifted);
+      work[column+4] = shifted - work[column+3];
+    }
     for (row = 0; row <= rows; row++) {
+      z = row/rows*2 - 1;
+      var rowZ = z + Math.cos(z*2.88782 + flow)*0.06;
       for (x = 0; x <= columns; x++) {
-        var px = x/columns*2 - 1;
-        z = row/rows*2 - 1;
-        var pz = z + Math.cos(z*2.88782 + flow)*0.06;
-        var baseWave = (Math.cos(px*2 - time*0.5)*0.09 - 0.1)*0.9999 +
-          0.12*Math.sin(px*0.306001 + flow*0.25);
+        column = x*5;
+        px = work[column];
+        var pz = rowZ, baseWave = work[column+1];
         var structured = 0.0998587*0.07*(
           Math.sin((px*0.306001*6 + pz*0.5)*4.07658 + flow*0.7)*0.5 +
           Math.sin((px*0.306001*10 - pz*0.8)*2.03829 - flow*0.35)*0.25);
-        var py = heights[row*stride+x] + Math.sin(px*5.67726 + flow)*0.05 - softClip((baseWave+structured)*0.5);
+        var py = heights[row*stride+x] + work[column+2] - softClip((baseWave+structured)*0.5);
         if (py < minY) minY = py;
         if (py > maxY) maxY = py;
-        var shifted = wrap(x/columns - flow*0.04, 1)*columns;
-        var left = Math.floor(shifted), right = Math.min(columns, left+1);
-        pz -= mix(heights[row*stride+left], heights[row*stride+right], shifted-left)*0.08;
+        var left = work[column+3], right = Math.min(columns, left+1);
+        pz -= mix(heights[row*stride+left], heights[row*stride+right], work[column+4])*0.08;
         var at = (row*stride+x)*7;
         vertices[at] = px; vertices[at+1] = py; vertices[at+2] = pz; vertices[at+3] = z;
       }
@@ -163,9 +184,10 @@
     // Smooth surface normals avoid per-triangle highlights and also remove
     // the derivative-extension requirement on older WebGL implementations.
     for (row = 0; row <= rows; row++) {
+      var above = Math.max(0,row-1)*stride, below = Math.min(rows,row+1)*stride;
       for (x = 0; x <= columns; x++) {
         var l = (row*stride+Math.max(0,x-1))*7, r = (row*stride+Math.min(columns,x+1))*7;
-        var u = (Math.max(0,row-1)*stride+x)*7, d = (Math.min(rows,row+1)*stride+x)*7;
+        var u = (above+x)*7, d = (below+x)*7;
         var ax = vertices[r]-vertices[l], ay = vertices[r+1]-vertices[l+1], az = vertices[r+2]-vertices[l+2];
         var bx = vertices[d]-vertices[u], by = vertices[d+1]-vertices[u+1], bz = vertices[d+2]-vertices[u+2];
         var nx = ay*bz-az*by, ny = az*bx-ax*bz, nz = ax*by-ay*bx;

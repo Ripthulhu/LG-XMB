@@ -152,6 +152,7 @@
     this.speed = 1;
     this.brightness = 1;
     this.lastFrame = 0;
+    this.nextFrame = 0;
     this.raf = 0;
     this.initRaf = 0;
     this.compileRaf = 0;
@@ -576,7 +577,7 @@
     if (this.compileRaf) global.cancelAnimationFrame(this.compileRaf);
     this.initRaf = 0;
     this.compileRaf = 0;
-    this.raf = 0; this.lastFrame = 0;
+    this.raf = 0; this.lastFrame = 0; this.nextFrame = 0;
     this._resetTiming();
   };
 
@@ -596,10 +597,15 @@
     if (this.destroyed || this.contextLost || this.paused || this.reducedMotion || document.hidden) return;
     this._sampleTiming(now);
     if (!this.lastFrame) this.lastFrame = now;
-    var delta = now-this.lastFrame;
-    if (delta >= 1000/(this.mode === 'canvas2d' ? 20 : 30)-0.5) {
-      this.time += Math.min(delta/1000,0.1)*0.70*this.speed;
+    var interval = 1000/(this.mode === 'canvas2d' ? 20 : 30);
+    if (!this.nextFrame) this.nextFrame = this.lastFrame+interval;
+    if (now >= this.nextFrame-0.5) {
+      this.time += Math.min((now-this.lastFrame)/1000,0.1)*0.70*this.speed;
       this.lastFrame = now;
+      // Retain the 30/20 Hz phase after a late callback. Resetting the deadline
+      // to 'now' loses the remainder and can turn small jitter into 50 ms gaps.
+      // Skip missed deadlines; never queue catch-up draws or advance time twice.
+      this.nextFrame += (Math.floor((now-this.nextFrame+0.5)/interval)+1)*interval;
       this._draw();
     }
     if (!this.raf) this.raf = global.requestAnimationFrame(this._tickBound);
