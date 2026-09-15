@@ -3,6 +3,8 @@ const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
+const appVersion=require('../app/appinfo.json').version;
+assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
 (async()=>{
  const browser=await chromium.launch({channel:process.env.PLAYWRIGHT_CHANNEL||'msedge',headless:true});
  const dir=path.resolve(__dirname,'../qa');fs.mkdirSync(dir,{recursive:true});
@@ -74,7 +76,7 @@ const path=require('node:path');
  assert.deepEqual(await page.evaluate(()=>window.mainBackCalls),['stock']);assert.match(await page.locator('#toast').innerText(),/LG Home/);
  await page.evaluate(()=>{window.C5TV=window.mainBackBridge;delete window.mainBackBridge;delete window.mainBackCalls;});checks.push('The Settings LG Home shortcut explicitly opens the original launcher');
  for(let i=0;i<8&&(await page.evaluate(()=>C5App.getState())).item!=='about';i++)await page.keyboard.press('ArrowDown');
- assert.equal((await page.evaluate(()=>C5App.getState())).item,'about');await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'about');assert.match(await page.locator('#modalIntro').innerText(),/\b0\.1\.28\b/);await page.keyboard.press('Escape');checks.push('About identifies version 0.1.29');
+ assert.equal((await page.evaluate(()=>C5App.getState())).item,'about');await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'about');assert.equal(await page.locator('#modalIntro').innerText(),'Version '+appVersion);await page.keyboard.press('Escape');checks.push('About identifies manifest version '+appVersion);
  const prefs=await page.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')));assert.deepEqual(Object.keys(prefs).sort(),['backBehavior','motion','musicEnabled','musicVolume','previewMode','sound','theme','waveBrightness','waveColors','waveDetail','waveMSAA','waveParticleCount','waveParticles','wavePostprocess','waveSampling','waveSmoothing','waveSoftness','waveSpeed']);checks.push('Only appearance, wave, sound, preview and Back preferences stored; no usage history');
  assert.ok(requests.every(url=>url.startsWith('http://127.0.0.1:8765/')));assert.deepEqual(errors,[]);checks.push('No external requests or JavaScript errors');
  // Release completed pages before running the independent renderer fixtures.
