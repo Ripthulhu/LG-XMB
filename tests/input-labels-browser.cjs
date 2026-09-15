@@ -166,8 +166,11 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     checks.push('Cleared native names restore HDMI labels; markup is displayed literally and never loaded as an image');
 
     await page.getByRole('button', {name: 'Settings', exact: true}).click();
-    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+    // Settings can gain rows; navigate by the stable item ID, not an old offset.
+    for (let i = 0; i < 12 && (await state()).item !== 'previews'; i++) await page.keyboard.press('ArrowDown');
+    assert.equal((await state()).item, 'previews');
     await page.keyboard.press('Enter');
+    assert.equal((await state()).modal, 'previews');
     await page.getByRole('button', {name: 'Live', exact: true}).click();
     await page.keyboard.press('Escape');
     for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
