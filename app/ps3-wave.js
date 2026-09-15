@@ -35,6 +35,7 @@
     this.segments = new Uint8Array(columns + 1);
     this.time = null;
     this.dirty = true;
+    this.bounds = {minY:0,maxY:0};
     var index = 0, x, y, i;
     for (y = 0; y < rows; y++) {
       for (x = 0; x < columns; x++) {
@@ -136,7 +137,7 @@
           this.basis[basis+2]*cp[seg+2] + this.basis[basis+3]*cp[seg+3];
       }
     }
-    var vertices = this.vertices;
+    var vertices = this.vertices, minY = Infinity, maxY = -Infinity;
     for (row = 0; row <= rows; row++) {
       for (x = 0; x <= columns; x++) {
         var px = x/columns*2 - 1;
@@ -148,6 +149,8 @@
           Math.sin((px*0.306001*6 + pz*0.5)*4.07658 + flow*0.7)*0.5 +
           Math.sin((px*0.306001*10 - pz*0.8)*2.03829 - flow*0.35)*0.25);
         var py = heights[row*stride+x] + Math.sin(px*5.67726 + flow)*0.05 - softClip((baseWave+structured)*0.5);
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
         var shifted = wrap(x/columns - flow*0.04, 1)*columns;
         var left = Math.floor(shifted), right = Math.min(columns, left+1);
         pz -= mix(heights[row*stride+left], heights[row*stride+right], shifted-left)*0.08;
@@ -155,6 +158,8 @@
         vertices[at] = px; vertices[at+1] = py; vertices[at+2] = pz; vertices[at+3] = z;
       }
     }
+    this.bounds.minY = minY - 1e-6;
+    this.bounds.maxY = maxY + 1e-6;
     // Smooth surface normals avoid per-triangle highlights and also remove
     // the derivative-extension requirement on older WebGL implementations.
     for (row = 0; row <= rows; row++) {
@@ -215,22 +220,23 @@
   ].join('\n');
 
   var COMPOSITE_VERTEX = [
-    'attribute vec2 aPosition; varying vec2 vUV;',
-    'void main() { vUV=(aPosition+1.0)*0.5; gl_Position=vec4(aPosition,0.0,1.0); }'
+    'attribute vec2 aPosition; varying vec2 vUV; uniform vec2 uOutputBand;',
+    'void main() { vUV=(aPosition+1.0)*0.5; vUV.y=uOutputBand.x+vUV.y*uOutputBand.y; gl_Position=vec4(aPosition,0.0,1.0); }'
   ].join('\n');
   var COMPOSITE_FRAGMENT = [
     'precision PRECISION float; varying vec2 vUV;',
-    'uniform sampler2D uSurface; uniform vec2 uTexel;',
+    'uniform sampler2D uSurface; uniform vec2 uTexel; uniform vec2 uSurfaceBand;',
     'uniform bool uResolved; uniform vec3 uBackground; uniform vec3 uWave;',
     BACKGROUND_COLOR,
     'void main() {',
     // A small separable-kernel equivalent softens the mesh at grazing edges.
     // RGBA8 is WebGL 1 core; no floating-point/filtering extension is needed.
-    '  vec4 color=texture2D(uSurface,vUV)*0.25;',
-    '  color+=(texture2D(uSurface,vUV+vec2(uTexel.x,0.0))+texture2D(uSurface,vUV-vec2(uTexel.x,0.0)))*0.125;',
-    '  color+=(texture2D(uSurface,vUV+vec2(0.0,uTexel.y))+texture2D(uSurface,vUV-vec2(0.0,uTexel.y)))*0.125;',
-    '  color+=(texture2D(uSurface,vUV+uTexel)+texture2D(uSurface,vUV-uTexel))*0.0625;',
-    '  color+=(texture2D(uSurface,vUV+vec2(uTexel.x,-uTexel.y))+texture2D(uSurface,vUV+vec2(-uTexel.x,uTexel.y)))*0.0625;',
+    '  vec2 surfaceUV=vec2(vUV.x,(vUV.y-uSurfaceBand.x)/uSurfaceBand.y);',
+    '  vec4 color=texture2D(uSurface,surfaceUV)*0.25;',
+    '  color+=(texture2D(uSurface,surfaceUV+vec2(uTexel.x,0.0))+texture2D(uSurface,surfaceUV-vec2(uTexel.x,0.0)))*0.125;',
+    '  color+=(texture2D(uSurface,surfaceUV+vec2(0.0,uTexel.y))+texture2D(uSurface,surfaceUV-vec2(0.0,uTexel.y)))*0.125;',
+    '  color+=(texture2D(uSurface,surfaceUV+uTexel)+texture2D(uSurface,surfaceUV-uTexel))*0.0625;',
+    '  color+=(texture2D(uSurface,surfaceUV+vec2(uTexel.x,-uTexel.y))+texture2D(uSurface,surfaceUV+vec2(-uTexel.x,uTexel.y)))*0.0625;',
     // RGB is the complete display background; A remains wave coverage for the
     // optional opacity-aware detector. The final post-process outputs alpha 1.
     '  if(uResolved) color.rgb += backgroundColor(vUV,uBackground,uWave)*(1.0-color.a);',
@@ -243,8 +249,9 @@
 
   function quality(options, previous) {
     options = options || {};
-    previous = previous || {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal',particles:false,particleCount:2000};
+    previous = previous || {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal',particles:false,particleCount:2000,msaa:0};
     return {
+      msaa:[0,2,4].indexOf(options.msaa) >= 0 ? options.msaa : previous.msaa || 0,
       sampling:SAMPLE_SCALES.indexOf(options.sampling) >= 0 ? options.sampling : previous.sampling,
       detail:Object.prototype.hasOwnProperty.call(GRIDS,options.detail) ? options.detail : previous.detail,
       softness:[0,0.75,1.5].indexOf(options.softness) >= 0 ? options.softness : previous.softness,
@@ -259,10 +266,12 @@
     var shaders = [], programs = [], buffers = [], texture = null, framebuffer = null;
     var geometry = null, uniformWave, uniformBrightness, attribute, normalAttribute, quadAttribute, texel, sampler;
     var complete = false, dead = false, width = 0, height = 0;
-    var resolvedUniform, backgroundUniform, tintUniform, colorUniforms;
+    var outputBandUniform, surfaceBandUniform, resolvedUniform, backgroundUniform, tintUniform, colorUniforms;
     var particles = null, particlesTried = false, particleError = null, particleCount = 0;
     var post = null, postTried = false, postError = null, postMode = 'off', postReason = null;
     var settings = quality(options), meshDetail = null, allocationKey = null, effectiveScale = 0, fallback = null;
+    var bandRect = null, bandLayout = null, bandPadding = 20, fullHeight = 0, surfaceBottom = 0;
+    var msaa = root.LGXMBWaveMSAA ? root.LGXMBWaveMSAA.create(gl) : null;
     var maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE), viewport = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
     var maxWidth = Math.min(3840,maxTexture,viewport[0]), maxHeight = Math.min(2160,maxTexture,viewport[1]);
     var settingsChanged = true;
@@ -270,6 +279,7 @@
       if (dead) return;
       dead = true;
       if (post) post.destroy(lost); post = null;
+      if (msaa) msaa.destroy(lost); msaa = null;
       if (particles) particles.destroy(lost); particles = null; particleCount = 0;
       if (!lost) {
         shaders.forEach(function(shader) { gl.deleteShader(shader); });
@@ -350,30 +360,56 @@
       geometry = next; meshDetail = settings.detail;
       return true;
     }
+    function updateBand(targetWidth,targetHeight) {
+      var layout = targetWidth+'x'+targetHeight;
+      if (layout !== bandLayout) { bandRect = null; bandLayout = layout; }
+      // Includes a raster/filter guard plus the FXAA shader's bounded edge search.
+      // Pixel-aligned output origin; the mesh uses a shifted FULL virtual viewport,
+      // not a rescaled projection. Fractional SSAA retains its global sample phase.
+      var low = Math.max(0,Math.floor((geometry.bounds.minY+0.03+1)*0.5*targetHeight)-bandPadding);
+      var high = Math.min(targetHeight,Math.ceil((geometry.bounds.maxY+0.03+1)*0.5*targetHeight)+bandPadding);
+      if (bandRect && low >= bandRect.y && high <= bandRect.y+bandRect.height) return;
+      var h = Math.min(targetHeight,Math.max(bandRect ? bandRect.height : 0,Math.ceil((high-low)/32)*32,32));
+      var bottom = Math.max(0,Math.min(targetHeight-h,Math.floor((low+high-h)*0.5)));
+      // Never shrink/reallocate on moving frames. Resize or a new context resets it.
+      bandRect = {x:0,y:bottom,width:targetWidth,height:h};
+    }
     function resize(targetWidth,targetHeight) {
       if (!Number.isFinite(targetWidth) || !Number.isFinite(targetHeight) || targetWidth <= 0 || targetHeight <= 0) {
         throw new RangeError('Invalid spline surface size');
       }
+      updateBand(targetWidth,targetHeight);
+      var region = bandRect;
       var baseScale = Math.min(1,1920/targetWidth,1080/targetHeight);
       var baseWidth = Math.max(1,Math.floor(targetWidth*baseScale));
       var baseHeight = Math.max(1,Math.floor(targetHeight*baseScale));
-      var key = baseWidth+'x'+baseHeight+'@'+settings.sampling;
-      if (allocationKey === key) return false;
+      var key = baseWidth+'x'+baseHeight+'@'+settings.sampling+'#'+region.height;
+      if (allocationKey === key) {
+        surfaceBottom = Math.min(fullHeight-height,Math.floor(region.y*fullHeight/targetHeight));
+        return false;
+      }
       var reason = null, lastWidth = 0, lastHeight = 0;
+      var bandRatio = region.height / targetHeight;
       // Try smaller sample factors only on a real limit/refusal, never on frame timing.
       // Cache that result so an unsupported size is not retried every frame.
       for (var i = 0; i < SAMPLE_SCALES.length; i++) {
         var scale = SAMPLE_SCALES[i];
         if (scale > settings.sampling) continue;
-        if (baseWidth*scale > maxWidth || baseHeight*scale > maxHeight) {
+        var scaledWidth = baseWidth * scale, virtualHeight = Math.floor(baseHeight*scale);
+        var scaledHeight = Math.min(virtualHeight,Math.ceil((virtualHeight*bandRatio+2)/8)*8);
+        if (scaledWidth > maxWidth || virtualHeight > viewport[1] || scaledHeight > maxHeight) {
           reason = reason || 'GPU limit';
           if (scale > 1) continue;
-          scale = Math.min(scale,maxWidth/baseWidth,maxHeight/baseHeight);
+          scale = Math.min(scale,maxWidth/baseWidth,viewport[1]/baseHeight,maxHeight/(baseHeight*bandRatio));
+          scaledWidth = baseWidth * scale;
+          virtualHeight = Math.floor(baseHeight*scale);
+          scaledHeight = Math.min(virtualHeight,Math.ceil((virtualHeight*bandRatio+2)/8)*8);
         }
-        var w = Math.max(1,Math.floor(baseWidth*scale)), h = Math.max(1,Math.floor(baseHeight*scale));
+        var w = Math.max(1,Math.floor(scaledWidth)), h = Math.max(1,Math.floor(scaledHeight));
         if (w === lastWidth && h === lastHeight) continue;
         lastWidth = w; lastHeight = h;
         if (w === width && h === height) {
+          fullHeight = virtualHeight; surfaceBottom = Math.min(fullHeight-h,Math.floor(region.y*fullHeight/targetHeight));
           effectiveScale = scale; fallback = reason; allocationKey = key; return true;
         }
         // Keep the previous texture alive until a replacement is complete. A failed
@@ -386,7 +422,7 @@
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+            gl.texImage2D(gl.TEXTURE_2D,0,typeof gl.renderbufferStorageMultisample === 'function' && typeof gl.RGBA8 === 'number' ? gl.RGBA8 : gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
             var error = gl.getError();
             if (error === gl.CONTEXT_LOST_WEBGL) throw new Error('Spline context lost');
             if (error === gl.NO_ERROR) {
@@ -406,6 +442,7 @@
           if (texture) gl.deleteTexture(texture);
           if (framebuffer) gl.deleteFramebuffer(framebuffer);
           texture = candidate; framebuffer = candidateFbo; width = w; height = h;
+          fullHeight = virtualHeight; surfaceBottom = Math.min(fullHeight-h,Math.floor(region.y*fullHeight/targetHeight));
           effectiveScale = scale; fallback = reason; allocationKey = key; return true;
         }
         reason = 'Surface allocation refused';
@@ -416,7 +453,7 @@
       programs: programs,
       configure: function (options) {
         var next = quality(options,settings);
-        if (next.sampling === settings.sampling && next.detail === settings.detail && next.softness === settings.softness && next.postprocess === settings.postprocess && next.strength === settings.strength && next.particles === settings.particles && next.particleCount === settings.particleCount) return;
+        if (next.msaa === settings.msaa && next.sampling === settings.sampling && next.detail === settings.detail && next.softness === settings.softness && next.postprocess === settings.postprocess && next.strength === settings.strength && next.particles === settings.particles && next.particleCount === settings.particleCount) return;
         settings = next; settingsChanged = true;
       },
       finish: function () {
@@ -441,26 +478,33 @@
         if (attribute < 0 || normalAttribute < 0 || quadAttribute < 0) throw new Error('Spline position attribute missing');
         uniformWave = gl.getUniformLocation(meshProgram,'uWave');
         uniformBrightness = gl.getUniformLocation(meshProgram,'uBrightness');
-        texel = gl.getUniformLocation(compositeProgram,'uTexel');
-        sampler = gl.getUniformLocation(compositeProgram,'uSurface');
+        outputBandUniform = gl.getUniformLocation(compositeProgram,'uOutputBand');
+        surfaceBandUniform = gl.getUniformLocation(compositeProgram,'uSurfaceBand');
         resolvedUniform = gl.getUniformLocation(compositeProgram,'uResolved');
         backgroundUniform = gl.getUniformLocation(compositeProgram,'uBackground');
         tintUniform = gl.getUniformLocation(compositeProgram,'uWave');
         if(colors) colorUniforms=colors.locations(gl,compositeProgram);
+        texel = gl.getUniformLocation(compositeProgram,'uTexel');
+        sampler = gl.getUniformLocation(compositeProgram,'uSurface');
         complete = true;
       },
       draw: function (time,wave,brightness,targetWidth,targetHeight,background,palette) {
         if (!complete || dead) return;
-        var resized = resize(targetWidth,targetHeight), remeshed = updateMesh();
+        var remeshed = updateMesh();
+        var geometryChanged = geometry.update(time);
+        var resized = resize(targetWidth,targetHeight);
         var beforePost = postMode+'|'+postReason;
-        var filtered = preparePost(targetWidth,targetHeight);
+        var filtered = preparePost(bandRect.width,bandRect.height);
+        var beforeMSAA = msaa ? msaa.diagnostics().samples+'|'+msaa.diagnostics().failure : '';
+        var multisampled = msaa && msaa.prepare(settings.msaa,width,height);
         try {
-          gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
-          gl.viewport(0,0,width,height);
+          gl.disable(gl.SCISSOR_TEST);
+          gl.bindFramebuffer(gl.FRAMEBUFFER,multisampled ? msaa.target() : framebuffer);
+          gl.viewport(0,-surfaceBottom,width,fullHeight);
           gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
           gl.useProgram(meshProgram);
           gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer);
-          if (geometry.update(time)) gl.bufferSubData(gl.ARRAY_BUFFER,0,geometry.vertices);
+          if (geometryChanged) gl.bufferSubData(gl.ARRAY_BUFFER,0,geometry.vertices);
           gl.enableVertexAttribArray(attribute); gl.vertexAttribPointer(attribute,4,gl.FLOAT,false,28,0);
           gl.enableVertexAttribArray(normalAttribute); gl.vertexAttribPointer(normalAttribute,3,gl.FLOAT,false,28,16);
           gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);
@@ -468,27 +512,35 @@
           gl.enable(gl.BLEND);
           gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
           gl.drawElements(gl.TRIANGLES,geometry.indices.length,gl.UNSIGNED_SHORT,0);
+          if (multisampled && !msaa.resolve(framebuffer)) {
+            // A refused resolve must not leave a stale/empty image or kill the waves.
+            gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.drawElements(gl.TRIANGLES,geometry.indices.length,gl.UNSIGNED_SHORT,0);
+          }
           gl.disableVertexAttribArray(normalAttribute);
           gl.bindFramebuffer(gl.FRAMEBUFFER,filtered ? post.target() : null);
-          gl.viewport(0,0,targetWidth,targetHeight);
+          if (filtered) gl.viewport(0,0,bandRect.width,bandRect.height);
+          else gl.viewport(bandRect.x,bandRect.y,bandRect.width,bandRect.height);
           gl.useProgram(compositeProgram);
           gl.bindBuffer(gl.ARRAY_BUFFER,quadBuffer);
           gl.enableVertexAttribArray(quadAttribute); gl.vertexAttribPointer(quadAttribute,2,gl.FLOAT,false,0,0);
           gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,texture);
-          // Filter premultiplied RGBA together: alpha-only blur produces dark fringes.
           // Radius is in output pixels, independent of the internal sample factor.
           var radius = Math.max(settings.softness,effectiveScale > 1 ? 0.5 : 0);
-          gl.uniform1i(sampler,0); gl.uniform2f(texel,radius/targetWidth,radius/targetHeight);
+          gl.uniform1i(sampler,0);
+          gl.uniform2f(texel,radius/targetWidth,radius*fullHeight/(targetHeight*height));
+          gl.uniform2f(surfaceBandUniform,surfaceBottom/fullHeight,height/fullHeight);
+          gl.uniform2f(outputBandUniform,bandRect.y/targetHeight,bandRect.height/targetHeight);
           gl.uniform1i(resolvedUniform,filtered ? 1 : 0);
           gl.uniform3fv(backgroundUniform,background || [0,0,0]); gl.uniform3fv(tintUniform,wave);
           if(colors) colors.upload(gl,colorUniforms,palette);
-          // With postprocessing, write display RGB and coverage once, without blending.
-          // Otherwise retain the original premultiplied composite directly to canvas.
           if (filtered) gl.disable(gl.BLEND);
           else gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
           gl.drawArrays(gl.TRIANGLES,0,3);
-          if (filtered) post.render(settings.postprocess,settings.strength);
+          if (filtered) post.render(settings.postprocess,settings.strength,bandRect);
           gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+          gl.viewport(0,0,targetWidth,targetHeight);
           drawParticles(time,targetWidth,targetHeight,wave,brightness);
         } finally {
           gl.disableVertexAttribArray(normalAttribute);
@@ -496,7 +548,8 @@
           gl.viewport(0,0,targetWidth,targetHeight);
           gl.disable(gl.BLEND);
         }
-        var changed = resized || remeshed || settingsChanged || beforePost !== postMode+'|'+postReason; settingsChanged = false;
+        var changed = resized || remeshed || settingsChanged || beforePost !== postMode+'|'+postReason ||
+          (msaa && beforeMSAA !== msaa.diagnostics().samples+'|'+msaa.diagnostics().failure); settingsChanged = false;
         return changed;
       },
       destroy: destroy,
@@ -507,7 +560,13 @@
         postprocess:postMode,requestedPostprocess:settings.postprocess,postprocessFallback:postReason,
         requestedParticles:settings.particles,particleCount:particleCount,requestedParticleCount:settings.particleCount,
         particlesFallback:settings.particles ? particleError : null,
-        strength:settings.strength,postWidth:post ? post.diagnostics().width : 0,postHeight:post ? post.diagnostics().height : 0}; }
+        strength:settings.strength,postWidth:post ? post.diagnostics().width : 0,postHeight:post ? post.diagnostics().height : 0,
+        bandWidth:bandRect ? bandRect.width : 0,bandHeight:bandRect ? bandRect.height : 0,bandBottom:bandRect ? bandRect.y : 0,
+        bandPadding:bandPadding,cropped:true,virtualHeight:fullHeight,surfaceBottom:surfaceBottom,
+        requestedMSAA:settings.msaa,msaaSamples:msaa ? msaa.diagnostics().samples : 0,
+        msaaSupported:msaa ? msaa.diagnostics().supported : [],
+        msaaFallback:settings.msaa ? (msaa ? msaa.diagnostics().failure : 'MSAA module unavailable') : null,
+        msaaBytes:msaa ? msaa.diagnostics().bytes : 0}; }
     };
   }
   root.LGXMBPS3Wave = Object.freeze({backdrop:BACKDROP, create:create, quality:quality, createGeometry:function(columns,rows) {

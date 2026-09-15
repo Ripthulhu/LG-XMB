@@ -66,14 +66,14 @@ test('Independent spline instances and an explicit rewind are deterministic',()=
 test('Mesh renders full HD in RGBA8 and uploads geometry only when time changes',()=>{
   const h=fakeGL(),renderer=api.create(h.gl,'highp');renderer.finish();
   renderer.draw(14,[0.5,0.5,1],1,1920,1080);
-  const diag=renderer.diagnostics();assert.equal(diag.surfaceWidth,1920);assert.equal(diag.surfaceHeight,1080);
+  const diag=renderer.diagnostics();assert.equal(diag.surfaceWidth,1920);assert.ok(diag.surfaceHeight>0&&diag.surfaceHeight<1080);assert.equal(diag.bandWidth,1920);assert.ok(diag.surfaceHeight>=diag.bandHeight && diag.surfaceHeight<=diag.bandHeight+8);
   assert.equal(diag.floatTextures,false);
   renderer.draw(14,[1,0.5,0.5],0.6,1920,1080);
   assert.equal(h.calls.filter(c=>c[0]==='bufferSubData').length,1);
   assert.equal(h.calls.filter(c=>c[0]==='texImage2D').length,1);
   renderer.draw(14.035,[1,0.5,0.5],1,960,540);
   assert.equal(h.calls.filter(c=>c[0]==='bufferSubData').length,2);
-  assert.equal(renderer.diagnostics().surfaceWidth,960);
+  assert.equal(renderer.diagnostics().surfaceWidth,960);assert.ok(renderer.diagnostics().surfaceHeight<540);
   assert.ok(h.calls.filter(c=>c[0]==='texImage2D').every(c=>c[3]==='RGBA'&&c[8]==='UNSIGNED_BYTE'));
   renderer.destroy(false);assert.equal(h.live.size,0);renderer.destroy(false);
 });
@@ -84,9 +84,11 @@ test('Spline surface matches smaller viewports, caps 4K at 1080p and reuses unch
   ]) {
     renderer.draw(14,[1,1,1],1,width,height);
     const diag=renderer.diagnostics();
-    assert.equal(diag.surfaceWidth,expectedWidth);assert.equal(diag.surfaceHeight,expectedHeight);
+    assert.equal(diag.surfaceWidth,expectedWidth);
+    assert.ok(diag.surfaceHeight>0&&diag.surfaceHeight<expectedHeight);
+    assert.equal(diag.bandWidth,width);
   }
-  assert.equal(h.calls.filter(c=>c[0]==='texImage2D').length,3,'A 4K request reuses the full-HD surface');
+  assert.equal(h.calls.filter(c=>c[0]==='texImage2D').length,4,'Each output layout has a pixel-aligned crop');
   assert.equal(h.calls.filter(c=>c[0]==='bufferSubData').length,1,'Resolution changes do not advance the simulation');
   renderer.destroy(false);assert.equal(h.live.size,0);
 });
@@ -115,12 +117,13 @@ test('Supersampling uses bounded dimensions and linear filtering at every preset
   const h=fakeGL(),renderer=api.create(h.gl,'highp');renderer.finish();
   for (const sampling of [1,1.25,1.5,2]) {
     renderer.configure({sampling});renderer.draw(14,[1,1,1],1,1920,1080);
-    const d=renderer.diagnostics();assert.equal(d.surfaceWidth,1920*sampling);assert.equal(d.surfaceHeight,1080*sampling);
+    const d=renderer.diagnostics();assert.equal(d.surfaceWidth,1920*sampling);assert.equal(d.surfaceHeight,Math.ceil((sampling*d.bandHeight+2)/8)*8);
+    assert.ok(d.surfaceHeight<1080*sampling);
     assert.equal(d.requestedScale,sampling);assert.equal(d.effectiveScale,sampling);assert.equal(d.samplingFallback,null);
   }
   assert.ok(h.calls.filter(c=>c[0]==='texParameteri'&&/FILTER$/.test(c[2])).every(c=>c[3]==='LINEAR'));
   renderer.configure({sampling:2});renderer.draw(14,[1,1,1],1,7680,4320);
-  assert.equal(renderer.diagnostics().surfaceWidth,3840);assert.equal(renderer.diagnostics().surfaceHeight,2160);
+  assert.equal(renderer.diagnostics().surfaceWidth,3840);assert.ok(renderer.diagnostics().surfaceHeight<2160);
   renderer.destroy(false);assert.equal(h.live.size,0);
 });
 test('GPU limits, incomplete FBOs and OOM reduce sampling without retrying every frame',()=>{
@@ -166,7 +169,7 @@ test('Quality values are validated independently and configuring never allocates
   assert.equal(d.requestedScale,1.5);assert.equal(d.detail,'high');assert.equal(d.softness,0.75);
   for (const softness of [0,0.75,1.5]) {
     renderer.configure({softness});renderer.draw(14,[1,1,1],1,1920,1080);
-    const call=h.calls.filter(c=>c[0]==='uniform2f').at(-1);
+    const call=h.calls.filter(c=>c[0]==='uniform2f'&&c[1]==='uTexel').at(-1);
     assert.equal(call[2],Math.max(softness,0.5)/1920);
     assert.equal(renderer.diagnostics().softness,softness);
   }
@@ -193,4 +196,33 @@ test('Post-process presets validate independently from retained sampling and geo
   const q=api.quality({sampling:2,detail:'fine',postprocess:'wave',strength:'strong'});
   const next=api.quality({postprocess:'__proto__',strength:Infinity},q);
   assert.equal(next.sampling,2);assert.equal(next.detail,'fine');assert.equal(next.postprocess,'wave');assert.equal(next.strength,'strong');
+});
+
+test('Cropped wave uses the full virtual pixel grid and grows rather than reallocating/shrinking on motion',()=>{
+ const h=fakeGL(),r=api.create(h.gl,'highp',{sampling:1.25,detail:'high'});r.finish();
+ let last=0,allocs=0;
+ for(const t of [0,1,7,14,30,90,180,300,1000,2000]) {
+  r.draw(t,[1,1,1],1,1920,1080);const d=r.diagnostics();
+  assert.ok(d.bandHeight>=last);last=d.bandHeight;
+  assert.equal(d.virtualHeight,1350);assert.equal(d.surfaceWidth,2400);
+  assert.ok(d.surfaceBottom>=0&&d.surfaceBottom+d.surfaceHeight<=1350);
+  assert.ok(h.calls.some(c=>c[0]==='viewport'&&c[2]===-d.surfaceBottom&&c[3]===2400&&c[4]===1350));
+  const mesh=api.createGeometry(256,96);mesh.update(t);
+  // Geometry kernel can depend on previous samples; independently check this frame's stored bounds via the output crop guard.
+  assert.ok(d.bandPadding>=20);assert.ok(d.bandBottom>=0&&d.bandBottom+d.bandHeight<=1080);
+  const count=h.calls.filter(c=>c[0]==='texImage2D').length;
+  if(count>allocs)allocs=count;
+ }
+ assert.ok(allocs<=5,'moving/recentering a fixed-height crop must reuse GPU storage');
+ const before=h.calls.length;r.configure({msaa:4});assert.equal(h.calls.length,before);
+ r.draw(2000,[1,1,1],1,1920,1080);assert.equal(r.diagnostics().requestedMSAA,4);assert.match(r.diagnostics().msaaFallback,/module/);
+ r.destroy(false);assert.equal(h.live.size,0);
+});
+
+test('MSAA preferences validate independently without changing SSAA or geometry',()=>{
+  const before=api.quality({msaa:4,sampling:2,detail:'fine'});
+  for(const value of ['4',8,-1,NaN,Infinity]) {
+    const next=api.quality({msaa:value},before);assert.equal(next.msaa,4);assert.equal(next.sampling,2);assert.equal(next.detail,'fine');
+  }
+  assert.equal(api.quality({msaa:0},before).msaa,0);assert.equal(api.quality({}).msaa,0);
 });

@@ -101,7 +101,8 @@ function setup({ hidden = false, reducedMotion = false, initialize = true,
 test('WebGL context requests a preserved color buffer without extra attachments', () => {
   const h = setup();
   assert.equal(h.contextRequests.length, 1);
-  assert.equal(h.contextRequests[0].type, 'webgl');
+  assert.equal(h.contextRequests[0].type, 'webgl2');
+  assert.equal(h.wave.contextVersion,2);
   assert.equal(h.contextRequests[0].options.preserveDrawingBuffer, true);
   assert.equal(h.contextRequests[0].options.antialias, false);
   assert.equal(h.contextRequests[0].options.depth, false);

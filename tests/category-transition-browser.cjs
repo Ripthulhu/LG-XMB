@@ -1,169 +1,156 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 'use strict';
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-module.exports = async function checkCategoryTransitions(browser, checks, errors, loader) {
-  const load = loader || (page => page.goto('http://127.0.0.1:8765/'));
-  const dir = path.resolve(__dirname, '../qa'); fs.mkdirSync(dir, {recursive:true});
-  function capture() {
-    for (const [name, instance] of [['C5Wave', 'menuWave'], ['LGXMBCategoryTransition', 'menuTransition']]) {
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+module.exports=async function checkCategoryTransitions(browser,checks,errors,loader){
+  const load=loader||(page=>page.goto('http://127.0.0.1:8765/'));
+  const dir=path.resolve(__dirname,'../qa');fs.mkdirSync(dir,{recursive:true});
+  function capture(){
+    for(const [name,instance] of [['C5Wave','menuWave'],['LGXMBCategoryTransition','menuTransition']]){
       let ctor;
-      Object.defineProperty(window, name, {configurable:true, get:() => ctor, set:Original => {
-        ctor = function (...args) { return window[instance] = new Original(...args); };
-        ctor.prototype = Original.prototype; Object.assign(ctor, Original);
+      Object.defineProperty(window,name,{configurable:true,get:()=>ctor,set:Original=>{
+        ctor=function(...args){return window[instance]=new Original(...args);};
+        ctor.prototype=Original.prototype;Object.assign(ctor,Original);
       }});
     }
-    window.menuPress = key => {
-      document.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles:true, cancelable:true}));
-      document.dispatchEvent(new KeyboardEvent('keyup', {key, bubbles:true, cancelable:true}));
+    window.menuPress=key=>{
+      document.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
+      document.dispatchEvent(new KeyboardEvent('keyup',{key,bubbles:true,cancelable:true}));
+    };
+    window.menuSeek=time=>{
+      if(menuTransition.timer!==null){clearTimeout(menuTransition.timer);menuTransition.timer=null;}
+      menuTransition.animations.forEach(a=>{a.pause();a.currentTime=time;});
     };
   }
-  async function create(width, init) {
-    const page = await browser.newPage({viewport:{width,height:width*9/16}});
-    page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(capture); if (init) await page.addInitScript(init);
-    await load(page, [capture, init].filter(Boolean));
-    await page.waitForFunction(() => window.C5App && !['pending','compiling'].includes(C5App.getState().waveMode));
-    // Keep the actual rendered wave frame, not a mock renderer. UI timings are
-    // tested independently of continuous software-GPU work on the CI runner.
-    await page.evaluate(() => menuWave.setPaused(true));
+  async function create(width,init){
+    const page=await browser.newPage({viewport:{width,height:width*9/16}});
+    page.on('pageerror',e=>errors.push(e.message));
+    await page.addInitScript(capture);if(init)await page.addInitScript(init);
+    await load(page,[capture,init].filter(Boolean));
+    await page.waitForFunction(()=>window.C5App&&!['pending','compiling'].includes(C5App.getState().waveMode));
+    await page.evaluate(()=>menuWave.setPaused(true));
     return page;
   }
-  async function seek(page, key) {
-    return page.evaluate(key => {
-      window.departingCategory = document.querySelector('.category.active');
-      menuPress(key);
-      const animations = menuTransition.animations;
-      const timing = animations.map(a => ({start:a.startTime, duration:a.effect.getTiming().duration, easing:a.effect.getTiming().easing}));
-      if (menuTransition.timer !== null) { clearTimeout(menuTransition.timer); menuTransition.timer = null; }
-      animations.forEach(a => { a.pause(); a.currentTime = 100; });
-      const list = document.getElementById('items'), ghost = menuTransition.ghost;
-      const style = el => { const s = getComputedStyle(el); return {x:new DOMMatrix(s.transform).m41,opacity:Number(s.opacity)}; };
-      return {category:C5App.getState().category, item:C5App.getState().item, animations:animations.length, timing,
-        current:style(list), old:ghost && style(ghost), ghostCount:document.querySelectorAll('.items-outgoing').length,
-        listboxes:document.querySelectorAll('[role="listbox"]').length, upper:ghost ? ghost.querySelectorAll('.above-bar').length : 0};
-    }, key);
-  }
-  for (const width of [1280,1920]) {
-    const page = await create(width);
-    try {
-      await page.evaluate(() => { menuPress('ArrowLeft'); menuPress('ArrowDown'); menuPress('ArrowDown'); menuPress('ArrowDown'); });
-      await page.waitForTimeout(200); // allow the pre-existing vertical row movement to settle
-      let frame = await seek(page, 'ArrowRight');
-      assert.equal(frame.category, 'watch'); assert.ok(frame.animations >= 3);
-      assert.ok(frame.timing.every(a => a.duration === 180 && a.start === frame.timing[0].start && a.easing === frame.timing[0].easing)); assert.equal(frame.upper, 3);
-      assert.equal(frame.ghostCount, 1); assert.equal(frame.listboxes, 1);
-      assert.ok(frame.current.x > 0 && frame.old.x < 0); assert.ok(frame.current.opacity > 0 && frame.current.opacity < 1);
-      assert.ok(frame.old.opacity > 0 && frame.old.opacity < 1);
-      const safe = await page.evaluate(() => {
-        const ghost = menuTransition.ghost, selected = document.querySelector('#items .selected');
-        const ids = [...document.querySelectorAll('[id]')].map(n => n.id);
-        const after = getComputedStyle(selected, '::after'), before = getComputedStyle(selected, '::before');
-        return {uniqueIds:new Set(ids).size === ids.length, hidden:ghost.getAttribute('aria-hidden'),
-          disabled:[...ghost.querySelectorAll('button')].every(b => b.disabled && b.tabIndex === -1),
-          pointer:getComputedStyle(ghost).pointerEvents, media:ghost.querySelectorAll('audio,video,img').length,
-          glow:after.backgroundImage, glowContent:after.content, markerShadow:before.boxShadow,
-          categoryShadow:getComputedStyle(document.querySelector('.category.active'),'::after').boxShadow,
-          iconScale:new DOMMatrix(getComputedStyle(selected.querySelector('.item-icon')).transform).a};
+  for(const width of [1280,1920]){
+    const page=await create(width);
+    try{
+      await page.evaluate(()=>{
+        menuPress('ArrowLeft');menuPress('ArrowDown');menuPress('ArrowDown');menuPress('ArrowDown');
+        window.originalInputRows=[...document.querySelectorAll('#items .item')];
       });
-      assert.equal(safe.uniqueIds, true); assert.equal(safe.hidden, 'true'); assert.equal(safe.disabled, true);
-      assert.equal(safe.pointer, 'none'); assert.equal(safe.media, 0); assert.equal(safe.glow, 'none');
-      assert.ok(['none', 'normal'].includes(safe.glowContent)); assert.equal(safe.markerShadow, 'none'); assert.equal(safe.categoryShadow, 'none');
-      assert.ok(safe.iconScale > 1);
-      const alignment = await page.evaluate(() => {
-        const bar = document.getElementById('categories'), list = document.getElementById('items');
-        const active = document.querySelector('.category.active'), old = departingCategory;
-        const frames = [];
-        // An item's column starts one viewport-percent right of the category box.
-        const gap = innerWidth * 0.01;
-        for (const time of [0, 30, 60, 90, 120, 150, 175]) {
-          menuTransition.animations.forEach(a => {a.pause(); a.currentTime = time;});
-          frames.push({time, incoming:list.getBoundingClientRect().left-active.getBoundingClientRect().left-gap,
-            outgoing:menuTransition.ghost.getBoundingClientRect().left-old.getBoundingClientRect().left-gap,
-            bar:new DOMMatrix(getComputedStyle(bar).transform).m41});
+      await page.waitForTimeout(200);
+      const cost=await page.evaluate(()=>{
+        const counts={styleReads:0,layoutReads:0,clones:0};
+        const style=window.getComputedStyle,rect=Element.prototype.getBoundingClientRect,clone=Node.prototype.cloneNode;
+        window.getComputedStyle=function(...a){counts.styleReads++;return style.apply(this,a);};
+        Element.prototype.getBoundingClientRect=function(...a){counts.layoutReads++;return rect.apply(this,a);};
+        Node.prototype.cloneNode=function(...a){counts.clones++;return clone.apply(this,a);};
+        try{menuPress('ArrowRight');}finally{window.getComputedStyle=style;Element.prototype.getBoundingClientRect=rect;Node.prototype.cloneNode=clone;}
+        return {...counts,category:C5App.getState().category,animations:menuTransition.animations.length,
+          ghosts:document.querySelectorAll('.items-outgoing').length,listboxes:document.querySelectorAll('[role=listbox]').length};
+      });
+      assert.deepEqual(cost,{styleReads:0,layoutReads:0,clones:0,category:'watch',animations:2,ghosts:0,listboxes:1});
+      const frames=await page.evaluate(()=>{
+        const list=document.getElementById('items'),active=document.querySelector('.category.active');
+        const timing=menuTransition.animations.map(a=>({start:a.startTime,...a.effect.getTiming()}));
+        const frames=[];
+        for(const time of [0,30,60,90,120,150,175]){
+          menuSeek(time);
+          frames.push({time,gap:list.getBoundingClientRect().left-active.getBoundingClientRect().left-innerWidth*.01,
+            opacity:Number(getComputedStyle(list).opacity),x:new DOMMatrix(getComputedStyle(list).transform).m41});
         }
-        return frames;
+        return {timing,frames};
       });
-      for (const f of alignment) {
-        assert.ok(Math.abs(f.incoming) < 0.15, `incoming column detaches at ${f.time} ms: ${JSON.stringify(f)}`);
-        assert.ok(Math.abs(f.outgoing) < 0.15, `outgoing column detaches at ${f.time} ms: ${JSON.stringify(f)}`);
-      }
-      // Reverse while partly through the same transition: no horizontal snap.
-      const reversal = await page.evaluate(() => {
-        menuTransition.animations.forEach(a => { a.pause(); a.currentTime = 70; });
-        const nodes = [...document.querySelectorAll('.category')];
-        const positions = nodes.map(n => n.getBoundingClientRect().left);
-        menuPress('ArrowLeft');
-        const starts = menuTransition.animations.map(a => a.startTime);
-        menuTransition.animations.forEach(a => { a.pause(); a.currentTime = 0; });
-        return {deltas:nodes.map((n,i) => n.getBoundingClientRect().left-positions[i]),starts};
+      assert.ok(frames.timing.every(a=>a.start===frames.timing[0].start&&a.duration===180&&a.easing===frames.timing[0].easing));
+      assert.equal(frames.frames[0].opacity,0);
+      assert.ok(frames.frames.at(-1).opacity>.95);
+      for(const f of frames.frames)assert.ok(Math.abs(f.gap)<.15,'column/category mismatch: '+JSON.stringify(f));
+      const reversed=await page.evaluate(()=>{
+        menuSeek(70);
+        const nodes=[...document.querySelectorAll('.category')],positions=nodes.map(n=>n.getBoundingClientRect().left);
+        menuPress('ArrowLeft');menuSeek(0);
+        return {delta:nodes.map((n,i)=>n.getBoundingClientRect().left-positions[i]),item:C5App.getState().item,
+          same:originalInputRows.every((row,i)=>row===document.querySelectorAll('#items .item')[i]),upper:document.querySelectorAll('#items .above-bar').length};
       });
-      assert.ok(reversal.deltas.every(d => Math.abs(d) < 0.15), 'rapid reversal must keep rendered category positions');
-      assert.ok(reversal.starts.every(t => t === reversal.starts[0]), 'reversal uses a single start time');
-      await seek(page, 'ArrowRight');
-      await page.screenshot({path:path.join(dir, `menu-swipe-${width}.png`)});
-      await page.evaluate(() => menuTransition.animations[1].finish());
-      await page.waitForFunction(() => !document.querySelector('.items-outgoing'));
-      await page.screenshot({path:path.join(dir, `home-rest-${width}.png`)});
-      frame = await seek(page, 'ArrowLeft');
-      assert.equal(frame.category, 'inputs'); assert.equal(frame.item, 'com.webos.app.hdmi4');
-      assert.ok(frame.current.x < 0 && frame.old.x > 0);
-      const burst = await page.evaluate(() => {
-        for (const key of ['ArrowRight','ArrowRight','ArrowLeft','ArrowRight','ArrowLeft']) menuPress(key);
-        return {category:C5App.getState().category,ghosts:document.querySelectorAll('.items-outgoing').length};
+      assert.ok(reversed.delta.every(x=>Math.abs(x)<.15),'bar jumps on reversal');
+      assert.equal(reversed.same,true);assert.equal(reversed.upper,3);assert.equal(reversed.item,'com.webos.app.hdmi4');
+      await page.evaluate(()=>{menuSeek(100);});
+      await page.screenshot({path:path.join(dir,`menu-swipe-${width}.png`)});
+      await page.evaluate(()=>menuTransition.cancel());
+      await page.screenshot({path:path.join(dir,`home-rest-${width}.png`)});
+      const labels=await page.evaluate(()=>{
+        const input=C5Catalog[0].items[0],old=input.title;
+        menuPress('ArrowRight');input.title='Updated HDMI label';menuPress('ArrowLeft');
+        const text=document.querySelector('#items .item-text').textContent;
+        const aria=document.querySelector('#items .item').getAttribute('aria-label');
+        input.title=old;menuPress('ArrowRight');menuPress('ArrowLeft');
+        return {text,aria};
       });
-      assert.equal(burst.category, 'watch'); assert.equal(burst.ghosts, 1);
-      await page.evaluate(() => menuPress('ArrowDown'));
-      assert.equal(await page.locator('.items-outgoing').count(), 0);
-      const jump = await page.evaluate(() => {
-        const target = document.querySelector('[aria-label="Settings"]');
-        const previous = target.getBoundingClientRect().left;
-        target.click();
-        menuTransition.animations.forEach(a => {a.pause(); a.currentTime=0;});
-        const start = target.getBoundingClientRect().left;
-        const gap = document.getElementById('items').getBoundingClientRect().left - start;
-        return {previous,start,gap};
+      assert.deepEqual(labels,{text:'Updated HDMI label',aria:'Updated HDMI label'});
+      const discovery=await page.evaluate(()=>{
+        document.querySelector('[aria-label=Apps]').click();
+        const cat=C5Catalog.find(c=>c.id==='apps'),before=[...document.querySelectorAll('#items .item')];
+        cat.items.push({id:'test.discovery',title:'Discovered app',icon:'apps',type:'APP',description:'Test',action:'app'});
+        document.querySelector('[aria-label=Watch]').click();document.querySelector('[aria-label=Apps]').click();
+        const after=[...document.querySelectorAll('#items .item')];
+        const result={preserved:before.every((node,i)=>node===after[i]),added:after.length-before.length,
+          last:after.at(-1).getAttribute('aria-label')};
+        cat.items.pop();document.querySelector('[aria-label=Inputs]').click();return result;
       });
-      assert.ok(Math.abs(jump.previous-jump.start)<0.15, 'pointer jump preserves the target category start');
-      assert.ok(Math.abs(jump.gap-width*0.01)<0.15, 'new column follows a multi-category jump');
-      const modal = await page.evaluate(() => {
-        document.querySelector('[aria-label="Settings"]').click(); menuPress('Enter');
-        return {modal:C5App.getState().modal, ghosts:document.querySelectorAll('.items-outgoing').length};
+      assert.deepEqual(discovery,{preserved:true,added:1,last:'Discovered app'});
+      const burst=await page.evaluate(()=>{
+        for(let i=0;i<50;i++){
+          menuPress(i%2?'ArrowLeft':'ArrowRight');
+          if(menuTransition.animations.length!==2)throw Error('unbounded or missing transition');
+        }
+        const ids=[...document.querySelectorAll('[id]')].map(n=>n.id);
+        return {unique:new Set(ids).size===ids.length,ghosts:document.querySelectorAll('.items-outgoing').length};
       });
-      assert.equal(modal.modal, 'appearance'); assert.equal(modal.ghosts, 0);
+      assert.deepEqual(burst,{unique:true,ghosts:0});
+      await page.evaluate(()=>menuPress('ArrowUp'));
+      assert.equal(await page.evaluate(()=>menuTransition.animations.length),0);
+      const jump=await page.evaluate(()=>{
+        const target=document.querySelector('[aria-label=Settings]'),previous=target.getBoundingClientRect().left;
+        target.click();menuSeek(0);
+        return {delta:target.getBoundingClientRect().left-previous,
+          gap:document.getElementById('items').getBoundingClientRect().left-target.getBoundingClientRect().left-innerWidth*.01};
+      });
+      assert.ok(Math.abs(jump.delta)<.15);assert.ok(Math.abs(jump.gap)<.15);
+      // Detached cached rows cannot activate the currently selected category.
+      const stale=await page.evaluate(()=>{originalInputRows[0].click();return C5App.getState().category;});
+      assert.equal(stale,'settings');
+      await page.evaluate(()=>menuPress('Enter'));
+      assert.equal(await page.evaluate(()=>C5App.getState().modal),'appearance');
+      assert.equal(await page.evaluate(()=>menuTransition.animations.length),0);
       await page.keyboard.press('Escape');
-      await page.evaluate(() => {
-        menuPress('ArrowLeft'); window.dispatchEvent(new Event('pagehide'));
+      await page.evaluate(()=>{menuPress('ArrowLeft');window.dispatchEvent(new Event('pagehide'));});
+      assert.equal(await page.evaluate(()=>menuTransition.animations.length),0);
+      const hidden=await page.evaluate(()=>C5App.getState().category);
+      await page.evaluate(()=>menuPress('ArrowLeft'));assert.equal(await page.evaluate(()=>C5App.getState().category),hidden);
+      await page.evaluate(()=>{window.dispatchEvent(new Event('pageshow'));menuPress('ArrowLeft');window.dispatchEvent(new Event('resize'));});
+      assert.equal(await page.evaluate(()=>menuTransition.animations.length),0);
+      const idle=await page.evaluate(()=>{
+        const selected=document.querySelector('#items .selected');
+        return {rows:[...document.querySelectorAll('.item,.category')].map(n=>getComputedStyle(n).willChange),
+          glow:getComputedStyle(selected,'::after').backgroundImage,marker:getComputedStyle(selected,'::before').boxShadow,
+          items:getComputedStyle(document.getElementById('items')).willChange,
+          bar:getComputedStyle(document.getElementById('categories')).willChange};
       });
-      assert.equal(await page.locator('.items-outgoing').count(), 0);
-      const hiddenCategory = await page.evaluate(() => C5App.getState().category);
-      await page.evaluate(() => menuPress('ArrowLeft'));
-      assert.equal(await page.evaluate(() => C5App.getState().category), hiddenCategory);
-      await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
-      await seek(page, 'ArrowLeft');
-      await page.evaluate(() => window.dispatchEvent(new Event('resize')));
-      assert.equal(await page.locator('.items-outgoing').count(), 0);
-      const glow = await page.locator('#items .selected').evaluate(el => getComputedStyle(el,'::after').content);
-      assert.ok(['none','normal'].includes(glow));
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-      checks.push(`${width}px: shared 180 ms bar/column/selection timeline, measured alignment throughout, rapid reversal and pointer-jump continuity, upper labels, safe outgoing copy, immediate input, reversals, modal/hidden/resize cleanup and no selection glow`);
-    } finally { await page.close(); }
+      assert.ok(idle.rows.every(x=>x==='auto'));assert.equal(idle.items,'auto');assert.equal(idle.bar,'auto');
+      assert.equal(idle.glow,'none');assert.equal(idle.marker,'none');
+      checks.push(`${width}px: two container effects, zero explicit layout/style reads or clones per switch, cached rows/fresh HDMI labels, single listbox, shared 180ms alignment, rapid reversal and pointer jump continuity, immediate activation, lifecycle cleanup, no permanent row layers`);
+    }finally{await page.close();}
   }
-  for (const mode of ['reduced','no-animation-api','refused-animation','system-reduced']) {
-    const init = mode === 'reduced' ? () => localStorage.setItem('lg-xmb-preferences-v1', JSON.stringify({motion:'reduced'})) :
-      mode === 'no-animation-api' ? () => { Element.prototype.animate = undefined; } :
-      mode === 'refused-animation' ? () => { Element.prototype.animate = () => {throw Error('Animation refused');}; } :
-      () => localStorage.setItem('lg-xmb-preferences-v1', JSON.stringify({motion:'full'}));
-    const page = await create(1280, init);
-    try {
-      if (mode === 'system-reduced') await page.emulateMedia({reducedMotion:'reduce'});
-      await page.keyboard.press('ArrowRight');
-      assert.equal(await page.locator('.items-outgoing').count(), 0);
-      assert.equal(await page.evaluate(() => C5App.getState().category), 'library');
-      assert.equal(await page.locator('#items').evaluate(el => getComputedStyle(el).opacity), '1');
-      checks.push(`${mode}: immediate usable category with no residual animation`);
-    } finally {await page.close();}
+  for(const mode of ['reduced','system-reduced','no-animation-api','refused-animation']){
+    const init=mode==='reduced'?()=>localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify({motion:'reduced'})):
+      mode==='system-reduced'?()=>{const match=window.matchMedia.bind(window);window.matchMedia=q=>q==='(prefers-reduced-motion: reduce)'?{matches:true,addEventListener(){},removeEventListener(){}}:match(q);}:
+      mode==='no-animation-api'?()=>Element.prototype.animate=undefined:()=>Element.prototype.animate=function(){throw Error('refused');};
+    const p=await create(1280,init);
+    try{
+      await p.evaluate(()=>menuPress('ArrowRight'));
+      const result=await p.evaluate(()=>({category:C5App.getState().category,animations:menuTransition.animations.length,
+        opacity:getComputedStyle(document.getElementById('items')).opacity,ghosts:document.querySelectorAll('.items-outgoing').length}));
+      assert.deepEqual(result,{category:'library',animations:0,opacity:'1',ghosts:0});
+      checks.push(mode+': immediate visible category, no stale effects');
+    }finally{await p.close();}
   }
-  assert.deepEqual(errors, []);
 };

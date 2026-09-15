@@ -28,7 +28,7 @@ module.exports = async function checkWaveQuality(browser, checks, errors) {
     assert.equal(before.preferences.waveSampling,1.5);assert.equal(before.preferences.waveDetail,'high');assert.equal(before.preferences.waveSoftness,0.75);
     assert.equal(before.preferences.theme,'rose');assert.equal(before.preferences.previewMode,'live');assert.equal(before.preferences.backBehavior,'lg');
     await open();
-    assert.equal(await page.locator('.choice-group').count(),10);
+    assert.equal(await page.locator('.choice-group').count(),11);
     assert.equal(await group('Supersampling').getByRole('button',{name:'1.5×',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await group('Mesh detail').getByRole('button',{name:'High',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await group('Edge softness').getByRole('button',{name:'Subtle',exact:true}).getAttribute('aria-pressed'),'true');
@@ -36,7 +36,7 @@ module.exports = async function checkWaveQuality(browser, checks, errors) {
       await group('Supersampling').getByRole('button',{name:label,exact:true}).click();
       const d=(await state()).waveDiagnostics;
       assert.deepEqual([d.backingWidth,d.backingHeight],[1920,1080]);
-      assert.deepEqual([d.surface.surfaceWidth,d.surface.surfaceHeight],[1920*sampling,1080*sampling]);
+      assert.equal(d.surface.surfaceWidth,1920*sampling);assert.equal(d.surface.virtualHeight,1080*sampling);assert.ok(d.surface.surfaceHeight<1080*sampling);
       assert.equal(d.surface.effectiveScale,sampling);assert.equal(d.reducedMotion,true);assert.equal(d.adaptive,false);
       assert.equal(await group('Supersampling').getByRole('button',{name:label,exact:true}).getAttribute('aria-pressed'),'true');
       assert.equal(await group('Supersampling').locator('[aria-pressed="true"]').count(),1);
@@ -93,7 +93,8 @@ module.exports = async function checkWaveQuality(browser, checks, errors) {
     const d=await limited.evaluate(()=>C5App.getState().waveDiagnostics);
     assert.equal(d.pattern,'ps3');assert.equal(d.surface.requestedScale,1.5);assert.equal(d.surface.effectiveScale,1.25);
     await limited.getByRole('button',{name:'Settings',exact:true}).click();await limited.keyboard.press('ArrowDown');await limited.keyboard.press('Enter');
-    assert.match(await limited.locator('#waveRenderStatus').innerText(),/2400 × 1350.*1.25× applied/);
+    assert.ok((await limited.locator('#waveRenderStatus').innerText()).includes('2400 × '+d.surface.surfaceHeight));
+    assert.match(await limited.locator('#waveRenderStatus').innerText(),/1.25× applied/);
     checks.push('Refused supersampling falls back to 1.25× and the Waves menu reports the applied dimensions without rewriting the preference');
   } finally {await limited.close();}
   assert.deepEqual(errors,[]);

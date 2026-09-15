@@ -17,12 +17,23 @@ This feature does not need the root helper or change names on the TV.
 
 ## Menu motion
 
-Switching categories moves the horizontal bar and crossfades/slides the vertical
-column together on one 180 ms timeline in the direction
-of travel, including the items above the category bar. Selection and launching
-remain immediate; rapid reversals replace the current transition rather than
-queuing animations. Reduced motion disables this effect. Selected icons stay
-larger and brighter, without a background glow.
+Switching categories slides the horizontal bar and the incoming vertical column
+on the same 180 ms timeline. Only the new column fades in; outgoing labels do not
+overlap it. Rapid reversals keep the bar's current position instead of queuing
+animations. Menu rows are reused when revisiting a category.
+
+Selection and launching remain immediate. Reduced motion disables the effect.
+Selected icons stay larger and brighter, without a background glow.
+
+## Wave antialiasing
+
+Settings → Waves has **MSAA: Off / 2× / 4×**, separate from supersampling and
+FXAA. MSAA requires WebGL 2; the menu reports the applied count and any fallback.
+It is off by default and does not change existing supersampling preferences.
+For a lower-shading-cost comparison, try **4× MSAA with supersampling Off**.
+Do not enable every quality setting assuming it is free: combining MSAA with
+supersampling adds work. The cropped wave target retains full sample density.
+The older WebGL 1 path remains available when WebGL 2 cannot be created.
 
 ## Wave particles
 

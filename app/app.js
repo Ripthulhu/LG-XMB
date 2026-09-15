@@ -1,7 +1,7 @@
 /* lg-xmb web application, 2026. SPDX-License-Identifier: GPL-3.0-or-later */
 (function(){'use strict';
 var categories=window.C5Catalog, selectedCategory=1, selections=categories.map(function(){return 0;}), busy=false, modalOpen=false, lastDirection=0, toastTimer, announceTimer;
-var preferences={theme:'midnight',motion:'full',sound:false,previewMode:'cached',waveSpeed:'normal',waveBrightness:'normal',backBehavior:'stay',waveSampling:1.5,waveDetail:'high',waveSoftness:0.75,wavePostprocess:'fxaa',waveSmoothing:'normal',musicEnabled:false,musicVolume:0.25,waveParticles:true,waveParticleCount:2000};
+var preferences={theme:'midnight',motion:'full',sound:false,previewMode:'cached',waveSpeed:'normal',waveBrightness:'normal',backBehavior:'stay',waveMSAA:0,waveSampling:1.5,waveDetail:'high',waveSoftness:0.75,wavePostprocess:'fxaa',waveSmoothing:'normal',musicEnabled:false,musicVolume:0.25,waveParticles:true,waveParticleCount:2000};
 var themes={midnight:{name:'Midnight',background:'#050911',wave:'#738acf',accent:'#a7baf3'},ocean:{name:'Ocean',background:'#030e13',wave:'#4da6ab',accent:'#98dfdf'},ember:{name:'Ember',background:'#130906',wave:'#ac6c45',accent:'#eebd96'},forest:{name:'Forest',background:'#040f0b',wave:'#579b7a',accent:'#b0d6bb'},amber:{name:'Amber',background:'#130f05',wave:'#c49a4a',accent:'#e0c998'},rose:{name:'Rose',background:'#13080d',wave:'#b86e8c',accent:'#e6b2c7'},violet:{name:'Violet',background:'#0d0816',wave:'#9678ca',accent:'#c8b5ec'},graphite:{name:'Graphite',background:'#090b0d',wave:'#83939d',accent:'#ccd4d9'},seasonal:{name:'Seasonal',background:'#080813',wave:'#2e2e73',accent:'#b3b3ea'}};
 // Monthly colours are adapted from OpenXMB config.json, shell.theme-month-colours.
 var monthColours=['#f2e6a6','#9e4540','#4da640','#f299cc','#99cc59','#b399e6','#80d9f2','#3373f2','#2e2e73','#994db3','#cc8040','#e64040'];
@@ -9,6 +9,7 @@ var $=function(id){return document.getElementById(id);};
 try{var saved=JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')||localStorage.getItem('openxmb-c5-preferences-v1')||'{}');if(Object.prototype.hasOwnProperty.call(themes,saved.theme))preferences.theme=saved.theme;if(saved.motion==='reduced'||saved.motion==='full')preferences.motion=saved.motion;else if(matchMedia('(prefers-reduced-motion: reduce)').matches)preferences.motion='reduced';preferences.sound=saved.sound===true;preferences.previewMode=saved.previewMode==='live'?'live':'cached';if(['slow','normal','fast'].indexOf(saved.waveSpeed)!==-1)preferences.waveSpeed=saved.waveSpeed;if(['low','normal','high'].indexOf(saved.waveBrightness)!==-1)preferences.waveBrightness=saved.waveBrightness;if(saved.backBehavior==='lg')preferences.backBehavior='lg';}catch(ignore){}
 // New quality preferences are independent of existing appearance and TV settings.
 if(saved && typeof saved === 'object') {
+  if([0,2,4].indexOf(saved.waveMSAA)!==-1)preferences.waveMSAA=saved.waveMSAA;
   if(typeof saved.waveParticles==='boolean')preferences.waveParticles=saved.waveParticles;
   if([500,2000,4000].indexOf(saved.waveParticleCount)!==-1)preferences.waveParticleCount=saved.waveParticleCount;
   preferences.musicEnabled=saved.musicEnabled===true;
@@ -33,7 +34,7 @@ var audioContext, inputLabelRead=null;
 function tick(){if(!preferences.sound||document.hidden)return;try{if(!audioContext)audioContext=new(window.AudioContext||window.webkitAudioContext)();if(audioContext.state==='suspended')audioContext.resume();var oscillator=audioContext.createOscillator(),gain=audioContext.createGain(),now=audioContext.currentTime;oscillator.type='sine';oscillator.frequency.setValueAtTime(660,now);oscillator.frequency.exponentialRampToValueAtTime(440,now+.065);gain.gain.setValueAtTime(.018,now);gain.gain.exponentialRampToValueAtTime(.0001,now+.065);oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start(now);oscillator.stop(now+.07);}catch(ignore){}}
 function save(){try{localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(preferences));}catch(ignore){toast('This device could not save your preference.');}}
 function seasonal(){var colour=monthColours[new Date().getMonth()],rgb=colour.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);});themes.seasonal.wave=colour;themes.seasonal.background='#'+rgb.map(function(v){return Math.max(3,Math.round(v*.07)).toString(16).padStart(2,'0');}).join('');themes.seasonal.accent='#'+rgb.map(function(v){return Math.round(v*.45+255*.55).toString(16).padStart(2,'0');}).join('');}
-function applyPreferences(){if(preferences.motion==='reduced')categoryTransition.cancel();seasonal();var theme=themes[preferences.theme];document.documentElement.style.setProperty('--accent','#ffffff');document.documentElement.style.setProperty('--accent-rgb','255,255,255');document.documentElement.style.setProperty('--background',theme.background);document.documentElement.style.setProperty('--background-rgb',theme.background.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);}).join(','));document.body.classList.toggle('reduced-motion',preferences.motion==='reduced');wave.setTheme(Object.assign({},theme,{colors:preferences.waveColors}));wave.setStyle({speed:{slow:0.5,normal:1.5,fast:2.25}[preferences.waveSpeed],brightness:{low:0.6,normal:1,high:1.5}[preferences.waveBrightness]});wave.setQuality({sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});wave.setReducedMotion(preferences.motion==='reduced');}
+function applyPreferences(){if(preferences.motion==='reduced')categoryTransition.cancel();seasonal();var theme=themes[preferences.theme];document.documentElement.style.setProperty('--accent','#ffffff');document.documentElement.style.setProperty('--accent-rgb','255,255,255');document.documentElement.style.setProperty('--background',theme.background);document.documentElement.style.setProperty('--background-rgb',theme.background.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);}).join(','));document.body.classList.toggle('reduced-motion',preferences.motion==='reduced');wave.setTheme(Object.assign({},theme,{colors:preferences.waveColors}));wave.setStyle({speed:{slow:0.5,normal:1.5,fast:2.25}[preferences.waveSpeed],brightness:{low:0.6,normal:1,high:1.5}[preferences.waveBrightness]});wave.setQuality({msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});wave.setReducedMotion(preferences.motion==='reduced');}
 function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){$('toast').classList.remove('show');},4200);}
 function clearToast(){clearTimeout(toastTimer);$('toast').classList.remove('show');if($('toast').textContent)$('toast').textContent='';}
 function invalidateLaunch(){launchGeneration++;busy=false;$('items').removeAttribute('aria-busy');}
@@ -52,7 +53,33 @@ function renderDetailText(){
 }
 function renderDetail(){renderDetailText();syncInputPreview();}
 function buildCategories(){var nav=$('categories');categories.forEach(function(cat,index){var b=document.createElement('button');b.className='category';b.setAttribute('aria-label',cat.title);b.innerHTML='<span class="category-icon">'+C5Icon(cat.icon)+'</span><span class="category-label"></span>';b.querySelector('.category-label').textContent=cat.title;b.addEventListener('click',function(){if(!busy)selectCategory(index);});nav.appendChild(b);});}
-function buildItems(){var list=$('items');list.textContent='';list.setAttribute('aria-label',categories[selectedCategory].title);categories[selectedCategory].items.forEach(function(item,index){var b=document.createElement('button');b.className='item';b.id='item-'+index;b.setAttribute('role','option');b.setAttribute('aria-label',item.title);b.tabIndex=-1;b.innerHTML='<span class="item-icon">'+C5Icon(item.icon)+'</span><span class="item-text"></span>';b.querySelector('.item-text').textContent=item.title;b.addEventListener('click',function(){if(busy)return;selections[selectedCategory]=index;render();tick();activate();});list.appendChild(b);});}
+// Keep detached rows for each category. Only the active rows enter the DOM;
+// returning to a category reuses its SVGs and listeners instead of parsing again.
+var itemRows = categories.map(function(){return [];});
+function buildItems(){
+  var list=$('items'),cat=categories[selectedCategory],categoryIndex=selectedCategory;
+  var rows=itemRows[categoryIndex],fragment=document.createDocumentFragment();
+  list.textContent='';list.setAttribute('aria-label',cat.title);
+  cat.items.forEach(function(item,index){
+    var cached=rows[index];
+    if(!cached||cached.id!==item.id||cached.icon!==item.icon){
+      var button=document.createElement('button');
+      button.className='item';button.id='item-'+index;button.setAttribute('role','option');button.tabIndex=-1;
+      button.innerHTML='<span class="item-icon">'+C5Icon(item.icon)+'</span><span class="item-text"></span>';
+      button.addEventListener('click',function(){
+        if(busy||categoryIndex!==selectedCategory)return;
+        categoryTransition.cancel();selections[selectedCategory]=index;render();tick();activate();
+      });
+      cached=rows[index]={id:item.id,icon:item.icon,node:button,text:button.querySelector('.item-text')};
+    }
+    // Native HDMI labels and discovered apps can change after a row was cached.
+    if(cached.text.textContent!==item.title)cached.text.textContent=item.title;
+    cached.node.setAttribute('aria-label',item.title);
+    fragment.appendChild(cached.node);
+  });
+  rows.length=cat.items.length;
+  list.appendChild(fragment);
+}
 function render(){var cat=categories[selectedCategory],index=selections[selectedCategory],item=cat.items[index];[].forEach.call($('categories').children,function(button,i){var offset=i-selectedCategory;button.style.transform='translateX(calc(-50% + '+(offset*LGXMBCategoryTransition.DISTANCE)+'vw))';button.classList.toggle('active',offset===0);button.style.opacity=offset===0?'1':Math.abs(offset)>2?'.36':'.5';button.setAttribute('aria-current',offset===0?'true':'false');button.tabIndex=offset===0?0:-1;});[].forEach.call($('items').children,function(button,i){var offset=i-index;button.style.setProperty('--offset',offset);button.style.setProperty('--item-y',(offset*8.4-(offset<0?25:0))+'vh');button.classList.toggle('above-bar',offset<0);button.classList.toggle('selected',offset===0);button.setAttribute('aria-selected',offset===0?'true':'false');var visible=offset>=-3&&offset<=3;button.style.visibility=visible?'visible':'hidden';button.style.opacity=!visible?'0':offset===0?'1':offset<0?String(.48+offset*.10):String(.64-offset*.09);button.setAttribute('aria-hidden',visible?'false':'true');});$('items').setAttribute('aria-activedescendant','item-'+index);renderDetail();announceSelection();}
 function announceSelection(){
   var cat=categories[selectedCategory],index=selections[selectedCategory],item=cat.items[index];
@@ -86,7 +113,7 @@ function row(label,colour,isSelected,handler,parent){var button=document.createE
 function selectChoice(parent,value){[].forEach.call(parent.querySelectorAll('[data-choice]'),function(button){var chosen=button.getAttribute('data-choice')===String(value);button.setAttribute('aria-pressed',String(chosen));button.querySelector('.option-check').textContent=chosen?'✓':'';});}
 function choiceGroup(label,choices,value,handler){var group=document.createElement('section');group.className='choice-group';group.setAttribute('role','group');group.setAttribute('aria-label',label);var title=document.createElement('h3');title.textContent=label;group.appendChild(title);var options=document.createElement('div');options.className='choice-options';group.appendChild(options);choices.forEach(function(choice){var button=row(choice[1],null,value===choice[0],function(){handler(choice[0]);selectChoice(options,choice[0]);},options);button.setAttribute('data-choice',choice[0]);});$('modalContent').appendChild(group);return group;}
 var modalType='';
-function openModal(type){categoryTransition.cancel();if(!modalOpen||modalType!==type)clearToast();if(modalType==='background')C5BackgroundSettings.close();if(modalType==='remote')C5RemoteSettings.close();stopInputPreview();modalType=type;$('modal').classList.toggle('background-settings',type==='background');$('modal').classList.toggle('waves-settings',type==='motion'||type==='music'||type==='wave-colors');$('modal').classList.toggle('appearance-settings',type==='appearance');modalOpen=true;syncInputPreview();document.querySelector('.screen').setAttribute('aria-hidden','true');$('modalBackdrop').hidden=false;$('modalContent').textContent='';$('modalContent').classList.remove('theme-options');$('modalTitle').textContent={appearance:'Appearance',motion:'Waves','wave-colors':'Wave colours',sound:'Navigation sound',music:'Background music',previews:'Input previews',background:'Background activity',remote:'Remote buttons',about:'About this menu'}[type];$('modalIntro').textContent={appearance:'',motion:'','wave-colors':'Monthly gradients and manual RGB controls.',sound:'',music:'Loop your own MP3 while Home is open. Music pauses during live HDMI previews and when you leave Home.',previews:'Live previews can change HDR mode.',background:'Choose what Home keeps closed. Apps can still be opened and close again when you return.',remote:'Home applies across the TV. Back applies in this menu.',about:'Version 0.1.25'}[type];
+function openModal(type){categoryTransition.cancel();if(!modalOpen||modalType!==type)clearToast();if(modalType==='background')C5BackgroundSettings.close();if(modalType==='remote')C5RemoteSettings.close();stopInputPreview();modalType=type;$('modal').classList.toggle('background-settings',type==='background');$('modal').classList.toggle('waves-settings',type==='motion'||type==='music'||type==='wave-colors');$('modal').classList.toggle('appearance-settings',type==='appearance');modalOpen=true;syncInputPreview();document.querySelector('.screen').setAttribute('aria-hidden','true');$('modalBackdrop').hidden=false;$('modalContent').textContent='';$('modalContent').classList.remove('theme-options');$('modalTitle').textContent={appearance:'Appearance',motion:'Waves','wave-colors':'Wave colours',sound:'Navigation sound',music:'Background music',previews:'Input previews',background:'Background activity',remote:'Remote buttons',about:'About this menu'}[type];$('modalIntro').textContent={appearance:'',motion:'','wave-colors':'Monthly gradients and manual RGB controls.',sound:'',music:'Loop your own MP3 while Home is open. Music pauses during live HDMI previews and when you leave Home.',previews:'Live previews can change HDR mode.',background:'Choose what Home keeps closed. Apps can still be opened and close again when you return.',remote:'Home applies across the TV. Back applies in this menu.',about:'Version 0.1.28'}[type];
 if(type==='appearance'){$('modalContent').classList.add('theme-options');Object.keys(themes).forEach(function(key){var button=row(themes[key].name,key==='seasonal'?monthColours[new Date().getMonth()]:themes[key].wave,preferences.theme===key,function(){preferences.theme=key;applyPreferences();save();selectChoice($('modalContent'),key);});button.setAttribute('data-choice',key);});}
 else if(type==='motion'){openWaveSettings();}
 else if(type==='wave-colors'){LGXMBWaveColorSettings.open($('modalContent'),preferences.waveColors,function(value){preferences.waveColors=value;wave.setTheme(Object.assign({},themes[preferences.theme],{colors:value}));save();});}
@@ -105,10 +132,11 @@ function openWaveSettings(){
   function qualityChoice(label,choices,key){
     choiceGroup(label,choices,preferences[key],function(value){
       preferences[key]=value;
-      wave.setQuality({sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});
+      wave.setQuality({msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});
       save();updateWaveStatus();
     });
   }
+  qualityChoice('MSAA',[[0,'Off'],[2,'2×'],[4,'4×']],'waveMSAA');
   qualityChoice('Supersampling',[[1,'Off'],[1.25,'1.25×'],[1.5,'1.5×'],[2,'2×']],'waveSampling');
   qualityChoice('Mesh detail',[['standard','Standard'],['high','High'],['fine','Fine']],'waveDetail');
   qualityChoice('Edge softness',[[0,'Sharp'],[0.75,'Subtle'],[1.5,'Soft']],'waveSoftness');
@@ -117,7 +145,7 @@ function openWaveSettings(){
   qualityChoice('Post-process antialiasing',[['off','Off'],['fxaa','FXAA'],['wave','Wave FXAA']],'wavePostprocess');
   qualityChoice('Smoothing strength',[['gentle','Gentle'],['normal','Normal'],['strong','Strong']],'waveSmoothing');
   var note=document.createElement('p');note.className='wave-quality-note';
-  note.textContent='Higher supersampling and mesh detail use more graphics resources. FXAA smooths edges at the output resolution, without filtering text. Wave FXAA uses wave opacity to find edges; it is experimental. Smoothing strength applies when either filter is enabled.';
+  note.textContent='MSAA smooths geometric edges when WebGL 2 supports it. Try 4× MSAA with supersampling Off first; enabling both adds cost. Higher supersampling and mesh detail use more graphics resources. FXAA smooths edges at the output resolution, without filtering text. Wave FXAA uses wave opacity to find edges; it is experimental. Smoothing strength applies when either filter is enabled.';
   $('modalContent').appendChild(note);
   var status=document.createElement('p');status.id='waveRenderStatus';status.className='wave-quality-note';status.setAttribute('role','status');
   $('modalContent').appendChild(status);updateWaveStatus();
@@ -167,8 +195,10 @@ function updateWaveStatus(){
   if(diag.mode!=='webgl'||diag.pattern!=='ps3'||!surface||!surface.surfaceWidth){
     status.textContent=diag.mode==='pending'||diag.mode==='compiling'?'Preparing waves…':'Compatibility renderer active. Extra quality controls apply to PS3 waves only.';return;
   }
-  status.textContent='Output '+diag.backingWidth+' × '+diag.backingHeight+' · Internal '+surface.surfaceWidth+' × '+surface.surfaceHeight+
+  status.textContent='Output '+diag.backingWidth+' × '+diag.backingHeight+' · Wave surface '+surface.surfaceWidth+' × '+surface.surfaceHeight+(surface.cropped&&surface.bandHeight?' (cropped to '+surface.bandWidth+' × '+surface.bandHeight+' output band)':'')+
     (surface.samplingFallback?' · '+surface.effectiveScale+'× applied ('+surface.samplingFallback.toLowerCase()+').':'')+
+    ' · MSAA '+(surface.msaaSamples ? surface.msaaSamples+'×' : 'Off')+
+    (surface.msaaFallback?' ('+surface.msaaFallback.toLowerCase()+')':'')+
     ' · Filter '+({off:'Off',fxaa:'FXAA',wave:'Wave FXAA'}[surface.postprocess]||'Off')+
     (surface.postWidth?' at '+surface.postWidth+' × '+surface.postHeight:'')+
     (surface.postprocessFallback?' ('+surface.postprocessFallback.toLowerCase()+')':'');

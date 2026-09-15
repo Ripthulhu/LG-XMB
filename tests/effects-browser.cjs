@@ -18,7 +18,7 @@ const path=require('node:path');
     }
     if(!ready)throw new Error('Preview server did not start');
     browser=await chromium.launch({headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-    for(const suite of ['ps3-particles-browser','background-music-browser','wave-quality-browser','wave-post-browser']){
+    for(const suite of ['wave-msaa-browser','ps3-particles-browser','background-music-browser','wave-quality-browser','wave-post-browser']){
       console.log('Effects suite: '+suite);await require('./'+suite+'.cjs')(browser,checks,errors);
     }
     const result={checks,errors,browser:await browser.version(),normalURL:true,testedOnTV:false};
