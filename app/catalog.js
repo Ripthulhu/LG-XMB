@@ -160,6 +160,14 @@ window.C5Catalog=[
         "action": "sound"
       },
       {
+        "id": "music",
+        "title": "Background music",
+        "icon": "music",
+        "type": "SETTING",
+        "description": "Loop background music while Home is open.",
+        "action": "music"
+      },
+      {
         "id": "previews",
         "title": "Input previews",
         "icon": "hdmi",

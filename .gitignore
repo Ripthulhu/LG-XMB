@@ -11,3 +11,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .tools/
+
+# Local preview recording/runtime link; never distribute user music.
+app/user-music.mp3
+app/audio/

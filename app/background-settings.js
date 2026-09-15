@@ -20,7 +20,9 @@ function render(focusId,initial,preserveScroll){
     var items=state.items.filter(function(item){return item.group===group;});if(!items.length)return;
     var section=element('section','background-group');section.appendChild(element('h3','background-heading',group==='apps'?'Apps':'Privacy'));
     items.forEach(function(item){
-      var button=element('button','background-option');button.type='button';button.setAttribute('role','switch');button.setAttribute('aria-label',item.title+': keep closed');button.setAttribute('aria-checked',String(item.enabled));button.setAttribute('aria-disabled',String(!item.supported||!!pending));button.setAttribute('data-process-id',item.id);
+      // The helper's enabled flag means keep closed; the switch means Allow.
+      var allowed=!item.enabled;
+      var button=element('button','background-option');button.type='button';button.setAttribute('role','switch');button.setAttribute('aria-label',item.title+': allow background activity');button.setAttribute('aria-checked',String(allowed));button.setAttribute('aria-disabled',String(!item.supported||!!pending));button.setAttribute('data-process-id',item.id);
       var copy=element('span','background-option-copy');copy.appendChild(element('span','background-option-title',item.title));
       if(item.description){var description=element('span','background-option-description',item.description);description.id='background-description-'+state.items.indexOf(item);button.setAttribute('aria-describedby',description.id);copy.appendChild(description);}
       var status=pendingId===item.id?'Saving…':item.status; if(status)copy.appendChild(element('span','background-option-status',status));

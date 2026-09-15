@@ -26,6 +26,7 @@
   // Vulkan push constants become WebGL uniforms; the composition is darkened
   // and moved below the menu. Deferred WebGL restores the original rich mask
   // and crossing detail; Canvas2D is only a compatibility fallback.
+  var colors = global.LGXMBWaveColors;
   var FRAGMENT = [
     'precision PRECISION float;',
     'varying vec2 vUV;',
@@ -34,6 +35,7 @@
     'uniform float uBrightness;',
     'uniform vec3 uBackground;',
     'uniform vec3 uWave;',
+    colors ? colors.shader : '',
     'float hash12(vec2 p) {',
     '  vec3 p3 = fract(vec3(p.xyx) * 0.1031);',
     '  p3 += dot(p3, p3.yzx + 33.33);',
@@ -69,12 +71,13 @@
     '  vec2 uv = vUV;',
     '  vec2 p = uv * 2.0 - 1.0;',
     '  p.x *= uResolution.x / max(uResolution.y, 1.0);',
-    '  p.y += 0.43;',
+    '  p.y += 0.03;',
     '  float leftGlow = exp(-length((p - vec2(-1.28,0.22)) * vec2(0.64,1.05)) * 1.35);',
     '  float horizon = exp(-abs(p.y + 0.03) * 3.0);',
     '  float vignette = 1.0 - smoothstep(0.18,1.65,length((uv - 0.5) * vec2(1.4,1.8)));',
     '  vec3 color = uBackground * mix(0.5,1.0,uv.y);',
     '  color += uWave * (leftGlow * 0.035 + horizon * 0.016);',
+    colors ? '  if(uColorEnabled) { color=presetBackground(uv); vignette=1.0; }' : '',
     '  float g0; float g1; float g2; float g3; float g4;',
     '  float c0 = ribbon_mask(p + vec2(0.00,0.012),0.2,uTime,0.022,g0);',
     '  float c1 = ribbon_mask(p + vec2(0.16,-0.018),1.1,uTime,0.017,g1);',
@@ -138,6 +141,7 @@
     this.canvas = canvas;
     this.background = color('#08101c');
     this.wave = color('#518aab');
+    this.palette = null;
     this.reducedMotion = false;
     this.paused = false;
     this.documentHidden = !!document.hidden;
@@ -155,6 +159,13 @@
     this.renderer = options && options.renderer === 'canvas2d' ? 'canvas2d' : 'webgl';
     this.qualityIndex = options && options.quality === '720p' ? 1 : options && options.quality === '540p' ? 2 : 0;
     this.adaptive = !(options && options.adaptive === false);
+    this.ps3Quality = {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal',particles:false,particleCount:2000,msaa:0};
+    this.onRenderStatus = options && typeof options.onRenderStatus === 'function' ? options.onRenderStatus : null;
+    this.ps3Surface = null;
+    this.ps3Disabled = !!(options && options.pattern === 'classic');
+    this.pattern = 'classic';
+    this.patternFallback = null;
+    this.position = null;
     this.capabilities = null;
     this.qualityChanges = [];
     this.pendingShaders = null;
@@ -164,6 +175,8 @@
     this.timing = {last:0,start:0,windowStart:0,samples:0,gaps:0,worst:0,badWindows:0,windows:0,lastGapRatio:0};
     this.mode = 'pending';
     this.error = null;
+    this.contextVersion = 0;
+    this.forceWebGL1 = !!(options && options.webglVersion === 1);
     this.gl = null;
     this.ctx = null;
     this.program = null;
@@ -184,6 +197,8 @@
     this._restoredBound = function () {
       if (this.destroyed) return;
       this.contextLost = false;
+      if (this.ps3Surface) this.ps3Surface.destroy(true);
+      this.ps3Surface = null;
       this.program = null; this.buffer = null;
       this.pendingShaders = null;
       this.initialized = false; this.mode = 'pending'; this._resume();
@@ -241,15 +256,27 @@
     var vertex = null;
     var fragment = null;
     try {
-      this.gl = this.canvas.getContext('webgl', options) || this.canvas.getContext('experimental-webgl', options);
+      if (!this.gl && !this.forceWebGL1) {
+        try { this.gl = this.canvas.getContext('webgl2', options); } catch (ignore) {}
+        if (this.gl) this.contextVersion = 2;
+      }
+      if (!this.gl) {
+        this.gl = this.canvas.getContext('webgl', options) || this.canvas.getContext('experimental-webgl', options);
+        if (this.gl) this.contextVersion = 1;
+      }
       if (!this.gl) { this._fallback(); this._resize(); this._resume(); return; }
       var gl = this.gl;
       this._inspectGpu();
       this.parallelCompile = gl.getExtension('KHR_parallel_shader_compile');
       this.compileStarted = nowMs();
       var precision = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+      var shaderPrecision = precision && precision.precision ? 'highp' : 'mediump';
+      var ps3 = !this.ps3Disabled && global.LGXMBPS3Wave;
+      this.pattern = ps3 ? 'ps3' : 'classic';
+      if (this.pattern === 'ps3') this.ps3Surface = ps3.create(gl,shaderPrecision,this.ps3Quality);
       vertex = this._shader(gl.VERTEX_SHADER, VERTEX);
-      fragment = this._shader(gl.FRAGMENT_SHADER, FRAGMENT.replace('PRECISION', precision && precision.precision ? 'highp' : 'mediump'));
+      fragment = this._shader(gl.FRAGMENT_SHADER,
+        (this.ps3Surface ? ps3.backdrop : FRAGMENT).replace('PRECISION', shaderPrecision));
       this.program = gl.createProgram();
       gl.attachShader(this.program, vertex); gl.attachShader(this.program, fragment);
       this.pendingShaders = [vertex,fragment];
@@ -291,7 +318,10 @@
       this.compileRaf = 0;
       if (this.destroyed || this.paused || document.hidden || this.contextLost) return;
       try {
-        if (this.gl.getProgramParameter(this.program,this.parallelCompile.COMPLETION_STATUS_KHR)) this._finishCompile();
+        if (this.gl.getProgramParameter(this.program,this.parallelCompile.COMPLETION_STATUS_KHR) &&
+            (!this.ps3Surface || this.ps3Surface.programs.every(function (program) {
+              return this.gl.getProgramParameter(program,this.parallelCompile.COMPLETION_STATUS_KHR);
+            },this))) this._finishCompile();
         else if (nowMs()-this.compileStarted > 15000) throw new Error('Wave shader compilation exceeded 15 seconds');
         else this._scheduleCompilePoll();
       } catch (e) { this._failGpu(e); }
@@ -307,6 +337,7 @@
       });
       throw new Error(log);
     }
+    if (this.ps3Surface) this.ps3Surface.finish();
     this.compileMs = Math.round(nowMs()-this.compileStarted);
     (this.pendingShaders || []).forEach(function (shader) { gl.deleteShader(shader); });
     this.pendingShaders = null;
@@ -314,7 +345,7 @@
     this.buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER,this.buffer);
     gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
-    var position = gl.getAttribLocation(this.program,'aPosition');
+    var position = this.position = gl.getAttribLocation(this.program,'aPosition');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position,2,gl.FLOAT,false,0,0);
     this.uniforms = {
@@ -322,12 +353,16 @@
       background:gl.getUniformLocation(this.program,'uBackground'),wave:gl.getUniformLocation(this.program,'uWave'),
       brightness:gl.getUniformLocation(this.program,'uBrightness')
     };
+    if(colors) this.colorUniforms=colors.locations(gl,this.program);
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
     this.mode = 'webgl'; this.error = null;
     this._resetTiming(); this._resize(); this._resume();
   };
 
   C5Wave.prototype._failGpu = function (error) {
+    var retryClassic = this.pattern === 'ps3' && !this.ps3Disabled;
+    if (this.ps3Surface) this.ps3Surface.destroy(this.contextLost);
+    this.ps3Surface = null;
     this.error = String(error.message || error);
     var gl = this.gl;
     if (gl && !this.contextLost) {
@@ -336,6 +371,10 @@
       if (this.buffer) gl.deleteBuffer(this.buffer);
     }
     this.pendingShaders = null; this.program = null; this.buffer = null;
+    if (retryClassic) {
+      this.ps3Disabled = true; this.patternFallback = this.error;
+      this._initialize(); return;
+    }
     this._fallback(); this._resize(); this._resume();
   };
 
@@ -434,7 +473,10 @@
   C5Wave.prototype.getDiagnostics = function () {
     // Local diagnostic data only. Scheduling gaps are not GPU execution time.
     return {
-      mode:this.mode,requestedRenderer:this.renderer,capabilities:this.capabilities,
+      mode:this.mode,requestedRenderer:this.renderer,contextVersion:this.contextVersion,capabilities:this.capabilities,
+      pattern:this.mode === 'webgl' ? this.pattern : 'classic',patternFallback:this.patternFallback,
+      renderQuality:Object.assign({},this.ps3Quality),
+      surface:this.ps3Surface ? this.ps3Surface.diagnostics() : null,
       parallelShaderCompile:!!this.parallelCompile,compileMs:this.compileMs,
       quality:this.mode === 'canvas2d' ? '540p' : QUALITY[this.qualityIndex].name,
       backingWidth:this.canvas.width,backingHeight:this.canvas.height,
@@ -453,12 +495,26 @@
       var gl = this.gl;
       gl.viewport(0,0,this.canvas.width,this.canvas.height);
       gl.useProgram(this.program);
+      // The mesh pass shares this context; restore the background vertex binding.
+      gl.bindBuffer(gl.ARRAY_BUFFER,this.buffer);
+      gl.enableVertexAttribArray(this.position);
+      gl.vertexAttribPointer(this.position,2,gl.FLOAT,false,0,0);
       gl.uniform2f(this.uniforms.resolution,this.canvas.width,this.canvas.height);
       gl.uniform1f(this.uniforms.time,this.time);
       gl.uniform1f(this.uniforms.brightness,this.brightness);
       gl.uniform3fv(this.uniforms.background,this.background);
       gl.uniform3fv(this.uniforms.wave,this.wave);
+      if(colors) colors.upload(gl,this.colorUniforms,this.palette);
       gl.drawArrays(gl.TRIANGLES,0,3);
+      if (this.ps3Surface) {
+        var renderChanged = false;
+        try {
+          this.ps3Surface.configure(this.ps3Quality);
+          renderChanged = this.ps3Surface.draw(this.time,this.wave,this.brightness,this.canvas.width,this.canvas.height,this.background,this.palette);
+        }
+        catch (error) { this._cancel(); this._failGpu(error); renderChanged = true; }
+        if (renderChanged && this.onRenderStatus) this.onRenderStatus();
+      }
     } else if (this.ctx) this._draw2d();
   };
 
@@ -474,7 +530,7 @@
       for (var i=0;i<row.length;i+=2) {
         var px = row[i];
         var y = curve(row[i+1],SEEDS[j],this.time)+SEEDS[j]*0.045-0.055-OFFSETS[j][1];
-        var py = (1-(y-0.43))*h*0.5;
+        var py = (1-(y-0.03))*h*0.5;
         if (px===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
       }
       // Three soft strokes approximate the fragment mask, without expensive
@@ -491,6 +547,8 @@
     var surface = document.createElement('canvas');
     surface.width = w; surface.height = h;
     var ctx = surface.getContext('2d',{alpha:false});
+    if(colors && this.palette) colors.paint(ctx,w,h,this.palette);
+    else {
     var bg = ctx.createLinearGradient(0,0,w*0.4,h);
     bg.addColorStop(0,rgb(this.background,1));
     bg.addColorStop(1,rgb(this.background.map(function (v) { return v*0.5; }),1));
@@ -498,6 +556,7 @@
     var halo = ctx.createRadialGradient(w*0.25,h*0.69,0,w*0.25,h*0.69,w*0.65);
     halo.addColorStop(0,rgb(this.wave,0.07)); halo.addColorStop(1,rgb(this.wave,0));
     ctx.fillStyle = halo; ctx.fillRect(0,0,w,h);
+    }
     this.backgroundSurface = surface;
     var tint = this.wave.map(function (v,i) { return v*0.75+[0.70,0.84,0.96][i]*0.25; });
     this.strokeStyles = []; this.points = [];
@@ -543,7 +602,7 @@
       this.lastFrame = now;
       this._draw();
     }
-    this.raf = global.requestAnimationFrame(this._tickBound);
+    if (!this.raf) this.raf = global.requestAnimationFrame(this._tickBound);
   };
 
   C5Wave.prototype._visibility = function () {
@@ -559,6 +618,8 @@
     theme = theme || {};
     this.background = color(theme.background,this.background);
     this.wave = color(theme.wave,this.wave);
+    this.palette = colors ? colors.resolve(theme.colors) : null;
+    if(this.palette) this.wave = this.palette.tint.slice();
     this.backgroundSurface = null;
     this._draw();
   };
@@ -582,6 +643,16 @@
     if (repaint) { this.backgroundSurface = null; this._draw(); }
   };
 
+  C5Wave.prototype.setQuality = function (options) {
+    if (this.destroyed || !global.LGXMBPS3Wave) return;
+    var next = global.LGXMBPS3Wave.quality(options,this.ps3Quality), previous = this.ps3Quality;
+    if (next.msaa === previous.msaa && next.sampling === previous.sampling && next.detail === previous.detail && next.softness === previous.softness &&
+        next.postprocess === previous.postprocess && next.strength === previous.strength && next.particles === previous.particles && next.particleCount === previous.particleCount) return;
+    this.ps3Quality = next;
+    // Apply resources on the next permitted draw, never while hidden or paused.
+    this._draw();
+  };
+
   C5Wave.prototype.setPaused = function (value) {
     value = !!value;
     if (this.destroyed || this.paused === value) return;
@@ -602,6 +673,8 @@
       if (this.media.removeEventListener) this.media.removeEventListener('change',this._motionBound);
       else if (this.media.removeListener) this.media.removeListener(this._motionBound);
     }
+    if (this.ps3Surface) this.ps3Surface.destroy(this.contextLost);
+    this.ps3Surface = null;
     if (this.gl && !this.contextLost) {
       (this.pendingShaders || []).forEach(function (shader) { this.gl.deleteShader(shader); },this);
       if (this.buffer) this.gl.deleteBuffer(this.buffer);

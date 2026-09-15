@@ -30,3 +30,43 @@ That library, LG native runtimes and firmware are not bundled. Product names ide
 ## Development tools
 
 `@webos-tools/cli` 3.2.6 builds and inspects IPKs. Playwright runs browser checks. These development dependencies are not bundled in the TV app and retain their own licenses in their installed packages.
+
+## PlayStation 3 XMB wave reconstruction
+
+Source: https://github.com/linkev/PlayStation-3-XMB
+
+Revision: `1ec453a9dddec5448d615116ff428349f42d454e`.
+Copyright (c) 2025 Mart. MIT License; the full permission and disclaimer are
+included in `app/licenses/PS3-XMB-MIT.txt`.
+
+`app/ps3-wave.js` adapts the synthetic spline displacement, parameter values,
+mesh rendering and Fresnel-style shading from `ps3xmbwave/spline-reverse.js`,
+`spline.js` and `spline-settings.js`. The WebGL 1 port uses reusable CPU mesh
+buffers, time-based smoothing, smooth normals and a soft RGBA8 composite.
+The combined app remains GPL version 3; the MIT notice is preserved in this file
+and the package. The reference credits Alphardex's CodePen as its starting point.
+No Sony firmware code, extracted DDS assets or PlayStation logos are included.
+See `WAVE-PROVENANCE.md` for scope and differences from the reference.
+
+## FXAA edge-search shader
+
+`app/wave-post.js` adapts three.js `examples/jsm/shaders/FXAAShader.js` at
+`caddbf4cd84b62d7edf6b9fc937ca709afdfe915` (MIT; Copyright 2010-2025 three.js
+authors). Upstream credits NVIDIA's FXAA algorithm, Jasper Flick's implementation
+and Dave Hoskins' GLSL port. The full MIT notice is in
+`app/licenses/THREE-FXAA-MIT.txt`. No Three.js runtime dependency is included.
+See `WAVE-PROVENANCE.md` for WebGL 1 changes and the wave-opacity variant.
+
+## User-provided background music
+
+No music recording is distributed. Users supply their own file separately; the
+software licence does not grant rights to any recording.
+
+The PS3-style particle layer also adapts Mart/linkev's `particles.js` and
+`particles-settings.js` at the revision documented in WAVE-PROVENANCE.md; its
+MIT notice is included as `app/licenses/PS3-XMB-MIT.txt`.
+
+The monthly Day/Night colour tables and gradient interpolation in
+`app/wave-colors.js` also adapt Mart/linkev's MIT-licensed reference at the
+revision listed in WAVE-PROVENANCE.md. No DDS images or music recordings are
+included. The depth-of-field particle extension is an LG-XMB adaptation.

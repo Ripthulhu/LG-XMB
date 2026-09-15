@@ -8,13 +8,39 @@ The installed app is called **Home**.
 Navigate apps and inputs with the remote or pointer. Choose a background theme,
 adjust the animated waves, and open LG Home from Settings whenever needed.
 HDMI pictures are cached by an optional root helper; live previews are opt-in
-because they can change HDR mode. The launcher does not include a media player
-or emulator.
+because they can change HDR mode. Optional background music loops your own MP3 while Home is open. There is no general-purpose media player or emulator.
 
 HDMI names follow the TV's input labels when its input service allows the read.
 Names refresh at startup and when returning to Home; the port number remains
 visible in the details. Unavailable reads keep the default or last known name.
 This feature does not need the root helper or change names on the TV.
+
+## Menu motion
+
+Switching categories moves the horizontal bar and gently slides/fades the new
+vertical column on a shared 180 ms timeline. Only one list is drawn; there is no
+overlapping outgoing copy. Repeated navigation retains the current fade and bar
+position, and selection/launching remain immediate. Reduced motion disables the
+transition. Selected icons stay larger and brighter, without a background glow.
+
+## Wave particles
+
+Settings → Waves includes **Particles: On / Off** and **Particle density:
+Low / Normal / High** (500 / 2,000 / 4,000). Normal follows the reference's count.
+The sparkle layer follows Wave speed, brightness, and animation settings; it
+stops with the renderer when Home is hidden. Classic/Canvas fallback omits it.
+
+## Background music
+
+No recording is included in the repository or IPK. Open Home once to prepare
+`/media/internal/lg-xmb/`, then copy your own MP3 there as `background.mp3`.
+Open **Settings → Background music → On**. The menu shows the path and volume
+controls. Music is off by default, starting at 25% volume when enabled.
+
+The file stays outside the installed app and survives upgrades. Playback loops
+while Home is visible and releases its player for live HDMI previews and app
+launches. Missing music does not affect the launcher or helper.
+See [music setup](docs/MUSIC.md) for file transfer and replacement instructions.
 
 ## Compatibility
 
@@ -71,3 +97,19 @@ GNU GPL v3; files permitting later versions retain that permission. Upstream
 copyright and license notices are retained in [LICENSE](LICENSE),
 [third-party notices](THIRD-PARTY-NOTICES.md), and [wave provenance](WAVE-PROVENANCE.md).
 This project is not affiliated with LG or Sony.
+
+The wave background uses a PS3-style spline surface with an OpenXMB/Canvas fallback.
+See [renderer provenance](WAVE-PROVENANCE.md) for sources and limitations.
+
+## Wave colours
+
+Open **Settings → Waves → Wave colours**. **Current theme** keeps the existing
+Appearance palette. **Monthly presets** provides January–December and explicit
+Day/Night variants from the reference project. **Original (RGB Sliders)** exposes
+red, green, blue, top intensity and bottom intensity. Choices apply immediately
+and are saved independently of quality settings. Day/Night is a manual choice,
+not an automatic schedule. Back returns to Waves.
+
+Particles now form a narrower field on the left that spreads towards the right.
+Depth-dependent movement, size and soft focus create a floating-space effect;
+this is a visual approximation, not an audio-reactive effect.

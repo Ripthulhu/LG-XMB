@@ -7,7 +7,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../app/wave.js'), 'utf8');
 
-function setup({ hidden = false, reducedMotion = false, initialize = true } = {}) {
+function setup({ hidden = false, reducedMotion = false, initialize = true,
+  options = {quality: '720p', adaptive: false} } = {}) {
   let frameId = 0;
   let now = 0;
   const frames = new Map();
@@ -80,7 +81,7 @@ function setup({ hidden = false, reducedMotion = false, initialize = true } = {}
     cancelAnimationFrame(id) { frames.delete(id); }
   });
   vm.runInNewContext(source, {window, document, Date, Float32Array, console});
-  const wave = new window.C5Wave(canvas, {quality: '720p', adaptive: false});
+  const wave = new window.C5Wave(canvas, options);
   function frame() {
     now += 1000 / 60;
     const callbacks = [...frames.values()];
@@ -100,7 +101,8 @@ function setup({ hidden = false, reducedMotion = false, initialize = true } = {}
 test('WebGL context requests a preserved color buffer without extra attachments', () => {
   const h = setup();
   assert.equal(h.contextRequests.length, 1);
-  assert.equal(h.contextRequests[0].type, 'webgl');
+  assert.equal(h.contextRequests[0].type, 'webgl2');
+  assert.equal(h.wave.contextVersion,2);
   assert.equal(h.contextRequests[0].options.preserveDrawingBuffer, true);
   assert.equal(h.contextRequests[0].options.antialias, false);
   assert.equal(h.contextRequests[0].options.depth, false);
@@ -295,4 +297,33 @@ test('reduced-motion return applies pending resize once without an animation loo
   assert.equal(h.wave._resize(), false);
   assert.equal(h.metrics.draws, 1);
   assert.equal(h.frames.size, 0);
+});
+
+
+test('Fixed full-HD backing does not downscale after sustained scheduling gaps', () => {
+  const h = setup({options: {quality: '1080p', adaptive: false}});
+  assert.deepEqual([h.canvas.width, h.canvas.height], [1920, 1080]);
+  h.resetMetrics();
+  for (let now = 1000; now <= 31000; now += 50) h.wave._sampleTiming(now);
+  const diagnostics = h.wave.getDiagnostics();
+  assert.equal(diagnostics.quality, '1080p');
+  assert.equal(diagnostics.adaptive, false);
+  assert.equal(diagnostics.qualityChanges.length, 0);
+  assert.ok(diagnostics.scheduling.completedWindows >= 2);
+  assert.deepEqual([h.canvas.width, h.canvas.height], [1920, 1080]);
+  assert.deepEqual(h.metrics.writes, []);
+  assert.equal(diagnostics.targetFps, 30);
+});
+
+test('Full-HD backing remains capped on high-DPI and 4K displays', () => {
+  const h = setup({options: {quality: '1080p', adaptive: false}});
+  h.window.devicePixelRatio = 2;
+  h.wave._resize();
+  assert.deepEqual([h.canvas.width, h.canvas.height], [1920, 1080]);
+  h.canvas.rect = {width: 3840, height: 2160}; h.wave._resize();
+  assert.deepEqual([h.canvas.width, h.canvas.height], [1920, 1080]);
+  h.wave.capabilities.maxViewport = [1024, 1024];
+  h.wave.capabilities.maxRenderbuffer = 1024;
+  h.wave._resize();
+  assert.ok(h.canvas.width <= 1024 && h.canvas.height <= 1024, 'Hard GPU limits still apply');
 });

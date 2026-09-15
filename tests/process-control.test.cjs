@@ -13,9 +13,9 @@ function setup(tv = false) {
   return {client: window.C5ProcessControl, window, storage, localStorage};
 }
 const state = () => ({available: true, revision: 3, items: [{id: 'browser', title: 'Web Browser', group: 'apps', enabled: false, supported: true, description: 'May take longer to open.', status: ''}]});
-test('Desktop background preview defaults only existing LG Home control on and saves choices locally', async () => {
+test('Desktop background preview allows all activity by default and saves keep-closed choices locally', async () => {
   const h = setup(), before = await h.client.getState();
-  assert.deepEqual(Array.from(before.items.filter(item => item.enabled), item => item.id), ['home']);
+  assert.deepEqual(Array.from(before.items.filter(item => item.enabled), item => item.id), []);
   assert.equal(before.items.filter(item => item.group === 'privacy').length, 3);
   const after = await h.client.setEnabled('browser', true, before.revision);
   assert.equal(after.items.find(item => item.id === 'browser').enabled, true);
@@ -51,4 +51,14 @@ test('Failed desktop persistence leaves the confirmed background state unchanged
   const after = await h.client.getState();
   assert.equal(after.revision, 0);
   assert.equal(after.items.find(item => item.id === 'browser').enabled, false);
+});
+
+test('Existing saved keep-closed flags retain their meaning when the switch presentation changes', async () => {
+  const h = setup();
+  const saved = JSON.stringify({revision: 12, enabled: {home: true, browser: false, usage: true}});
+  h.storage.set('lg-xmb-background-preview-v1', saved);
+  const restored = await h.client.getState();
+  assert.equal(restored.revision, 12);
+  assert.deepEqual(Array.from(restored.items.filter(item => item.enabled), item => item.id), ['home', 'usage']);
+  assert.equal(h.storage.get('lg-xmb-background-preview-v1'), saved, 'Reading settings must not invert stored flags');
 });

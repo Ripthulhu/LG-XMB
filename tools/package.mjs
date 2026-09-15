@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import packageFiles from './package-files.cjs';
 import { stageHelper } from './stage-helper.mjs';
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -14,7 +15,7 @@ const cliStateDir = path.join(projectDir, '.build', 'cli-state');
 const cliDir = path.join(projectDir, 'node_modules', '@webos-tools', 'cli');
 const cli = path.join(cliDir, 'bin', 'ares-package.js');
 const expectedId = 'org.local.openxmb.c5';
-const expectedVersion = '0.1.14';
+const expectedVersion = '0.1.28';
 const packagePath = path.join(outputDir, `${expectedId}_${expectedVersion}_all.ipk`);
 const verifyOnly = process.argv.includes('--verify-only');
 
@@ -63,7 +64,7 @@ try {
       if (fs.existsSync(sourcePath)) fs.copyFileSync(sourcePath, path.join(licenseDir, name));
     }
   }
-  for (const relativeName of [appinfo.main, appinfo.icon, 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/UPSTREAM-original.frag', 'licenses/UPSTREAM-config.json']) {
+  for (const relativeName of [appinfo.main, appinfo.icon, 'wave-msaa.js', 'background-music.js', 'ps3-particles.js', 'category-transition.js', 'wave-colors.js', 'wave-color-settings.js', 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/UPSTREAM-original.frag', 'licenses/UPSTREAM-config.json', 'licenses/PS3-XMB-MIT.txt', 'licenses/THREE-FXAA-MIT.txt']) {
     requireCondition(typeof relativeName === 'string' && relativeName.length > 0, 'App entry and icon paths are required.');
     const resolved = path.resolve(appDir, relativeName);
     requireCondition(resolved.startsWith(appDir + path.sep), `App file leaves package directory: ${relativeName}`);
@@ -74,7 +75,8 @@ try {
   if (!verifyOnly) {
     const stagedApp = path.join(projectDir, '.build', 'package', 'app');
     fs.rmSync(path.dirname(stagedApp), {recursive: true, force: true});
-    fs.cpSync(appDir, stagedApp, {recursive: true});
+    fs.cpSync(appDir, stagedApp, {recursive: true,
+      filter: source => packageFiles.includeAppFile(appDir, source)});
     stageHelper(projectDir, stagedApp);
     process.stdout.write(runCli(['--no-minify', '--outdir', outputDir, stagedApp]));
     // The pinned CLI recreates directories with mode 0777. Normalize the IPK,

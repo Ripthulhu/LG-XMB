@@ -16,6 +16,7 @@ import traceback
 # Retained as the upgrade identifier; runtime files use the project name.
 APP_DIR = "/media/developer/apps/usr/palm/applications/org.local.openxmb.c5"
 BASE = "/var/lib/lg-xmb"
+MUSIC_DIR = "/media/internal/lg-xmb"
 LEGACY_BASE = "/var/lib/openxmb-c5"
 CACHE = "/tmp/lg-xmb-thumbnails"
 LEGACY_CACHE = "/tmp/openxmb-c5-thumbnails"
@@ -23,8 +24,11 @@ LOG_DIR = "/var/lib/webosbrew"
 LOG_NAME = "lg-xmb-startup.log"
 WORKER_LOCK_NAME = "lg-xmb-worker.lock"
 LOG_LIMIT = 16384
+SETUP_WAIT_SECONDS = 30  # Below the frontend RPC deadline; never wait indefinitely.
 PYTHON = "/usr/bin/python3"
 FILES = ("process_control.py", "thumbnail_cache.py", "stop_thumbnail_helper.py")
+BUNDLE_SHA256 = "@BUNDLE_SHA256@"  # Replaced by the packager, not read from helper/.
+LEGACY_HELPER_OWNER = (1001, 1001)  # CI runner IDs shipped in the early 0.1.12 IPKs.
 
 
 class SetupError(Exception):
@@ -130,6 +134,74 @@ def load_module(name, raw, path):
     return module
 
 
+def read_bundle(app, directory):
+    raw = read_file(directory, "bundle.json", 4096)
+    require(hashlib.sha256(raw).hexdigest() == BUNDLE_SHA256, "helper_bundle_mismatch")
+    manifest = json.loads(raw)
+    require(isinstance(manifest, dict) and manifest.get("schema") == 1,
+            "invalid_helper_bundle")
+    hashes = manifest.get("files")
+    require(isinstance(hashes, dict) and set(hashes) == set(FILES),
+            "invalid_helper_bundle")
+    require(all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h)
+                for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
+            "invalid_helper_bundle")
+    appinfo = read_file(app, "appinfo.json", 65536, app_file=True)
+    require(hashlib.sha256(appinfo).hexdigest() == manifest["appinfoSha256"],
+            "untrusted_app_manifest")
+    sources = {name: read_file(directory, name) for name in FILES}
+    require(all(hashlib.sha256(sources[name]).hexdigest() == hashes[name]
+                for name in FILES), "helper_bundle_mismatch")
+    return manifest, raw, appinfo, sources
+
+
+def repair_helper_directory(app, directory, original, bundle):
+    """Recover only a verified app-owned directory left by an earlier install."""
+    expected = {"bundle.json", *FILES}
+
+    def check_binding():
+        # Hold the original directory descriptor: never chown a symlink or a
+        # replacement selected by a second pathname lookup.
+        named = os.stat("helper", dir_fd=app, follow_symlinks=False)
+        opened = os.fstat(directory)
+        require(stat.S_ISDIR(named.st_mode) and
+                (named.st_dev, named.st_ino) == (original.st_dev, original.st_ino) ==
+                (opened.st_dev, opened.st_ino), "helper_path_changed")
+        current = open_directory(APP_DIR, app_path=True)
+        try:
+            a, b = os.fstat(app), os.fstat(current)
+            require((a.st_dev, a.st_ino) == (b.st_dev, b.st_ino), "helper_path_changed")
+        finally:
+            os.close(current)
+        require(set(os.listdir(directory)) == expected, "unexpected_helper_files")
+
+    check_binding()
+    require(read_bundle(app, directory) == bundle, "helper_bundle_changed")
+    # The app manifest and every root-owned, non-writable helper file have now
+    # matched the independent build pin. Shared installation ancestors are not
+    # changed. Only the known legacy directory may have a non-root owner.
+    if stat.S_IMODE(os.fstat(app).st_mode) != 0o755:
+        os.fchmod(app, 0o755)
+    check_binding()
+    meta = os.fstat(directory)
+    require((meta.st_uid, meta.st_gid) == (original.st_uid, original.st_gid),
+            "helper_path_changed")
+    legacy = meta.st_uid != 0
+    if legacy:
+        require((meta.st_uid, meta.st_gid) == LEGACY_HELPER_OWNER, "helper_owner_mismatch")
+        os.fchown(directory, 0, 0)
+    if stat.S_IMODE(os.fstat(directory).st_mode) != 0o755:
+        os.fchmod(directory, 0o755)
+    check_binding()
+    meta = os.fstat(directory)
+    require(meta.st_uid == 0 and (not legacy or meta.st_gid == 0) and
+            stat.S_IMODE(meta.st_mode) == 0o755 and
+            stat.S_IMODE(os.fstat(app).st_mode) == 0o755, "helper_permissions_failed")
+    require(read_bundle(app, directory) == bundle, "helper_bundle_changed")
+    record_startup("helper_directory_repaired", path="helper/", fromUid=original.st_uid,
+                   fromGid=original.st_gid, fromMode=oct(stat.S_IMODE(original.st_mode)))
+
+
 def load_bundle():
     app = open_directory(APP_DIR, app_path=True)
     try:
@@ -137,26 +209,17 @@ def load_bundle():
                             dir_fd=app)
         try:
             meta = os.fstat(directory)
-            require(meta.st_uid == 0, "helper_owner_mismatch",
-                    path="helper/", uid=meta.st_uid, mode=oct(stat.S_IMODE(meta.st_mode)))
-            require(not meta.st_mode & 0o022, "helper_directory_writable",
-                    path="helper/", uid=meta.st_uid, mode=oct(stat.S_IMODE(meta.st_mode)))
-            raw = read_file(directory, "bundle.json", 4096)
-            manifest = json.loads(raw)
-            require(isinstance(manifest, dict) and manifest.get("schema") == 1,
-                    "invalid_helper_bundle")
-            hashes = manifest.get("files")
-            require(isinstance(hashes, dict) and set(hashes) == set(FILES),
-                    "invalid_helper_bundle")
-            require(all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h)
-                        for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
-                    "invalid_helper_bundle")
-            appinfo = read_file(app, "appinfo.json", 65536, app_file=True)
-            require(hashlib.sha256(appinfo).hexdigest() == manifest["appinfoSha256"],
-                    "untrusted_app_manifest")
-            sources = {name: read_file(directory, name) for name in FILES}
-            require(all(hashlib.sha256(sources[name]).hexdigest() == hashes[name]
-                        for name in FILES), "helper_bundle_mismatch")
+            require(meta.st_uid == 0 or (meta.st_uid, meta.st_gid) == LEGACY_HELPER_OWNER,
+                    "helper_owner_mismatch", path="helper/", uid=meta.st_uid,
+                    gid=meta.st_gid, mode=oct(stat.S_IMODE(meta.st_mode)))
+            try:
+                fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise SetupError("bundle_lock_busy") from None
+            bundle = read_bundle(app, directory)
+            if meta.st_uid != 0 or stat.S_IMODE(meta.st_mode) != 0o755:
+                repair_helper_directory(app, directory, meta, bundle)
+            manifest, raw, appinfo, sources = bundle
         finally:
             os.close(directory)
     finally:
@@ -252,7 +315,7 @@ def record_startup(event, error=None, **details):
         regular_file(os.fstat(log))
         fcntl.flock(log, fcntl.LOCK_EX | fcntl.LOCK_NB)
         os.fchmod(log, 0o600)
-        value = {"time": int(time.time()), "event": event, **details}
+        value = {"time": int(time.time()), "event": event, "pid": os.getpid(), **details}
         if error is not None:
             value["exception"] = type(error).__name__
             value["frames"] = [{"file": os.path.basename(f.filename), "line": f.lineno,
@@ -302,7 +365,7 @@ def launch_worker(recovery):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise SetupError("helper_busy") from None
+            raise SetupError("worker_lock_busy") from None
         record_startup("worker_start")
         child = subprocess.Popen([PYTHON, "-I", "-B", APP_DIR + "/helper/thumbnail_cache.py",
                                   "--allow-home-preview", "--process-controls"],
@@ -322,10 +385,83 @@ def launch_worker(recovery):
         os.close(lock)
 
 
+def acquire_setup_lock(base, lock):
+    """Serialize boot/app invocations, then read the winning setup's new state."""
+    deadline = time.monotonic() + SETUP_WAIT_SECONDS
+    waiting = False
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if not waiting:
+                record_startup("setup_waiting")
+                waiting = True
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, "setup_in_progress")
+            time.sleep(min(.1, remaining))
+            continue
+        # Never proceed on an unlinked/replaced lock inode. Lock files are kept
+        # in place: deleting a held lock could allow two owners to run at once.
+        opened = os.fstat(lock)
+        named = os.stat("setup.lock", dir_fd=base, follow_symlinks=False)
+        regular_file(named)
+        require((opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino),
+                "setup_lock_changed")
+        if waiting:
+            record_startup("setup_resumed")
+        return
+
+
+def prepare_user_music():
+    """Expose user data through one fixed app-relative link; never read or copy it.
+
+    This is optional preparation, not a prerequisite for the capture/controller
+    worker. A missing track, conflicting entry or refused path cannot disable it.
+    """
+    try:
+        # /media/internal is writable user storage, not executable helper code.
+        parent = open_directory(os.path.dirname(MUSIC_DIR), app_path=True)
+        try:
+            directory = make_directory(parent, os.path.basename(MUSIC_DIR))
+            os.close(directory)
+        finally:
+            os.close(parent)
+        app = open_directory(APP_DIR, app_path=True)
+        try:
+            name = "user-music.mp3"
+            target = MUSIC_DIR + "/background.mp3"
+            try:
+                info = os.stat(name, dir_fd=app, follow_symlinks=False)
+            except FileNotFoundError:
+                os.symlink(target, name, dir_fd=app)
+            else:
+                require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0,
+                        "music_path_conflict")
+                previous = os.readlink(name, dir_fd=app)
+                require(previous in (target, BASE + "/music/background.mp3"),
+                        "music_path_conflict")
+                if previous != target:
+                    # Only replace our recognized legacy link, never either track.
+                    temporary = ".user-music-" + str(os.getpid())
+                    os.symlink(target, temporary, dir_fd=app)
+                    try:
+                        os.replace(temporary, name, src_dir_fd=app, dst_dir_fd=app)
+                    finally:
+                        try:
+                            os.unlink(temporary, dir_fd=app)
+                        except FileNotFoundError:
+                            pass
+            return True
+        finally:
+            os.close(app)
+    except (OSError, SetupError) as error:
+        record_startup("music_path_unavailable", error)
+        return False
+
+
 def start():
     require(os.geteuid() == 0, "root_required")
     require(sys.version_info >= (3, 7), "python_too_old")
-    control, recovery, bundle = load_bundle()
     parent = open_directory(os.path.dirname(BASE))
     try:
         base = make_directory(parent, os.path.basename(BASE))
@@ -338,10 +474,11 @@ def start():
         lock = os.open("setup.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
                        0o600, dir_fd=base)
         regular_file(os.fstat(lock))
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise SetupError("helper_busy") from None
+        acquire_setup_lock(base, lock)
+        # Verification/repair belongs inside the lock too. Do not use a bundle
+        # or installed record read before waiting for another upgrade to finish.
+        control, recovery, bundle = load_bundle()
+        prepare_user_music()
         raw = read_file(base, "installed.json", 4096, optional=True)
         previous = json.loads(raw) if raw is not None else None
         require(previous is None or (isinstance(previous, dict)
@@ -359,7 +496,11 @@ def start():
         require(all(recovery.helper_argument(p[2]) == recovery.HELPER for p in running)
                 and len(running) <= 1, "unexpected_helper_process")
         capture_running = bool(running) or launch_worker(recovery)
-        write_file(base, "installed.json", json.dumps({"bundle": bundle, "legacyMigrated": True}).encode())
+        if running:
+            record_startup("worker_reused")
+        installed = {"bundle": bundle, "legacyMigrated": True}
+        if installed != previous:
+            write_file(base, "installed.json", json.dumps(installed).encode())
         return {"returnValue": True, "ready": True, "captureRunning": capture_running}
     finally:
         if lock is not None:
@@ -371,7 +512,7 @@ def main():
     if sys.argv[1:] not in ([], ["ensure"]):
         print(json.dumps({"returnValue": False, "errorCode": "invalid_command"}))
         return 2
-    record_startup("setup_start")
+    record_startup("setup_start", command="ensure" if sys.argv[1:] else "startup")
     try:
         result = start()
     except SetupError as error:

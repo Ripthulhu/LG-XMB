@@ -18,6 +18,9 @@ test('package staging includes each helper and binds it to the exact manifest',a
       const payload=fs.readFileSync(path.join(temp,'helper',name));
       assert.deepEqual(payload,fs.readFileSync(path.join(root,source)));assert.equal(bundle.files[name],hash(payload));
     }
+    const startup=fs.readFileSync(path.join(temp,'helper-startup.py'),'utf8');
+    assert.ok(startup.includes('BUNDLE_SHA256 = "'+hash(fs.readFileSync(path.join(temp,'helper','bundle.json')))+'"'));
+    assert.equal(startup.includes('@BUNDLE_SHA256@'),false);
     fs.appendFileSync(path.join(temp,'appinfo.json'),' ');
     assert.throws(()=>stageHelper(root,temp),/reviewed helper pin/);
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
