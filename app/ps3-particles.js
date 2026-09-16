@@ -22,8 +22,10 @@
     '  gl_PointSize=clamp(spriteSize*uSizeScale,uPointRange.x,uPointRange.y);',
     '  float time=uTime*0.18;',
     // A narrow distant stream on the left broadens towards the viewer/right.
+    // The exponent sets how hard they pile up at the left: travel is uniform,
+    // so a share a of them sit left of a^(1/exponent) across the screen.
     '  float travel=fract(time*(aSeed.x-0.5)*perspective/15.0+aSeed.y*50.0);',
-    '  float across=pow(travel,1.25);',
+    '  float across=pow(travel,1.60);',
     '  float x=across*2.0-1.0;',
     '  float y=sin(sign(aSeed.y)*time*(aSeed.y+1.5)/4.0+aSeed.x*100.0)',
     '          /((6.0-aSeed.x*4.0*aSeed.y)/uRatio);',
@@ -34,9 +36,10 @@
     '  float energy=clamp(sharpSize*sharpSize/(spriteSize*spriteSize),0.18,1.0);',
     '  float wrapFade=smoothstep(0.0,0.045,travel)*(1.0-smoothstep(0.955,1.0,travel));',
     '  vAlpha=opVar*opVar*(1.0-fract(aSeed.x+time*0.00285))*energy*wrapFade;',
-    // Shares the spline's band offset; keep in step with BAND_OFFSET in
-    // ps3-wave.js. Independent of audio.
-    '  gl_Position=vec4(x,y+(-0.170),0.0,1.0);',
+    // Shares the spline's band placement, stretch included, so the sparkles
+    // keep filling the wave rather than a slice of it. Keep in step with
+    // BAND_SCALE and BAND_Y in ps3-wave.js. Independent of audio.
+    '  gl_Position=vec4(x,y*1.850+(-0.0238),0.0,1.0);',
     '}'
   ].join('\n');
   var FRAGMENT = [

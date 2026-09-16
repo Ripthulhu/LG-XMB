@@ -211,3 +211,45 @@ The ribbon renderers went at the same time, so `pattern`, `patternFallback`,
 options are gone from the API and from `getDiagnostics()`. A GPU that cannot
 give us a spline now gets the static gradient rather than a different wave.
 Geometry, sampling, lighting, FXAA, colours and timing are unchanged.
+
+## Band height, sparkle stream and background lean (after 0.1.30)
+
+Measured against a third-party 1080p clip of the XMB wave, supplied as a visual
+reference. Nothing was taken from it: no frames, no assets, and not its palette.
+What came out of it is four numbers describing proportions, and our own `rgb`
+preset stood in for its blue so the two could be compared at all. Treat it as
+one artist's rendering of the look rather than a console capture, because that
+is what it is.
+
+Method, for anyone re-running it: the per-pixel minimum across the clip is a
+clean plate of the background, since neither the wave nor the sparkles hold a
+pixel down for long. Mean minus plate gives wave energy, and pixels more than
+12/255 above a local 7x7 mean give the sparkles.
+
+| | reference | before | after |
+|---|---|---|---|
+| band extent | 35.6-67.2% | 50.1-67.1% | 35.6-66.7% |
+| band height | 31.7% | 17.0% | 31.1% |
+| sparkle extent | 33.9-66.7% | 50.4-65.8% | 36.1-64.7% |
+| background, left vs right | +8% | none | +8% |
+
+`BAND_SCALE` stretches the spline about the band's lower edge, so the bottom
+stays where it was tuned by eye and the height all goes upward. The particles
+carry the same stretch, which is what pulls their vertical spread back in step
+with the wave; before it, they filled a slice of it.
+
+`pow(travel,1.60)` replaces `pow(travel,1.25)` in the particle stream. Counted
+per particle this moves the leftmost eighth from 18.5% to 26.9% against the
+reference's 27.1%, but counted in lit pixels it barely moves, cause sprites grow
+towards the right and that cancels the placement. The reference's dense knot of
+small bright points at the left edge is a correlation between position and size
+that we do not have: ours are sized from a depth seed alone. Closing that gap
+means sizing and brightening particles from their position too, which is a
+change to how they look rather than where they sit, and is not done here.
+
+The theme backdrop gains a gentle horizontal lean, matching the reference's
+habit of keeping its light slightly left. The ported monthly gradients keep
+their own angles and are untouched.
+
+The band is now about 82% taller, so the cropped surface and the wave's fill
+cost grow with it. That has not been measured on the TV.

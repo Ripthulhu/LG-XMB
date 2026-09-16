@@ -210,7 +210,12 @@
     '  vec3 top = background*0.75 + wave*0.035;',
     '  vec3 bottom = background*0.9 + wave*0.15;',
     '  float glow = exp(-length((uv-vec2(0.18,0.36))*vec2(1.3,2.6))*3.0);',
-    '  return mix(top,bottom,gradient) + wave*glow*0.045;',
+    // The reference keeps its light a little to the left: top and bottom
+    // corners both read a few percent brighter there. A gentle horizontal
+    // lean does that without disturbing the glow that sits under the menu.
+    // The ported monthly gradients keep their own angles and are left alone.
+    '  float lean = mix(1.06,0.98,uv.x);',
+    '  return mix(top,bottom,gradient)*lean + wave*glow*0.045;',
     '}'
   ].join('\n');
   var BACKDROP = [
@@ -221,15 +226,25 @@
   ].join('\n');
   // Where the band sits vertically, in clip space, where 2.0 spans the output
   // height. It came down a twentieth of the height twice after 0.1.30.
-  // ps3-particles.js repeats the number: it loads before this file and so
-  // cannot read it from here.
-  var BAND_OFFSET = -0.17;
+  //
+  // BAND_SCALE stretches the wave about its lower edge rather than its middle,
+  // so the bottom stays where it was tuned by eye and the extra height all goes
+  // upward. Measured against a reference capture the band covered 17% of the
+  // frame against its 32%, which is where 1.85 comes from.
+  //
+  // BAND_Y folds the offset and the stretch into the one constant the shader
+  // needs: scale about BAND_BOTTOM, then translate.
+  // ps3-particles.js repeats both numbers: it loads before this file and so
+  // cannot read them from here.
+  var BAND_OFFSET = -0.17, BAND_BOTTOM = -0.342, BAND_SCALE = 1.85;
+  var BAND_Y = (BAND_OFFSET - BAND_BOTTOM) * BAND_SCALE + BAND_BOTTOM;
   var VERTEX = [
     'attribute vec4 aPosition; attribute vec3 aNormal;',
     'varying vec3 vNormal; varying float vDepth;',
     'void main() {',
     '  vNormal = aNormal; vDepth = aPosition.w;',
-    '  gl_Position = vec4(aPosition.x*1.04, aPosition.y+(' + BAND_OFFSET.toFixed(3) + '), aPosition.z*0.65,1.0);',
+    '  gl_Position = vec4(aPosition.x*1.04, aPosition.y*' + BAND_SCALE.toFixed(3) +
+      '+(' + BAND_Y.toFixed(4) + '), aPosition.z*0.65,1.0);',
     '}'
   ].join('\n');
   var FRAGMENT = [
@@ -392,8 +407,8 @@
       // Includes a raster/filter guard plus the FXAA shader's bounded edge search.
       // Pixel-aligned output origin; the mesh uses a shifted FULL virtual viewport,
       // not a rescaled projection. Fractional SSAA retains its global sample phase.
-      var low = Math.max(0,Math.floor((geometry.bounds.minY+BAND_OFFSET+1)*0.5*targetHeight)-bandPadding);
-      var high = Math.min(targetHeight,Math.ceil((geometry.bounds.maxY+BAND_OFFSET+1)*0.5*targetHeight)+bandPadding);
+      var low = Math.max(0,Math.floor((geometry.bounds.minY*BAND_SCALE+BAND_Y+1)*0.5*targetHeight)-bandPadding);
+      var high = Math.min(targetHeight,Math.ceil((geometry.bounds.maxY*BAND_SCALE+BAND_Y+1)*0.5*targetHeight)+bandPadding);
       if (bandRect && low >= bandRect.y && high <= bandRect.y+bandRect.height) return;
       var h = Math.min(targetHeight,Math.max(bandRect ? bandRect.height : 0,Math.ceil((high-low)/32)*32,32));
       var bottom = Math.max(0,Math.min(targetHeight-h,Math.floor((low+high-h)*0.5)));
