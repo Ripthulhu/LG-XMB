@@ -102,9 +102,28 @@ again.
 
 Do note this is a class of bug, not one field. Diff both manifests before you
 trust the mount, cause anything only the stock one declares is silently gone.
-On this C5 that listed 14 keys, including `requiredPermissions`,
-`handleScreenRemoteKey`, `nativeLifeCycleInterfaceVersion` and
-`class: {"hidden": true}`. Only `supportQuickStart` is known to bite so far.
+On this C5 that listed 14 keys. Tracing each one against the extracted rootfs
+found these with a real consumer:
+
+| key | read by |
+| --- | --- |
+| `supportQuickStart` | `/usr/sbin/tvpowerd`, arms quick-start standby |
+| `handleScreenRemoteKey` | `qml/KeyFilters/appLaunch.js`, screen remote keys |
+| `noSplashOnLaunch` | `WebOSCompositorBase` `ViewStateController.qml` |
+| `splashBackground` | `StarfishFullscreenController`, `StarfishRecents` |
+| `requiredPermissions` | `com.webos.service.secondscreen.gateway` interfaces |
+
+The first three are worth declaring. `nativeLifeCycleInterfaceVersion` is read
+by `flutter-client`, so it does nothing for a `type: "web"` app, and
+`enablePigScreenSaver` is read by a library inside the stock app you just
+shadowed. `mediumIcon` and `hasAccountService` had no consumer at all.
+
+`class`, `visible` and `transparent` are declared by LG but I could not find
+what reads them. They are not in `sam` and not in the compositor QML.
+
+Only `supportQuickStart` has a confirmed symptom and a verified fix behind it.
+The rest of this table is which files mention the key, not proof of what they do
+with it.
 
 ## Gotchas
 
