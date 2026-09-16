@@ -38,28 +38,35 @@ Changes for LG-XMB:
   compilation, hidden/paused suspension and reduced-motion still frame.
   GPU resources are released on destruction and rebuilt after context loss.
 
-The PS3 renderer is the default when its module is present. Allocation,
-compilation or framebuffer failures fall back once to the original WebGL
-renderer; failure there falls back to Canvas2D. `getDiagnostics()` reports the
-selected `pattern`, requested/applied sample factor, fallback reason and surface size.
+The PS3 renderer is the only renderer. Allocation, compilation or framebuffer
+failure leaves a static CSS gradient behind the menu, with the reason in
+`getDiagnostics().error` and `mode` reading `static`. Nothing animates from
+there, and Home stays usable. `getDiagnostics()` reports the requested and
+applied sample factor, fallback reason and surface size.
 Quality choices are local appearance preferences, not privileged TV operations. Scheduling gaps are not
 GPU timing measurements, and desktop rendering does not establish TV performance.
 
-## Original renderer and Canvas fallback
+## Original renderer and Canvas fallback (removed after 0.1.30)
 
-Derived from OpenXMB's [`shaders/original.frag`](https://github.com/phenom64/OpenXMB/blob/84f153f441c5f860a07acd5b37bd90c4aaae82de/shaders/original.frag)
+Up to 0.1.30 `app/wave.js` also carried a second wave, derived from OpenXMB's [`shaders/original.frag`](https://github.com/phenom64/OpenXMB/blob/84f153f441c5f860a07acd5b37bd90c4aaae82de/shaders/original.frag)
 at revision `84f153f441c5f860a07acd5b37bd90c4aaae82de`.
 Original SHA-256: `700eb219cb1a5050824934cffe74899a6f4f960f0d4548799663e371760aa578`.
 Copyright 2025–2026 Syndromatic Ltd.; designed by Kavish Krishnakumar in Manchester.
 The original GPL-3.0-or-later permission and source remain under `app/licenses/`.
 
-Its five ribbon equations, noise, crossing modulation and glow are retained in
-`app/wave.js`. Canvas2D approximates these curves at 540p/20 fps. The application
-requests 1080p on both TV and desktop, with adaptive downscaling disabled.
-Smaller previews and actual GPU limits can still reduce the backing size;
-renderer and Canvas fallbacks remain available. The reusable renderer still
-supports lower quality caps and opt-in adaptive scaling for other callers.
-These are app-local resolutions, not TV display-mode changes.
+Its five ribbon equations, noise, crossing modulation and glow ran on WebGL, and
+a Canvas2D renderer approximated the same curves at 540p/20 fps when no GL
+context was available. Both are gone: the PS3 spline had been the default for
+long enough that the ribbons were only ever seen by a failing TV, and keeping a
+second look in working order cost more than it returned. `original.frag` and its
+notice stay here because the project still adapts other OpenXMB work, and
+because removing the code does not undo what earlier releases shipped.
+
+The application requests 1080p on both TV and desktop, with adaptive downscaling
+disabled. Smaller previews and actual GPU limits can still reduce the backing
+size. The reusable renderer still supports lower quality caps and opt-in adaptive
+scaling for other callers. These are app-local resolutions, not TV display-mode
+changes.
 
 ## API
 
@@ -71,11 +78,10 @@ Create `new C5Wave(canvas, options)`.
   are deferred while hidden/paused and applied on the next draw.
 - `setReducedMotion(boolean)`: freeze/unfreeze the current animation time.
 - `setPaused(boolean)`: suspend/resume scheduled work.
-- `getDiagnostics()`: renderer, pattern, resources and scheduling information.
+- `getDiagnostics()`: renderer, resources and scheduling information.
 - `destroy()`: release resources and event listeners.
 
-Options include `quality: '1080p' | '720p' | '540p'`, `adaptive: false`,
-`pattern: 'classic'` for renderer comparisons, and `renderer: 'canvas2d'`.
+Options include `quality: '1080p' | '720p' | '540p'` and `adaptive: false`.
 No network requests, device commands or persistent writes originate in a renderer.
 
 ## Output-space post-process (0.1.19)
@@ -120,20 +126,19 @@ or filtering the menu. Wave speed/brightness and the existing animation clock
 also control particles. Off/reduced motion freezes them, hidden Home draws
 nothing, and context restoration rebuilds identical seeds. An optional particle
 shader/buffer failure leaves the waves usable and is not retried every frame.
-The classic and Canvas2D fallbacks intentionally omit particles.
 
 ## Band placement (0.1.23)
 
 The spline and particle band move up by 0.20 clip-space units (10% of output
 height: 108 pixels at 1080p), towards the PS3 menu reference. The classic shader
-and Canvas2D fallback move by the same fraction. Geometry, sampling, lighting,
+and Canvas2D fallback moved by the same fraction while they existed. Geometry, sampling, lighting,
 FXAA, timing and particle trajectories are unchanged.
 
 ## Band placement (0.1.24)
 
 Move the spline and particles up another 0.20 clip-space units: 10% of the output
 height relative to 0.1.23, 20% relative to 0.1.22. Both now add 0.03 to their Y
-coordinate. Classic WebGL and Canvas2D use a 0.03 lookup offset instead of 0.23.
+coordinate. Classic WebGL and Canvas2D used a 0.03 lookup offset instead of 0.23.
 Sampling, geometry, colours and filtering are unchanged.
 
 ## Monthly gradients and particle depth (0.1.25)
@@ -150,8 +155,7 @@ Current theme is the upgrade default. Explicit Day/Night selection is manual;
 there is no time-based switching. Preset/RGB modes replace only the renderer's
 background and softly tint its waves/particles. The settings panel stays dark
 for readability. Both backdrop and FXAA's composited background use the same
-uniforms. Classic WebGL also uses them; Canvas2D approximates the same smoothstep
-with 17 stops. Changing a colour does not recreate geometry or framebuffers,
+uniforms. Changing a colour does not recreate geometry or framebuffers,
 advance a frozen clock, or override stored quality settings.
 
 The particle extension is our approximation of the requested left-to-right fan
@@ -192,3 +196,18 @@ The sample-count query is format-specific; MAX_SAMPLES alone is not sufficient.
 Reference: Khronos WebGL 2 specification, framebuffer/renderbuffer objects and
 GLSL ES 3.00 support (which also documents GLSL ES 1.00 compatibility):
 https://registry.khronos.org/webgl/specs/latest/2.0/
+
+## Band placement and a single renderer (after 0.1.30)
+
+The band comes down twice by a twentieth of the output height, 0.10 clip-space
+units each time. The spline vertex shader and the particle vertex shader both
+move, and `updateBand` reads the same constant so the crop follows the geometry
+instead of slicing the bottom off it. `BAND_OFFSET` in `app/ps3-wave.js` is the
+one place the number lives; `app/ps3-particles.js` repeats it in its shader
+string because that file loads first and cannot read the constant.
+
+The ribbon renderers went at the same time, so `pattern`, `patternFallback`,
+`requestedRenderer` and the `renderer: 'canvas2d'` and `pattern: 'classic'`
+options are gone from the API and from `getDiagnostics()`. A GPU that cannot
+give us a spline now gets the static gradient rather than a different wave.
+Geometry, sampling, lighting, FXAA, colours and timing are unchanged.

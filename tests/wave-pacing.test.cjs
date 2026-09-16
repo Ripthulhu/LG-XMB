@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname,'../app/wave.js'),'utf8');
 
-function setup(mode='webgl') {
+function setup() {
   const document = {hidden:false}, draws = [], pending = new Map();
   let id = 0, now = 0;
   const root = {
@@ -15,7 +15,7 @@ function setup(mode='webgl') {
   };
   new Function('window','document',source)(root,document);
   const wave = Object.assign(Object.create(root.C5Wave.prototype),{
-    mode, initialized:true, time:14, speed:1.5, lastFrame:0, nextFrame:0,
+    mode:'webgl', initialized:true, time:14, speed:1.5, lastFrame:0, nextFrame:0,
     raf:0, initRaf:0, compileRaf:0,
     _sampleTiming() {}, _resetTiming() {}, _draw() { draws.push(now); }
   });
@@ -32,13 +32,6 @@ test('a late WebGL frame retains the original 30 Hz phase', () => {
   assert.deepEqual(h.draws,[1040,1067,1100]);
   assert.ok(Math.abs(h.wave.nextFrame-(1000+4*1000/30))<1e-9);
   assert.ok(Math.abs(h.wave.time-(14+0.1*0.70*1.5))<1e-9,'Use actual elapsed animation time');
-});
-
-test('the Canvas2D fallback retains its 20 Hz phase without increasing the cap', () => {
-  const h=setup('canvas2d');
-  [1000,1033,1060,1083,1100,1117,1150].forEach(h.step);
-  assert.deepEqual(h.draws,[1060,1100,1150]);
-  assert.equal(h.wave.nextFrame,1200);
 });
 
 test('a long stall skips missed deadlines instead of drawing a catch-up burst', () => {

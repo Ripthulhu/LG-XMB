@@ -23,7 +23,7 @@ module.exports=async function(browser,checks,errors,loader){
   const p=await page(width);
   try{
    const diag=()=>p.evaluate(()=>msaaWave.getDiagnostics());
-   let d=await diag();assert.equal(d.contextVersion,2);assert.equal(d.pattern,'ps3');assert.equal(d.surface.msaaSamples,0);
+   let d=await diag();assert.equal(d.contextVersion,2);assert.equal(d.mode,'webgl');assert.ok(d.surface);assert.equal(d.surface.msaaSamples,0);
    assert.ok(d.surface.msaaSupported.includes(4),'Test GPU needs 4x RGBA8 support');
    await p.getByRole('button',{name:'Settings',exact:true}).click();await p.getByRole('option',{name:'Waves',exact:true}).click();
    const group=p.getByRole('group',{name:'MSAA',exact:true});
@@ -86,7 +86,7 @@ module.exports=async function(browser,checks,errors,loader){
    const pixels=async()=>digest(await p.evaluate(()=>document.getElementById('wave').toDataURL()));
    const off=await pixels();
    await p.evaluate(()=>msaaWave.setQuality({msaa:4}));
-   const d=await p.evaluate(()=>msaaWave.getDiagnostics());assert.equal(d.pattern,'ps3');assert.equal(d.surface.msaaSamples,0);assert.ok(d.surface.msaaFallback);
+   const d=await p.evaluate(()=>msaaWave.getDiagnostics());assert.equal(d.mode,'webgl');assert.equal(d.surface.msaaSamples,0);assert.ok(d.surface.msaaFallback);
    assert.equal(await pixels(),off,'Fallback must redraw, not present a stale MSAA resolve');
    const attempts=await p.evaluate(()=>window.msaaFailures||0);
    await p.evaluate(()=>{for(let n=0;n<4;n++)msaaWave._draw();});assert.equal(await p.evaluate(()=>window.msaaFailures||0),attempts);

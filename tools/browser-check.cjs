@@ -1,4 +1,5 @@
-// Start npm run preview first. Uses installed Edge, or PLAYWRIGHT_CHANNEL.
+// Start npm run preview first. Uses installed Edge, or PLAYWRIGHT_CHANNEL;
+// set that to 'bundled' for Playwright's own Chromium.
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -6,7 +7,8 @@ const path=require('node:path');
 const appVersion=require('../app/appinfo.json').version;
 assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
 (async()=>{
- const browser=await chromium.launch({channel:process.env.PLAYWRIGHT_CHANNEL||'msedge',headless:true});
+ const channel=process.env.PLAYWRIGHT_CHANNEL||'msedge';
+ const browser=await chromium.launch({channel:channel==='bundled'?undefined:channel,headless:true});
  const dir=path.resolve(__dirname,'../qa');fs.mkdirSync(dir,{recursive:true});
  const checks=[],errors=[],requests=[];
  try{
@@ -83,11 +85,11 @@ assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
  await page.close();
  console.log('Browser suite: category transitions');
  await require('../tests/category-transition-browser.cjs')(browser,checks,errors);
- console.log('Browser suite: Canvas fallback');
+ console.log('Browser suite: no-WebGL gradient');
  const fallback=await browser.newPage({viewport:{width:1920,height:1080}});
  await fallback.addInitScript(()=>{window.webglRequests=0;const old=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){if(/webgl/i.test(type)){window.webglRequests++;return null;}return old.call(this,type,...args);};});
  fallback.on('pageerror',e=>errors.push(e.message));await fallback.goto('http://127.0.0.1:8765');await fallback.waitForFunction(()=>window.C5App&&!['pending','compiling'].includes(C5App.getState().waveMode));
- assert.equal((await fallback.evaluate(()=>C5App.getState())).waveMode,'canvas2d');assert.ok(await fallback.evaluate(()=>window.webglRequests)>0);await fallback.waitForTimeout(300);await fallback.screenshot({path:path.join(dir,'fallback-1080.png')});assert.deepEqual(errors,[]);checks.push('Canvas compatibility fallback renders when WebGL is unavailable');
+ assert.equal((await fallback.evaluate(()=>C5App.getState())).waveMode,'static');assert.ok(await fallback.evaluate(()=>window.webglRequests)>0);await fallback.waitForTimeout(300);await fallback.screenshot({path:path.join(dir,'fallback-1080.png')});assert.deepEqual(errors,[]);checks.push('Home stays usable on the static gradient when WebGL is unavailable');
  await fallback.close();
  console.log('Browser suite: PS3 rendering and lifetime');
  await require('../tests/wave-msaa-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
@@ -106,10 +108,8 @@ assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
  await require('../tests/input-preview-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
  console.log('Browser suite: launch and return');
  await require('../tests/launch-return-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
- console.log('Browser suite: background settings');
  console.log('Browser suite: appearance settings');
  await require('../tests/settings-appearance-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
- console.log('Browser suite: remote settings');
  fs.writeFileSync(path.join(dir,'browser-check.json'),JSON.stringify({passed:checks.length,checks,browser:await browser.version(),testedOnTV:false},null,2));console.log(JSON.stringify({passed:checks.length,checks},null,2));
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

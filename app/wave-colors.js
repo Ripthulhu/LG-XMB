@@ -74,16 +74,5 @@
     var t=Math.max(0,Math.min(1,(x*palette.dir[0]+y*palette.dir[1]-palette.range[0])/palette.range[1]));
     t=t*t*(3-2*t); return palette.start.map(function(v,i){return v+(palette.end[i]-v)*t;});
   }
-  function paint(ctx,w,h,palette) {
-    // A 17-stop approximation of the same smoothstep, calculated only on recolour/resize.
-    var dx=palette.dir[0]/w,dy=palette.dir[1]/h,n=dx*dx+dy*dy;
-    var a=palette.range[0]/n,b=(palette.range[0]+palette.range[1])/n;
-    var gradient=ctx.createLinearGradient(dx*a,dy*a,dx*b,dy*b);
-    for(var i=0;i<=16;i++){
-      var t=i/16,g=t*t*(3-2*t),rgb=palette.start.map(function(v,j){return Math.round(Math.max(0,Math.min(1,v+(palette.end[j]-v)*g))*255);});
-      gradient.addColorStop(t,'rgb('+rgb.join(',')+')');
-    }
-    ctx.fillStyle=gradient;ctx.fillRect(0,0,w,h);
-  }
-  root.LGXMBWaveColors=Object.freeze({normalize:normalize,resolve:resolve,months:Object.freeze(MONTHS),shader:SHADER,locations:locations,upload:upload,sample:sample,paint:paint});
+  root.LGXMBWaveColors=Object.freeze({normalize:normalize,resolve:resolve,months:Object.freeze(MONTHS),shader:SHADER,locations:locations,upload:upload,sample:sample});
 }(window));

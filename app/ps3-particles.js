@@ -36,7 +36,7 @@
     '  vAlpha=opVar*opVar*(1.0-fract(aSeed.x+time*0.00285))*energy*wrapFade;',
     // Shares the spline's band offset; keep in step with BAND_OFFSET in
     // ps3-wave.js. Independent of audio.
-    '  gl_Position=vec4(x,y+(-0.070),0.0,1.0);',
+    '  gl_Position=vec4(x,y+(-0.170),0.0,1.0);',
     '}'
   ].join('\n');
   var FRAGMENT = [

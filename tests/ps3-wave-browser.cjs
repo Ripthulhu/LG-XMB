@@ -32,7 +32,7 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
     const page=await create(width,height);
     try {
       let diag=await page.evaluate(()=>ps3TestWave.getDiagnostics());
-      assert.equal(diag.pattern,'ps3');assert.equal(diag.mode,'webgl');assert.equal(diag.error,null);
+      assert.equal(diag.mode,'webgl');assert.ok(diag.surface);assert.equal(diag.error,null);
       assert.equal(diag.targetFps,30);assert.equal(diag.surface.floatTextures,false);
       assert.equal(diag.quality,'1080p');assert.equal(diag.adaptive,false);
       assert.deepEqual([diag.backingWidth,diag.backingHeight],[width,height]);
@@ -94,7 +94,7 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
     assert.equal(await page.evaluate(()=>ps3TestWave.raf),0);
     await page.evaluate(()=>loss.restoreContext());
     await page.waitForFunction(()=>!ps3TestWave.contextLost&&ps3TestWave.mode==='webgl');
-    assert.equal(await page.evaluate(()=>ps3TestWave.getDiagnostics().pattern),'ps3');
+    assert.ok(await page.evaluate(()=>!!ps3TestWave.getDiagnostics().surface));
     assert.deepEqual(await page.evaluate(()=>{const d=ps3TestWave.getDiagnostics();return [d.backingWidth,d.backingHeight,d.surface.surfaceWidth,d.surface.virtualHeight];}),[1920,1080,2880,1620]);
     assert.equal(await page.evaluate(()=>ps3TestWave.gl.getError()),0);
     await page.evaluate(()=>ps3TestWave.destroy());
@@ -111,20 +111,24 @@ module.exports = async function checkPS3Wave(browser, checks, errors, loader) {
     };
   });
   try {
+    // The spline is the only pattern now, so a refused allocation ends at the
+    // static gradient. What matters is that Home stays usable and says why.
     const diag=await refused.evaluate(()=>ps3TestWave.getDiagnostics());
-    assert.equal(diag.mode,'webgl');assert.equal(diag.pattern,'classic');assert.equal(diag.error,null);
-    assert.match(diag.patternFallback,/Spline framebuffer unavailable/);
+    assert.equal(diag.mode,'static');
+    assert.match(diag.error,/Spline framebuffer unavailable/);
+    assert.equal(await refused.evaluate(()=>ps3TestWave.raf),0);
     assert.equal(await refused.locator('#items').isVisible(),true);
-    checks.push('A refused spline allocation falls back to original WebGL waves without breaking Home');
+    checks.push('A refused spline allocation stops at the static gradient without breaking Home');
   } finally {await refused.close();}
   const noGL=await create(1280,720,()=>{
     const original=HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext=function(type,...args){return /webgl/.test(type)?null:original.call(this,type,...args);};
   });
   try {
-    assert.equal(await noGL.evaluate(()=>ps3TestWave.getDiagnostics().mode),'canvas2d');
+    assert.equal(await noGL.evaluate(()=>ps3TestWave.getDiagnostics().mode),'static');
+    assert.ok(await noGL.evaluate(()=>/linear-gradient/.test(document.getElementById('wave').style.background)));
     assert.equal(await noGL.locator('#items').isVisible(),true);
-    checks.push('WebGL refusal retains the Canvas2D fallback and usable menu');
+    checks.push('WebGL refusal leaves the static gradient and a usable menu');
   } finally {await noGL.close();}
   assert.deepEqual(errors,[]);
 };

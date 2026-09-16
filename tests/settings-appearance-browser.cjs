@@ -89,9 +89,8 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     assert.equal(restored.preferences.waveBrightness,'high'); assert.equal(restored.waveDiagnostics.reducedMotion,true);
     checks.push('Wave animation, speed and brightness use remote-friendly grouped controls, persist validated values and preserve the renderer quality/frame cap');
 
-    for (const id of ['sound','previews','background','about']) {
+    for (const id of ['sound','previews','about']) {
       await open(id);
-      if (id==='background') await page.waitForSelector('[data-process-id="voice"]');
       const layout = await page.evaluate(() => {
         const modal=document.getElementById('modal'),style=getComputedStyle(modal),rect=modal.getBoundingClientRect();
         return {background:style.backgroundColor,shadow:style.boxShadow,radius:style.borderRadius,tint:getComputedStyle(document.getElementById('modalBackdrop')).backgroundImage,
@@ -123,23 +122,21 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     assert.equal(invalid.theme,'midnight'); assert.equal(invalid.waveSpeed,'normal'); assert.equal(invalid.waveBrightness,'normal');
     checks.push('Invalid stored theme and wave values fall back to the existing default appearance');
 
-    for (const renderer of ['webgl','canvas2d']) {
-      await page.evaluate(renderer => {
-        const canvas=document.createElement('canvas');canvas.style.cssText='position:fixed;left:0;top:0;width:320px;height:180px;';document.body.appendChild(canvas);
-        window.styleWave=new C5Wave(canvas,{renderer,adaptive:false});styleWave.setReducedMotion(true);
-      },renderer);
-      await page.waitForFunction(() => ['webgl','canvas2d'].includes(styleWave.mode));
-      const sums=await page.evaluate(() => {
-        function sum(brightness) {
-          styleWave.setStyle({brightness});const canvas=styleWave.fallbackCanvas||styleWave.canvas;let pixels;
-          if(styleWave.mode==='webgl'){pixels=new Uint8Array(canvas.width*canvas.height*4);styleWave.gl.readPixels(0,0,canvas.width,canvas.height,styleWave.gl.RGBA,styleWave.gl.UNSIGNED_BYTE,pixels);}
-          else pixels=styleWave.ctx.getImageData(0,0,canvas.width,canvas.height).data;
-          let total=0;for(let i=0;i<pixels.length;i+=4)total+=pixels[i]+pixels[i+1]+pixels[i+2];return total;
-        }
-        const result=[sum(.6),sum(1),sum(1.5)];styleWave.destroy();styleWave.canvas.remove();delete window.styleWave;return result;
-      });
-      assert.ok(sums[0]<sums[1]&&sums[1]<sums[2],renderer+' brightness changes actual rendered pixels');
-    }
-    checks.push('Wave brightness changes actual pixels in both WebGL and Canvas fallback while reduced motion remains still');
+    await page.evaluate(() => {
+      const canvas=document.createElement('canvas');canvas.style.cssText='position:fixed;left:0;top:0;width:320px;height:180px;';document.body.appendChild(canvas);
+      window.styleWave=new C5Wave(canvas,{adaptive:false});styleWave.setReducedMotion(true);
+    });
+    await page.waitForFunction(() => styleWave.mode==='webgl');
+    const sums=await page.evaluate(() => {
+      function sum(brightness) {
+        styleWave.setStyle({brightness});const canvas=styleWave.canvas;
+        const pixels=new Uint8Array(canvas.width*canvas.height*4);
+        styleWave.gl.readPixels(0,0,canvas.width,canvas.height,styleWave.gl.RGBA,styleWave.gl.UNSIGNED_BYTE,pixels);
+        let total=0;for(let i=0;i<pixels.length;i+=4)total+=pixels[i]+pixels[i+1]+pixels[i+2];return total;
+      }
+      const result=[sum(.6),sum(1),sum(1.5)];styleWave.destroy();styleWave.canvas.remove();delete window.styleWave;return result;
+    });
+    assert.ok(sums[0]<sums[1]&&sums[1]<sums[2],'brightness changes actual rendered pixels');
+    checks.push('Wave brightness changes actual pixels while reduced motion remains still');
   } finally { await page.close(); }
 };

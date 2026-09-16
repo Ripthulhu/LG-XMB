@@ -239,8 +239,8 @@ window.addEventListener('click',musicGesture);
 function updateWaveStatus(){
   var status=$('waveRenderStatus');if(!status||!wave)return;
   var diag=wave.getDiagnostics(),surface=diag.surface;
-  if(diag.mode!=='webgl'||diag.pattern!=='ps3'||!surface||!surface.surfaceWidth){
-    status.textContent=diag.mode==='pending'||diag.mode==='compiling'?'Preparing waves…':'Compatibility renderer active. Extra quality controls apply to PS3 waves only.';return;
+  if(diag.mode!=='webgl'||!surface||!surface.surfaceWidth){
+    status.textContent=diag.mode==='pending'||diag.mode==='compiling'?'Preparing waves…':'Waves need WebGL, which this display is not providing.';return;
   }
   status.textContent='Output '+diag.backingWidth+' × '+diag.backingHeight+' · Wave surface '+surface.surfaceWidth+' × '+surface.surfaceHeight+(surface.cropped&&surface.bandHeight?' (cropped to '+surface.bandWidth+' × '+surface.bandHeight+' output band)':'')+
     (surface.samplingFallback?' · '+surface.effectiveScale+'× applied ('+surface.samplingFallback.toLowerCase()+').':'')+

@@ -11,7 +11,13 @@ const {chromium} = require('playwright');
     const page = await browser.newPage({viewport: {width: 1920, height: 1080}});
     page.on('pageerror', error => errors.push(error.message));
     await page.setContent('<canvas id="testWave" style="width:1280px;height:720px"></canvas>');
-    await page.addScriptTag({path: path.resolve(__dirname, '../app/wave.js')});
+    // wave.js hosts the context and the clock but no longer draws anything on
+    // its own, so the spline and the modules it reaches for load first, in the
+    // same order index.html uses.
+    for (const module of ['wave-post.js', 'ps3-particles.js', 'wave-colors.js', 'wave-msaa.js',
+      'ps3-wave.js', 'wave.js']) {
+      await page.addScriptTag({path: path.resolve(__dirname, '../app/' + module)});
+    }
     await page.evaluate(() => {
       window.waveTest = new C5Wave(document.getElementById('testWave'), {quality: '720p', adaptive: false});
       waveTest.setReducedMotion(true);
@@ -39,9 +45,12 @@ const {chromium} = require('playwright');
     checks.push('Rich WebGL keeps a nonblack presented frame with 720p backing and the unchanged 30fps target');
 
     await page.evaluate(() => {
+      // Count repaints, not GL calls: the spline puts a backdrop and a composite
+      // pass on the wire for every one of them, so drawArrays no longer answers
+      // the question these assertions ask.
       window.waveDraws = 0;
-      const draw = waveTest.gl.drawArrays.bind(waveTest.gl);
-      waveTest.gl.drawArrays = (...args) => { waveDraws++; return draw(...args); };
+      const draw = waveTest._draw.bind(waveTest);
+      waveTest._draw = (...args) => { waveDraws++; return draw(...args); };
       waveTest.setPaused(true);
       Object.defineProperty(document, 'hidden', {configurable: true, value: true});
       document.dispatchEvent(new Event('visibilitychange'));

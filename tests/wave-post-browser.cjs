@@ -119,7 +119,7 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
       const quiet=()=>localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify({motion:'reduced'}));
       for(const init of [capture,quiet,inject])await p.addInitScript(init);
       await load(p,[capture,quiet,inject]);await p.waitForFunction(()=>window.C5App&&C5App.getState().waveMode==='webgl');
-      const d=await p.evaluate(()=>postTestWave.getDiagnostics());assert.equal(d.pattern,'ps3');assert.equal(d.surface.postprocess,'off');assert.match(d.surface.postprocessFallback,/refused/);
+      const d=await p.evaluate(()=>postTestWave.getDiagnostics());assert.equal(d.mode,'webgl');assert.equal(d.surface.postprocess,'off');assert.match(d.surface.postprocessFallback,/refused/);
       const attempts=await p.evaluate(()=>postRefusals);await p.evaluate(()=>{for(let i=0;i<3;i++)postTestWave._draw();});assert.equal(await p.evaluate(()=>postRefusals),attempts);
       assert.equal(await p.locator('#items').isVisible(),true);assert.equal(await p.evaluate(()=>C5App.getState().preferences.wavePostprocess),'wave');
       checks.push('Optional FXAA '+kind+' refusal keeps PS3 waves, reports fallback and does not retry every frame');

@@ -99,7 +99,7 @@ copyright and license notices are retained in [LICENSE](LICENSE),
 [third-party notices](THIRD-PARTY-NOTICES.md), and [wave provenance](WAVE-PROVENANCE.md).
 This project is not affiliated with LG or Sony.
 
-The wave background uses a PS3-style spline surface with an OpenXMB/Canvas fallback.
+The wave background uses a PS3-style spline surface. Without WebGL it falls back to a static gradient.
 See [renderer provenance](WAVE-PROVENANCE.md) for sources and limitations.
 
 ## Wave colours

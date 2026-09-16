@@ -220,10 +220,10 @@
     'void main() { gl_FragColor = vec4(backgroundColor(vUV,uBackground,uWave),1.0); }'
   ].join('\n');
   // Where the band sits vertically, in clip space, where 2.0 spans the output
-  // height. It sat a twentieth of the height higher up to 0.1.30.
+  // height. It came down a twentieth of the height twice after 0.1.30.
   // ps3-particles.js repeats the number: it loads before this file and so
   // cannot read it from here.
-  var BAND_OFFSET = -0.07;
+  var BAND_OFFSET = -0.17;
   var VERTEX = [
     'attribute vec4 aPosition; attribute vec3 aNormal;',
     'varying vec3 vNormal; varying float vDepth;',

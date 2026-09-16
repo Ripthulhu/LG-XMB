@@ -1,8 +1,11 @@
 /*
- * OpenXMB C5: WebGL / Canvas adaptation of OpenXMB shaders/original.frag.
- * Upstream copyright (C) 2025-2026 Syndromatic Ltd. All rights reserved.
- * Designed by Kavish Krishnakumar in Manchester.
- * Adapted for the user's LG C5 prototype, September 2026.
+ * OpenXMB C5: the canvas, GL context and frame clock behind the spline wave.
+ *
+ * This file used to carry a WebGL and Canvas2D adaptation of OpenXMB's
+ * shaders/original.frag, copyright (C) 2025-2026 Syndromatic Ltd., designed by
+ * Kavish Krishnakumar in Manchester. That renderer was removed after 0.1.30;
+ * the notice stays because the project still adapts other OpenXMB work, and
+ * ../licenses/WAVE-PROVENANCE.md records what came from where.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -21,81 +24,7 @@
     'gl_Position = vec4(aPosition, 0.0, 1.0); }'
   ].join('\n');
 
-  // The five ribbon curves, mask widths, seeds, noise and crossing function
-  // come from original.frag at OpenXMB commit 84f153f441c5f860a07acd5b37bd90c4aaae82de.
-  // Vulkan push constants become WebGL uniforms; the composition is darkened
-  // and moved below the menu. Deferred WebGL restores the original rich mask
-  // and crossing detail; Canvas2D is only a compatibility fallback.
   var colors = global.LGXMBWaveColors;
-  var FRAGMENT = [
-    'precision PRECISION float;',
-    'varying vec2 vUV;',
-    'uniform vec2 uResolution;',
-    'uniform float uTime;',
-    'uniform float uBrightness;',
-    'uniform vec3 uBackground;',
-    'uniform vec3 uWave;',
-    colors ? colors.shader : '',
-    'float hash12(vec2 p) {',
-    '  vec3 p3 = fract(vec3(p.xyx) * 0.1031);',
-    '  p3 += dot(p3, p3.yzx + 33.33);',
-    '  return fract((p3.x + p3.y) * p3.z);',
-    '}',
-    'float noise2(vec2 p) {',
-    '  vec2 i = floor(p); vec2 f = fract(p);',
-    '  vec2 u = f * f * (3.0 - 2.0 * f);',
-    '  return mix(mix(hash12(i), hash12(i + vec2(1.0,0.0)), u.x),',
-    '    mix(hash12(i + vec2(0.0,1.0)), hash12(i + vec2(1.0,1.0)), u.x), u.y);',
-    '}',
-    'float fbm(vec2 p) {',
-    '  float v = 0.0; float a = 0.5;',
-    '  mat2 r = mat2(0.82, -0.57, 0.57, 0.82);',
-    '  for (int i = 0; i < 4; ++i) {',
-    '    v += a * noise2(p); p = r * p * 2.03 + vec2(11.7, 4.2); a *= 0.5;',
-    '  } return v;',
-    '}',
-    'float ribbon_curve(float x, float seed, float t) {',
-    '  float slow = t * (0.045 + seed * 0.011);',
-    '  float y = sin(x * (1.15 + seed * 0.07) + slow + seed * 3.1) * 0.115;',
-    '  y += sin(x * (2.05 + seed * 0.11) - slow * 1.45 + seed * 6.4) * 0.045;',
-    '  y += sin(x * (3.10 + seed * 0.19) + slow * 0.72 + seed * 2.4) * 0.018;',
-    '  return y;',
-    '}',
-    'float ribbon_mask(vec2 p, float seed, float t, float width, out float glow) {',
-    '  float y = ribbon_curve(p.x, seed, t) + seed * 0.045 - 0.055;',
-    '  float d = abs(p.y - y);',
-    '  glow = 1.0 - smoothstep(width, width * 7.0, d);',
-    '  return 1.0 - smoothstep(width * 0.12, width, d);',
-    '}',
-    'void main() {',
-    '  vec2 uv = vUV;',
-    '  vec2 p = uv * 2.0 - 1.0;',
-    '  p.x *= uResolution.x / max(uResolution.y, 1.0);',
-    '  p.y += 0.03;',
-    '  float leftGlow = exp(-length((p - vec2(-1.28,0.22)) * vec2(0.64,1.05)) * 1.35);',
-    '  float horizon = exp(-abs(p.y + 0.03) * 3.0);',
-    '  float vignette = 1.0 - smoothstep(0.18,1.65,length((uv - 0.5) * vec2(1.4,1.8)));',
-    '  vec3 color = uBackground * mix(0.5,1.0,uv.y);',
-    '  color += uWave * (leftGlow * 0.035 + horizon * 0.016);',
-    colors ? '  if(uColorEnabled) { color=presetBackground(uv); vignette=1.0; }' : '',
-    '  float g0; float g1; float g2; float g3; float g4;',
-    '  float c0 = ribbon_mask(p + vec2(0.00,0.012),0.2,uTime,0.022,g0);',
-    '  float c1 = ribbon_mask(p + vec2(0.16,-0.018),1.1,uTime,0.017,g1);',
-    '  float c2 = ribbon_mask(p + vec2(-0.12,0.030),2.0,uTime,0.013,g2);',
-    '  float c3 = ribbon_mask(p + vec2(0.08,-0.048),3.0,uTime,0.010,g3);',
-    '  float c4 = ribbon_mask(p + vec2(-0.22,0.056),3.8,uTime,0.018,g4);',
-    '  float core = c0*0.42 + c1*0.34 + c2*0.26 + c3*0.18 + c4*0.12;',
-    '  float glow = g0*0.20 + g1*0.18 + g2*0.14 + g3*0.10 + g4*0.08;',
-    '  float crossing = smoothstep(0.05,0.75,fbm(vec2(p.x*0.74,p.y*1.8+uTime*0.018)));',
-    '  core *= mix(0.78,1.26,crossing);',
-    '  float edgeFade = 0.58 + 0.42 * sin(uv.x * 3.14159265);',
-    '  vec3 waveColor = mix(uWave,vec3(0.70,0.84,0.96),0.25);',
-    '  color += waveColor * glow * 0.23 * edgeFade * uBrightness;',
-    '  color += waveColor * core * 0.34 * edgeFade * uBrightness;',
-    '  color += vec3(0.61,0.78,0.90) * pow(clamp(core,0.0,1.0),2.2) * 0.075 * uBrightness;',
-    '  gl_FragColor = vec4(clamp(color * mix(0.70,1.0,vignette),0.0,1.0),1.0);',
-    '}'
-  ].join('\n');
 
   function color(value, fallback) {
     if (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)) {
@@ -108,24 +37,6 @@
     return fallback;
   }
 
-  function rgb(c, alpha) {
-    return 'rgba(' + c.map(function (x) { return Math.round(x * 255); }).join(',') + ',' + alpha + ')';
-  }
-
-  // Same ribbon_curve equation as original.frag, for the CPU fallback.
-  function curve(x, seed, t) {
-    var slow = t * (0.045 + seed * 0.011);
-    return Math.sin(x * (1.15 + seed * 0.07) + slow + seed * 3.1) * 0.115 +
-      Math.sin(x * (2.05 + seed * 0.11) - slow * 1.45 + seed * 6.4) * 0.045 +
-      Math.sin(x * (3.10 + seed * 0.19) + slow * 0.72 + seed * 2.4) * 0.018;
-  }
-
-  var SEEDS = [0.2,1.1,2.0,3.0,3.8];
-  var OFFSETS = [[0,0.012],[0.16,-0.018],[-0.12,0.030],[0.08,-0.048],[-0.22,0.056]];
-  var WIDTHS = [0.022,0.017,0.013,0.010,0.018];
-  var WEIGHTS = [0.42,0.34,0.26,0.18,0.12];
-  var SOFT_WIDTHS = [3.2,1.4,0.40];
-  var SOFT_ALPHA = [0.045,0.085,0.35];
   var QUALITY = [
     {name:'1080p',width:1920,height:1080},
     {name:'720p',width:1280,height:720},
@@ -166,15 +77,11 @@
     this.initRaf = 0;
     this.compileRaf = 0;
     this.initialized = false;
-    this.renderer = options && options.renderer === 'canvas2d' ? 'canvas2d' : 'webgl';
     this.qualityIndex = options && options.quality === '720p' ? 1 : options && options.quality === '540p' ? 2 : 0;
     this.adaptive = !(options && options.adaptive === false);
     this.ps3Quality = {sampling:1,detail:'standard',softness:1.5,postprocess:'off',strength:'normal',particles:false,particleCount:2000,msaa:0};
     this.onRenderStatus = options && typeof options.onRenderStatus === 'function' ? options.onRenderStatus : null;
     this.ps3Surface = null;
-    this.ps3Disabled = !!(options && options.pattern === 'classic');
-    this.pattern = 'classic';
-    this.patternFallback = null;
     this.position = null;
     this.capabilities = null;
     this.qualityChanges = [];
@@ -188,13 +95,8 @@
     this.contextVersion = 0;
     this.forceWebGL1 = !!(options && options.webglVersion === 1);
     this.gl = null;
-    this.ctx = null;
     this.program = null;
     this.buffer = null;
-    this.fallbackCanvas = null;
-    this.backgroundSurface = null;
-    this.strokeStyles = null;
-    this.points = null;
     this.media = global.matchMedia ? global.matchMedia('(prefers-reduced-motion: reduce)') : null;
     this.reducedMotion = !!(this.media && this.media.matches);
     this._tickBound = this._tick.bind(this);
@@ -254,11 +156,7 @@
   };
 
   C5Wave.prototype._initialize = function () {
-    if (this.fallbackCanvas && this.fallbackCanvas.parentNode) {
-      this.fallbackCanvas.parentNode.removeChild(this.fallbackCanvas);
-    }
-    this.fallbackCanvas = null; this.ctx = null; this.mode = 'static';
-    if (this.renderer !== 'webgl') { this._fallback(); this._resize(); this._resume(); return; }
+    this.mode = 'static';
     // Keep the last complete frame while Home is paused. This does not
     // guarantee compositor retention; native performance is tested separately.
     var options = {alpha:false, antialias:false, depth:false, stencil:false,
@@ -274,19 +172,18 @@
         this.gl = this.canvas.getContext('webgl', options) || this.canvas.getContext('experimental-webgl', options);
         if (this.gl) this.contextVersion = 1;
       }
-      if (!this.gl) { this._fallback(); this._resize(); this._resume(); return; }
+      if (!this.gl) { this._failStatic(); return; }
       var gl = this.gl;
       this._inspectGpu();
       this.parallelCompile = gl.getExtension('KHR_parallel_shader_compile');
       this.compileStarted = nowMs();
       var precision = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
       var shaderPrecision = precision && precision.precision ? 'highp' : 'mediump';
-      var ps3 = !this.ps3Disabled && global.LGXMBPS3Wave;
-      this.pattern = ps3 ? 'ps3' : 'classic';
-      if (this.pattern === 'ps3') this.ps3Surface = ps3.create(gl,shaderPrecision,this.ps3Quality);
+      var ps3 = global.LGXMBPS3Wave;
+      if (!ps3) throw new Error('Spline wave module is missing');
+      this.ps3Surface = ps3.create(gl,shaderPrecision,this.ps3Quality);
       vertex = this._shader(gl.VERTEX_SHADER, VERTEX);
-      fragment = this._shader(gl.FRAGMENT_SHADER,
-        (this.ps3Surface ? ps3.backdrop : FRAGMENT).replace('PRECISION', shaderPrecision));
+      fragment = this._shader(gl.FRAGMENT_SHADER, ps3.backdrop.replace('PRECISION', shaderPrecision));
       this.program = gl.createProgram();
       gl.attachShader(this.program, vertex); gl.attachShader(this.program, fragment);
       this.pendingShaders = [vertex,fragment];
@@ -370,7 +267,6 @@
   };
 
   C5Wave.prototype._failGpu = function (error) {
-    var retryClassic = this.pattern === 'ps3' && !this.ps3Disabled;
     if (this.ps3Surface) this.ps3Surface.destroy(this.contextLost);
     this.ps3Surface = null;
     this.error = String(error.message || error);
@@ -381,31 +277,15 @@
       if (this.buffer) gl.deleteBuffer(this.buffer);
     }
     this.pendingShaders = null; this.program = null; this.buffer = null;
-    if (retryClassic) {
-      this.ps3Disabled = true; this.patternFallback = this.error;
-      this._initialize(); return;
-    }
-    this._fallback(); this._resize(); this._resume();
+    this._failStatic();
   };
 
-  C5Wave.prototype._fallback = function () {
-    var target = this.canvas;
-    // A canvas cannot switch context families after a failed WebGL compile.
-    // Keep the caller's element/ID, and place an owned Canvas2D surface above it.
-    if (this.gl && target.parentNode) {
-      this.fallbackCanvas = document.createElement('canvas');
-      var style = global.getComputedStyle(target);
-      this.fallbackCanvas.style.cssText = 'position:absolute;pointer-events:none;';
-      ['top','left','right','bottom','width','height','zIndex','opacity','borderRadius'].forEach(function (key) {
-        this.fallbackCanvas.style[key] = style[key];
-      }, this);
-      this.fallbackCanvas.setAttribute('aria-hidden','true');
-      target.parentNode.insertBefore(this.fallbackCanvas, target.nextSibling);
-      target = this.fallbackCanvas;
-    }
-    try { this.ctx = target.getContext('2d', {alpha:false}); } catch (e) { this.ctx = null; }
-    this.mode = this.ctx ? 'canvas2d' : 'static';
-    if (!this.ctx) this.canvas.style.background = 'linear-gradient(160deg,#111e31,#061017 68%,#04080d)';
+  // Without a GPU there is nothing left to draw: the spline needs one, and the
+  // Canvas2D ribbons that used to stand in for it were retired after 0.1.30.
+  C5Wave.prototype._failStatic = function () {
+    this.mode = 'static';
+    this.canvas.style.background = 'linear-gradient(160deg,#111e31,#061017 68%,#04080d)';
+    this._cancel();
   };
 
   C5Wave.prototype._resize = function () {
@@ -420,11 +300,11 @@
     var rect = this.canvas.getBoundingClientRect();
     var width = Math.max(1, rect.width || global.innerWidth || 1920);
     var height = Math.max(1, rect.height || global.innerHeight || 1080);
-    var quality = this.mode === 'canvas2d' || this.renderer === 'canvas2d' ? QUALITY[2] : QUALITY[this.qualityIndex];
+    var quality = QUALITY[this.qualityIndex];
     // DPR can improve a small desktop preview; it never pushes this backdrop
     // beyond the explicit quality cap or changes the app's DOM resolution.
     var scale = Math.min(global.devicePixelRatio || 1,quality.width/width,quality.height/height);
-    if (this.capabilities && this.mode !== 'canvas2d') {
+    if (this.capabilities) {
       scale = Math.min(scale,this.capabilities.maxViewport[0]/width,this.capabilities.maxViewport[1]/height,
         this.capabilities.maxRenderbuffer/width,this.capabilities.maxRenderbuffer/height);
     }
@@ -434,13 +314,6 @@
     if (this.canvas.width !== w || this.canvas.height !== h) {
       if (this.canvas.width !== w) this.canvas.width = w;
       if (this.canvas.height !== h) this.canvas.height = h;
-      this.backgroundSurface = null; this.points = null;
-      resized = true;
-    }
-    if (this.fallbackCanvas && (this.fallbackCanvas.width !== w || this.fallbackCanvas.height !== h)) {
-      if (this.fallbackCanvas.width !== w) this.fallbackCanvas.width = w;
-      if (this.fallbackCanvas.height !== h) this.fallbackCanvas.height = h;
-      this.backgroundSurface = null; this.points = null;
       resized = true;
     }
     if (resized) this._draw();
@@ -483,14 +356,13 @@
   C5Wave.prototype.getDiagnostics = function () {
     // Local diagnostic data only. Scheduling gaps are not GPU execution time.
     return {
-      mode:this.mode,requestedRenderer:this.renderer,contextVersion:this.contextVersion,capabilities:this.capabilities,
-      pattern:this.mode === 'webgl' ? this.pattern : 'classic',patternFallback:this.patternFallback,
+      mode:this.mode,contextVersion:this.contextVersion,capabilities:this.capabilities,
       renderQuality:Object.assign({},this.ps3Quality),
       surface:this.ps3Surface ? this.ps3Surface.diagnostics() : null,
       parallelShaderCompile:!!this.parallelCompile,compileMs:this.compileMs,
-      quality:this.mode === 'canvas2d' ? '540p' : QUALITY[this.qualityIndex].name,
+      quality:QUALITY[this.qualityIndex].name,
       backingWidth:this.canvas.width,backingHeight:this.canvas.height,
-      targetFps:this.mode === 'canvas2d' ? 20 : 30,adaptive:this.adaptive,
+      targetFps:30,adaptive:this.adaptive,
       reducedMotion:this.reducedMotion,paused:this.paused,error:this.error,
       speed:this.speed,brightness:this.brightness,
       scheduling:{completedWindows:this.timing.windows,lastGapRatio:this.timing.lastGapRatio,
@@ -525,58 +397,6 @@
         catch (error) { this._cancel(); this._failGpu(error); renderChanged = true; }
         if (renderChanged && this.onRenderStatus) this.onRenderStatus();
       }
-    } else if (this.ctx) this._draw2d();
-  };
-
-  C5Wave.prototype._draw2d = function () {
-    var ctx = this.ctx;
-    var w = ctx.canvas.width, h = ctx.canvas.height;
-    if (!this.backgroundSurface) this._cache2d(w,h);
-    ctx.drawImage(this.backgroundSurface,0,0);
-    ctx.lineCap = 'round';
-    for (var j=0;j<5;j++) {
-      ctx.beginPath();
-      var row = this.points[j];
-      for (var i=0;i<row.length;i+=2) {
-        var px = row[i];
-        var y = curve(row[i+1],SEEDS[j],this.time)+SEEDS[j]*0.045-0.055-OFFSETS[j][1];
-        var py = (1-(y-0.03))*h*0.5;
-        if (px===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
-      }
-      // Three soft strokes approximate the fragment mask, without expensive
-      // per-pixel CPU noise or Canvas shadowBlur on a television browser.
-      for (var pass=0;pass<3;pass++) {
-        ctx.lineWidth = Math.max(0.8,WIDTHS[j]*h*SOFT_WIDTHS[pass]);
-        ctx.strokeStyle = this.strokeStyles[j][pass];
-        ctx.stroke();
-      }
-    }
-  };
-
-  C5Wave.prototype._cache2d = function (w,h) {
-    var surface = document.createElement('canvas');
-    surface.width = w; surface.height = h;
-    var ctx = surface.getContext('2d',{alpha:false});
-    if(colors && this.palette) colors.paint(ctx,w,h,this.palette);
-    else {
-    var bg = ctx.createLinearGradient(0,0,w*0.4,h);
-    bg.addColorStop(0,rgb(this.background,1));
-    bg.addColorStop(1,rgb(this.background.map(function (v) { return v*0.5; }),1));
-    ctx.fillStyle = bg; ctx.fillRect(0,0,w,h);
-    var halo = ctx.createRadialGradient(w*0.25,h*0.69,0,w*0.25,h*0.69,w*0.65);
-    halo.addColorStop(0,rgb(this.wave,0.07)); halo.addColorStop(1,rgb(this.wave,0));
-    ctx.fillStyle = halo; ctx.fillRect(0,0,w,h);
-    }
-    this.backgroundSurface = surface;
-    var tint = this.wave.map(function (v,i) { return v*0.75+[0.70,0.84,0.96][i]*0.25; });
-    this.strokeStyles = []; this.points = [];
-    for (var j=0;j<5;j++) {
-      var styles = []; var row = [];
-      for (var pass=0;pass<3;pass++) styles.push(rgb(tint,WEIGHTS[j]*SOFT_ALPHA[pass]*this.brightness));
-      // The curves are low-frequency. 120 segments are smooth at TV distance,
-      // and avoid repeatedly computing identical x positions on each frame.
-      for (var i=0;i<=120;i++) row.push(i*w/120,(i/120*2-1)*(w/h)+OFFSETS[j][0]);
-      this.strokeStyles.push(styles); this.points.push(row);
     }
   };
 
@@ -606,7 +426,7 @@
     if (this.destroyed || this.contextLost || this.paused || this.reducedMotion || document.hidden) return;
     this._sampleTiming(now);
     if (!this.lastFrame) this.lastFrame = now;
-    var interval = 1000/(this.mode === 'canvas2d' ? 20 : 30);
+    var interval = 1000/30;
     if (!this.nextFrame) this.nextFrame = this.lastFrame+interval;
     if (now >= this.nextFrame-0.5) {
       this.time += Math.min((now-this.lastFrame)/1000,0.1)*0.70*this.speed;
@@ -644,7 +464,6 @@
     this.wave = color(theme.wave,this.wave);
     this.palette = colors ? colors.resolve(theme.colors) : null;
     if(this.palette) this.wave = this.palette.tint.slice();
-    this.backgroundSurface = null;
     this._draw();
   };
 
@@ -664,7 +483,7 @@
     var repaint = this.brightness !== brightness;
     this.speed = speed; this.brightness = brightness;
     // Uniform/clock changes retain the context, geometry, frame and frame cap.
-    if (repaint) { this.backgroundSurface = null; this._draw(); }
+    if (repaint) this._draw();
   };
 
   C5Wave.prototype.setQuality = function (options) {
@@ -705,10 +524,8 @@
       if (this.buffer) this.gl.deleteBuffer(this.buffer);
       if (this.program) this.gl.deleteProgram(this.program);
     }
-    if (this.fallbackCanvas && this.fallbackCanvas.parentNode) this.fallbackCanvas.parentNode.removeChild(this.fallbackCanvas);
-    this.fallbackCanvas = null; this.ctx = null; this.gl = null;
+    this.gl = null;
     this.pendingShaders = null;
-    this.backgroundSurface = null; this.points = null; this.strokeStyles = null;
   };
 
   global.C5Wave = C5Wave;

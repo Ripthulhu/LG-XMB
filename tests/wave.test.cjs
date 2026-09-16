@@ -80,6 +80,19 @@ function setup({ hidden = false, reducedMotion = false, initialize = true,
     requestAnimationFrame(fn) { const id = ++frameId; frames.set(id, fn); return id; },
     cancelAnimationFrame(id) { frames.delete(id); }
   });
+  // These tests cover what wave.js owns: context attributes, backing size,
+  // pacing and teardown. The spline surface is stubbed so a fake GL context is
+  // enough; ps3-wave.test.cjs drives the real one.
+  const surface = {
+    programs: [{}], finish() {}, configure() {}, draw() { return false; },
+    diagnostics: () => ({surfaceWidth: width, surfaceHeight: height}),
+    destroy(lost) { surface.destroyed = lost; }
+  };
+  window.LGXMBPS3Wave = {
+    backdrop: 'precision PRECISION float; void main() {}',
+    create: () => surface,
+    quality: (options, current) => Object.assign({}, current, options)
+  };
   vm.runInNewContext(source, {window, document, Date, Float32Array, console});
   const wave = new window.C5Wave(canvas, options);
   function frame() {
@@ -95,7 +108,7 @@ function setup({ hidden = false, reducedMotion = false, initialize = true,
   }
   function resetMetrics() { metrics.writes.length = 0; metrics.draws = 0; metrics.rectReads = 0; }
   function visibility(value) { document.hidden = value; document.dispatch('visibilitychange'); }
-  return {wave, canvas, document, window, frames, contextRequests, metrics, frame, resetMetrics, visibility};
+  return {wave, canvas, document, window, frames, contextRequests, metrics, frame, resetMetrics, visibility, surface};
 }
 
 test('WebGL context requests a preserved color buffer without extra attachments', () => {

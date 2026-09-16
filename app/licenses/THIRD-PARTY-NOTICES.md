@@ -6,7 +6,7 @@ Source: https://github.com/phenom64/OpenXMB
 
 Upstream revision: `84f153f441c5f860a07acd5b37bd90c4aaae82de`.
 
-This web app adapts OpenXMB's interface concept, monthly colors from `config.json`, and `shaders/original.frag`. The original configuration credits Kavish Krishnakumar / Syndromatic Limited Bharat Britannia, with "™ & © 2025-2026. Syndromatic Ltd. All rights reserved." and a GPLv3 license.
+This web app adapts OpenXMB's interface concept and monthly colors from `config.json`. It also adapted `shaders/original.frag` up to 0.1.30; that renderer has since been removed, and `WAVE-PROVENANCE.md` records why the notice and source stay here. The original configuration credits Kavish Krishnakumar / Syndromatic Limited Bharat Britannia, with "™ & © 2025-2026. Syndromatic Ltd. All rights reserved." and a GPLv3 license.
 
 The shader's original notice is retained:
 

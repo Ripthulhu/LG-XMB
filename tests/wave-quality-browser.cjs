@@ -91,7 +91,7 @@ module.exports = async function checkWaveQuality(browser, checks, errors) {
     await limited.goto('http://127.0.0.1:8765/');
     await limited.waitForFunction(()=>window.C5App&&C5App.getState().waveMode==='webgl');
     const d=await limited.evaluate(()=>C5App.getState().waveDiagnostics);
-    assert.equal(d.pattern,'ps3');assert.equal(d.surface.requestedScale,1.5);assert.equal(d.surface.effectiveScale,1.25);
+    assert.equal(d.mode,'webgl');assert.equal(d.surface.requestedScale,1.5);assert.equal(d.surface.effectiveScale,1.25);
     await limited.getByRole('button',{name:'Settings',exact:true}).click();await limited.keyboard.press('ArrowDown');await limited.keyboard.press('Enter');
     assert.ok((await limited.locator('#waveRenderStatus').innerText()).includes('2400 × '+d.surface.surfaceHeight));
     assert.match(await limited.locator('#waveRenderStatus').innerText(),/1.25× applied/);
