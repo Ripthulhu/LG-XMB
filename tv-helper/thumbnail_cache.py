@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Keep four recent HDMI thumbnails using the TV's normal protected capture API."""
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -63,7 +64,7 @@ def checked_app():
         raw = os.read(manifest, 65537)
         require(len(raw) <= 65536 and hashlib.sha256(raw).hexdigest() == PIN_APPINFO_SHA256, 'untrusted_app_manifest')
         value = json.loads(raw)
-        require(isinstance(value, dict) and value.get('id') == HOME, 'invalid_app_manifest')
+        require(isinstance(value, dict) and value.get('id') == HOME_ID, 'invalid_app_manifest')
     def verify_bindings():
         try:
             for index, name in enumerate(parts[1:-1]):
