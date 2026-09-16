@@ -285,14 +285,14 @@ class SetupFixture(unittest.TestCase):
         self.assertFalse(result['captureRunning'])
 
     def test_missing_bundle_never_launches_or_initializes_config(self):
-        (self.bundle / 'process_control.py').unlink()
+        (self.bundle / 'thumbnail_cache.py').unlink()
         with self.assertRaisesRegex(startup.SetupError, 'bundle_incomplete'):
             self.run_setup()
         self.assertFalse((self.base / 'background.json').exists())
         self.assertFalse((self.base / 'installed.json').exists())
 
     def test_changed_bundle_bytes_are_rejected(self):
-        (self.bundle / 'process_control.py').write_text('# changed bytes\n')
+        (self.bundle / 'thumbnail_cache.py').write_text('# changed bytes\n')
         with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
             self.run_setup()
         self.assertFalse((self.base / 'background.json').exists())
@@ -306,14 +306,14 @@ class SetupFixture(unittest.TestCase):
         self.assertFalse((self.base / 'installed.json').exists())
 
     def test_symlinked_bundle_member_is_rejected_without_following_it(self):
-        member = self.bundle / 'process_control.py'
+        member = self.bundle / 'thumbnail_cache.py'
         member.unlink()
         member.symlink_to('/etc/passwd')
         with self.assertRaises(OSError):
             self.run_setup()
 
     def test_hardlinked_bundle_member_is_rejected(self):
-        member = self.bundle / 'process_control.py'
+        member = self.bundle / 'thumbnail_cache.py'
         os.link(member, self.root / 'extra-link')
         with self.assertRaises(startup.SetupError):
             self.run_setup()
@@ -322,7 +322,7 @@ class SetupFixture(unittest.TestCase):
         # LG resets this tree to 0777 at boot. Rejecting that left the helper
         # dead until someone chmodded it by hand, and the directory repair below
         # could never run, cause reading the bundle failed first.
-        member = self.bundle / 'process_control.py'
+        member = self.bundle / 'thumbnail_cache.py'
         member.chmod(0o666)
         self.run_setup()
         self.assertEqual(stat.S_IMODE(member.stat().st_mode), 0o644)
@@ -330,7 +330,7 @@ class SetupFixture(unittest.TestCase):
     def test_a_repaired_member_is_still_verified_against_the_build_pin(self):
         # The mode is put back before the read, so the hash stays the thing that
         # decides trust. Tampered bytes are refused whatever the mode says.
-        member = self.bundle / 'process_control.py'
+        member = self.bundle / 'thumbnail_cache.py'
         member.write_bytes(member.read_bytes() + b'# changed')
         member.chmod(0o666)
         with self.assertRaises(startup.SetupError):
@@ -477,14 +477,14 @@ class SetupFixture(unittest.TestCase):
         log.symlink_to(target)
         self.assertFalse(startup.record_startup('fixture'))
         self.assertEqual(target.read_text(), 'keep')
-        (self.bundle / 'process_control.py').write_text('# bad bytes')
+        (self.bundle / 'thumbnail_cache.py').write_text('# bad bytes')
         _, reply = self.main_reply()
         self.assertFalse(reply['logWritten'])
         self.assertEqual(reply['errorCode'], 'helper_bundle_mismatch')
         self.assertTrue(log.is_symlink())
 
     def test_logging_failure_does_not_mask_setup_failure(self):
-        (self.bundle / 'process_control.py').write_text('# bad bytes')
+        (self.bundle / 'thumbnail_cache.py').write_text('# bad bytes')
         with patch.object(startup.os, 'write', side_effect=OSError('disk full')):
             code, reply = self.main_reply()
         self.assertEqual(code, 2)
@@ -531,7 +531,7 @@ class SetupFixture(unittest.TestCase):
 
     def test_known_uid_is_not_sufficient_when_payload_bytes_are_changed(self):
         self.set_legacy_owner()
-        (self.bundle / 'process_control.py').write_text('# changed')
+        (self.bundle / 'thumbnail_cache.py').write_text('# changed')
         with patch.object(startup, 'load_module') as load:
             with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
                 startup.load_bundle()
@@ -542,7 +542,7 @@ class SetupFixture(unittest.TestCase):
 
     def test_helper_cannot_self_approve_new_payload_hashes(self):
         self.set_legacy_owner()
-        member = self.bundle / 'process_control.py'
+        member = self.bundle / 'thumbnail_cache.py'
         member.write_text('# changed')
         manifest = self.bundle / 'bundle.json'
         data = json.loads(manifest.read_text())
@@ -554,7 +554,7 @@ class SetupFixture(unittest.TestCase):
 
     def test_foreign_owned_or_writable_members_are_not_repaired(self):
         self.set_legacy_owner()
-        member = self.bundle / 'process_control.py'
+        member = self.bundle / 'thumbnail_cache.py'
         self.owners[member] = (1001, 1001)
         with self.assertRaises(startup.SetupError):
             startup.load_bundle()
@@ -614,7 +614,7 @@ class SetupFixture(unittest.TestCase):
         change_owner = startup.os.fchown
         def changed(fd, uid, gid):
             change_owner(fd, uid, gid)
-            (self.bundle / 'process_control.py').write_text('# changed mid-repair')
+            (self.bundle / 'thumbnail_cache.py').write_text('# changed mid-repair')
         with patch.object(startup.os, 'fchown', side_effect=changed), patch.object(startup, 'load_module') as load:
             with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
                 startup.load_bundle()

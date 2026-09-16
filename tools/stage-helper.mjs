@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const helperSources = Object.freeze({
-  'process_control.py': 'tv-helper/process_control.py',
   'thumbnail_cache.py': 'tv-helper/thumbnail_cache.py',
   'stop_thumbnail_helper.py': 'tv-helper/recovery/stop_thumbnail_helper.py'
 });
@@ -19,7 +18,7 @@ export function stageHelper(projectDir, appDir) {
     const source = path.join(projectDir, relative);
     if (!fs.lstatSync(source).isFile()) throw new Error(`Expected a regular helper source: ${relative}`);
     const bytes = fs.readFileSync(source);
-    if (name === 'process_control.py') {
+    if (name === 'thumbnail_cache.py') {
       const pin = /^PIN_APPINFO_SHA256 = '([0-9a-f]{64})'$/m.exec(bytes.toString('utf8'));
       if (!pin || pin[1] !== manifest.appinfoSha256) throw new Error('App manifest does not match the reviewed helper pin.');
     }

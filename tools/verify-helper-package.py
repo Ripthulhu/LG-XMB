@@ -12,8 +12,7 @@ from ipk_archive import read_ipk
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = 'usr/palm/applications/org.local.openxmb.c5/'
-SOURCES = {'process_control.py': 'tv-helper/process_control.py',
-           'thumbnail_cache.py': 'tv-helper/thumbnail_cache.py',
+SOURCES = {'thumbnail_cache.py': 'tv-helper/thumbnail_cache.py',
            'stop_thumbnail_helper.py': 'tv-helper/recovery/stop_thumbnail_helper.py'}
 
 

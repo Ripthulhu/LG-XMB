@@ -17,7 +17,6 @@ import traceback
 APP_DIR = "/media/developer/apps/usr/palm/applications/org.local.openxmb.c5"
 BASE = "/var/lib/lg-xmb"
 MUSIC_DIR = "/media/internal/lg-xmb"
-LEGACY_BASE = "/var/lib/openxmb-c5"
 CACHE = "/tmp/lg-xmb-thumbnails"
 LEGACY_CACHE = "/tmp/openxmb-c5-thumbnails"
 LOG_DIR = "/var/lib/webosbrew"
@@ -26,7 +25,7 @@ WORKER_LOCK_NAME = "lg-xmb-worker.lock"
 LOG_LIMIT = 16384
 SETUP_WAIT_SECONDS = 30  # Below the frontend RPC deadline; never wait indefinitely.
 PYTHON = "/usr/bin/python3"
-FILES = ("process_control.py", "thumbnail_cache.py", "stop_thumbnail_helper.py")
+FILES = ("thumbnail_cache.py", "stop_thumbnail_helper.py")
 BUNDLE_SHA256 = "@BUNDLE_SHA256@"  # Replaced by the packager, not read from helper/.
 LEGACY_HELPER_OWNER = (1001, 1001)  # CI runner IDs shipped in the early 0.1.12 IPKs.
 
@@ -244,37 +243,11 @@ def load_bundle():
             os.close(directory)
     finally:
         os.close(app)
-    control = load_module("lg_xmb_control", sources[FILES[0]], APP_DIR + "/helper/" + FILES[0])
-    require(control.PIN_APPINFO_SHA256 == manifest["appinfoSha256"], "helper_bundle_mismatch")
-    control.checked_app()
-    recovery = load_module("lg_xmb_recovery", sources[FILES[2]], APP_DIR + "/helper/" + FILES[2])
-    return control, recovery, hashlib.sha256(raw).hexdigest()
-
-
-def migrate_config(base, control, previous):
-    current = read_file(base, "background.json", optional=True)
-    if current is not None:
-        control.valid_config(json.loads(current))
-    legacy = None
-    if not previous or not previous.get("legacyMigrated"):
-        try:
-            old = open_directory(LEGACY_BASE)
-        except FileNotFoundError:
-            old = None
-        if old is not None:
-            try:
-                legacy = read_file(old, "background.json", optional=True)
-                if legacy is not None:
-                    control.valid_config(json.loads(legacy))
-            finally:
-                os.close(old)
-        require(current is None or legacy is None or json.loads(current) == json.loads(legacy),
-                "legacy_config_conflict")
-    if current is None:
-        raw = legacy if legacy is not None else json.dumps(control.default_config()).encode()
-        write_file(base, "background.json", raw)
-    # Old choices remain on disk for recovery, but cannot be imported twice.
-    return True
+    capture = load_module("lg_xmb_capture", sources[FILES[0]], APP_DIR + "/helper/" + FILES[0])
+    require(capture.PIN_APPINFO_SHA256 == manifest["appinfoSha256"], "helper_bundle_mismatch")
+    capture.checked_app()
+    recovery = load_module("lg_xmb_recovery", sources[FILES[1]], APP_DIR + "/helper/" + FILES[1])
+    return capture, recovery, hashlib.sha256(raw).hexdigest()
 
 
 def thumbnail_link():
@@ -388,7 +361,7 @@ def launch_worker(recovery):
             raise SetupError("worker_lock_busy") from None
         record_startup("worker_start")
         child = subprocess.Popen([PYTHON, "-I", "-B", APP_DIR + "/helper/thumbnail_cache.py",
-                                  "--allow-home-preview", "--process-controls"],
+                                  "--allow-home-preview"],
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL, pass_fds=(lock,),
                                  start_new_session=True, close_fds=True)
@@ -497,7 +470,7 @@ def start():
         acquire_setup_lock(base, lock)
         # Verification/repair belongs inside the lock too. Do not use a bundle
         # or installed record read before waiting for another upgrade to finish.
-        control, recovery, bundle = load_bundle()
+        capture, recovery, bundle = load_bundle()
         prepare_user_music()
         raw = read_file(base, "installed.json", 4096, optional=True)
         previous = json.loads(raw) if raw is not None else None
@@ -509,7 +482,6 @@ def start():
         recovery.stop(legacy_only=True)
         if not previous or previous["bundle"] != bundle:
             recovery.stop()
-        migrate_config(base, control, previous)
         thumbnail_link()
         startup_link(recovery)
         running = recovery.find_helpers()

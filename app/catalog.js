@@ -176,14 +176,6 @@ window.C5Catalog=[
         "action": "previews"
       },
       {
-        "id": "background",
-        "title": "Background activity",
-        "icon": "apps",
-        "type": "SETTING",
-        "description": "Choose what stays closed while Home is open.",
-        "action": "background"
-      },
-      {
         "id": "remote",
         "title": "Remote buttons",
         "icon": "settings",

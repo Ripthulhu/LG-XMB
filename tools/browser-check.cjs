@@ -107,7 +107,6 @@ assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
  console.log('Browser suite: launch and return');
  await require('../tests/launch-return-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
  console.log('Browser suite: background settings');
- await require('../tests/background-settings-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
  console.log('Browser suite: appearance settings');
  await require('../tests/settings-appearance-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
  console.log('Browser suite: remote settings');

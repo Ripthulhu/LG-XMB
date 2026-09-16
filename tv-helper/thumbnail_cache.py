@@ -14,9 +14,9 @@ import time
 import zlib
 from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 
 HOME_ID = "org.local.openxmb.c5"
-STOCK_HOME_ID = "com.webos.app.home"
 APP_DIR = "/media/developer/apps/usr/palm/applications/" + HOME_ID
 APPINFO = APP_DIR + "/appinfo.json"
 CACHE_DIR = "/tmp/lg-xmb-thumbnails"
@@ -34,12 +34,77 @@ URIS = {
     "power": "luna://com.webos.service.tvpower/power/getPowerState",
     "capture": "luna://com.webos.service.capture/executeOneShot",
     "running": "luna://com.webos.applicationManager/running",
-    "close_stock": "luna://com.webos.applicationManager/close",
 }
 
 
 class SafeError(Exception):
     """An internal code safe to include in bounded status output."""
+
+
+PIN_APPINFO_SHA256 = '4d340db23e403e74dc4b00412b3ba1295b1710cac4798bc26c6defd341b9243e'
+
+
+def require(value, code):
+    if not value:
+        raise SafeError(code)
+
+
+def checked_app():
+    """Repair only this pinned app's metadata after LG resets modes at boot."""
+    import fcntl
+    parts = Path(APPINFO).parts
+    directories = []; manifest = None
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    def file_identity(meta):
+        require(stat.S_ISREG(meta.st_mode) and meta.st_uid == 0 and meta.st_nlink == 1, 'unsafe_app_manifest')
+        return meta.st_dev, meta.st_ino
+    def pinned_bytes():
+        os.lseek(manifest, 0, os.SEEK_SET)
+        raw = os.read(manifest, 65537)
+        require(len(raw) <= 65536 and hashlib.sha256(raw).hexdigest() == PIN_APPINFO_SHA256, 'untrusted_app_manifest')
+        value = json.loads(raw)
+        require(isinstance(value, dict) and value.get('id') == HOME, 'invalid_app_manifest')
+    def verify_bindings():
+        try:
+            for index, name in enumerate(parts[1:-1]):
+                named = os.stat(name, dir_fd=directories[index], follow_symlinks=False)
+                opened = os.fstat(directories[index + 1])
+                require(stat.S_ISDIR(named.st_mode) and named.st_uid == 0
+                        and (named.st_dev, named.st_ino) == (opened.st_dev, opened.st_ino), 'app_path_changed')
+            named = os.stat(parts[-1], dir_fd=directories[-1], follow_symlinks=False)
+            require(file_identity(named) == file_identity(os.fstat(manifest)), 'app_path_changed')
+        except OSError as error:
+            raise SafeError('app_path_changed') from error
+    try:
+        directories.append(os.open('/', flags))
+        for name in parts[1:-1]:
+            fd = os.open(name, flags, dir_fd=directories[-1]); directories.append(fd)
+            meta = os.fstat(fd)
+            require(stat.S_ISDIR(meta.st_mode) and meta.st_uid == 0, 'unsafe_app_directory')
+        manifest = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directories[-1])
+        file_identity(os.fstat(manifest))
+        deadline = time.monotonic() + .5
+        while True:
+            try: fcntl.flock(directories[-1], fcntl.LOCK_EX | fcntl.LOCK_NB); break
+            except BlockingIOError:
+                require(time.monotonic() < deadline, 'app_metadata_busy'); time.sleep(.01)
+        pinned_bytes(); verify_bindings()
+        if stat.S_IMODE(os.fstat(directories[-1]).st_mode) != 0o755: os.fchmod(directories[-1], 0o755)
+        if stat.S_IMODE(os.fstat(manifest).st_mode) != 0o644: os.fchmod(manifest, 0o644)
+        # Permissions do not revoke pre-existing file handles. Confirm the bytes
+        # and named inodes again before allowing any controller operation.
+        pinned_bytes(); verify_bindings()
+        require(stat.S_IMODE(os.fstat(directories[-1]).st_mode) == 0o755
+                and stat.S_IMODE(os.fstat(manifest).st_mode) == 0o644, 'app_permissions_not_confirmed')
+        return True
+    except FileNotFoundError:
+        # A missing initial path may be an application mount that is not ready.
+        raise
+    except OSError as error:
+        raise SafeError('unsafe_app_path') from error
+    finally:
+        if manifest is not None: os.close(manifest)
+        for fd in reversed(directories): os.close(fd)
 
 
 def check_directory(metadata, owner_uid=0, allow_sticky=False):
@@ -354,89 +419,6 @@ def verified_stock_args(args):
             and args[:3] == [b"/usr/bin/flutter-client", b"-i", b"com.webos.app.home"])
 
 
-class StockHomeCloser:
-    """Close each fresh stock PID once in our Home; observed visits can rearm once."""
-    def __init__(self, luna, stop, read_args=read_process_args,
-                 exists=lambda pid: os.path.exists("/proc/" + pid), wall=time.time, wait=None):
-        self.luna, self.stop = luna, stop
-        self.read_args, self.exists, self.wall = read_args, exists, wall
-        self.wait = wait or stop.wait
-        self.stock_visible = False
-        self.pending_return = False
-        self.attempted_pids = OrderedDict()
-        self.last_status = {"state": "no_visit_observed"}
-
-    def record(self, state):
-        self.last_status = {"state": state, "updatedAt": int(self.wall())}
-
-    def observe(self, power, foreground):
-        if self.stop.is_set() or not power_is_active(power):
-            return
-        app_id = foreground.get("appId") if foreground.get("returnValue") is True else None
-        if app_id == STOCK_HOME_ID:
-            if not self.stock_visible:
-                self.pending_return = True
-                self.record("visit_observed")
-            self.stock_visible = True
-            return
-        self.stock_visible = False
-        if app_id != HOME_ID:
-            return
-        rearmed = self.pending_return
-        # Consume before attempting: no retry loop for a PID, including failures.
-        self.pending_return = False
-        try:
-            running = self.luna("running", {})
-            rows = [row for row in running.get("running", [])
-                    if isinstance(row, dict) and row.get("id") == STOCK_HOME_ID]
-            if not rows:
-                self.record("already_stopped")
-                return
-            if len(rows) != 1:
-                raise SafeError("ambiguous_stock_process")
-            pid = rows[0].get("processid")
-            if not isinstance(pid, str) or not re.fullmatch(r"[1-9][0-9]{0,9}", pid) or int(pid) <= 1:
-                raise SafeError("invalid_stock_process")
-            if pid in self.attempted_pids and not rearmed:
-                self.record("already_attempted")
-                return
-            self.attempted_pids[pid] = True
-            self.attempted_pids.move_to_end(pid)
-            while len(self.attempted_pids) > 64:
-                self.attempted_pids.popitem(last=False)
-            args = self.read_args(pid)
-            if not verified_stock_args(args):
-                raise SafeError("invalid_stock_process")
-            if not power_is_active(self.luna("power", {})) or self.stop.is_set():
-                self.record("return_cancelled")
-                return
-            fresh = self.luna("foreground", {})
-            if fresh.get("appId") != HOME_ID or self.stop.is_set():
-                self.record("return_cancelled")
-                return
-            if self.read_args(pid) != args:
-                raise SafeError("stock_process_changed")
-            self.luna("close_stock", {"processId": pid})
-            for _ in range(3):
-                if not self.exists(pid) or self.stop.is_set():
-                    break
-                self.wait(1)
-            if self.stop.is_set():
-                self.record("close_sent")
-                return
-            after = self.luna("running", {})
-            still_stock = any(isinstance(row, dict) and row.get("id") == STOCK_HOME_ID
-                              for row in after.get("running", []))
-            if not self.exists(pid) and not still_stock:
-                self.record("closed")
-            else:
-                self.record("close_not_confirmed")
-        except SafeError:
-            self.record("close_skipped")
-        except (OSError, ValueError, TypeError, KeyError):
-            self.record("close_skipped")
-
-
 @dataclass(frozen=True)
 class Source:
     port: int
@@ -482,22 +464,10 @@ def eligible_source(power, foreground, video, allow_home=False):
     return Source(int(content.group(1)), app_id, context, mode)
 
 
-def checked_process_app(module):
-    """Keep the trusted controller's late-mount signal; bound all refusal output."""
-    try:
-        return module.checked_app()
-    except FileNotFoundError:
-        raise
-    except module.ControlError:
-        raise SafeError("app_metadata_rejected") from None
-    except (OSError, ValueError, TypeError, KeyError):
-        raise SafeError("app_readiness_failed") from None
-
-
 class Worker:
     def __init__(self, luna, cache, installed=app_installed, clock=time.monotonic,
                  wall=time.time, stop=None, capture_method="VIDEO", allow_home=False,
-                 ensure_link=ensure_thumbnail_link, stock_closer=None, app_ready=None):
+                 ensure_link=ensure_thumbnail_link, app_ready=None):
         if capture_method not in ("BLENDED", "VIDEO") or (allow_home and capture_method != "VIDEO"):
             raise SafeError("unverified_home_capture_mode")
         self.luna, self.cache, self.installed = luna, cache, installed
@@ -505,26 +475,16 @@ class Worker:
         self.stop = stop or threading.Event()
         self.capture_method, self.allow_home = capture_method, allow_home
         self.ensure_link = ensure_link
-        self.stock_closer = stock_closer or StockHomeCloser(luna, self.stop, wall=wall)
         self.app_ready, self.app_missing_since = app_ready, None
         self.observed, self.since = None, 0
         self.attempts = OrderedDict()
         self.last_capture = {}
 
-    def snapshot(self, observe_return=False):
+    def snapshot(self):
         power = self.luna("power", {})
         if not power_is_active(power):
             return None
         foreground = self.luna("foreground", {})
-        if observe_return:
-            # Broad on purpose. The controller raises its own error type from
-            # a module loaded at runtime so we can not name it here. Note that
-            # nothing restarts this process, so a controller fault taking the
-            # capture loop down costs you thumbnails until the next reboot.
-            try:
-                self.stock_closer.observe(power, foreground)
-            except Exception:
-                pass
         app_id = foreground.get("appId")
         if not (re.fullmatch(r"com\.webos\.app\.hdmi[1-4]", app_id or "")
                 or (self.allow_home and app_id == HOME_ID)):
@@ -534,7 +494,7 @@ class Worker:
 
     def status(self, state, source=None, error=None):
         value = {"version": 1, "state": state, "updatedAt": int(self.wall()),
-                 "captures": self.last_capture, "stockHome": self.stock_closer.last_status}
+                 "captures": self.last_capture}
         if source:
             value["input"] = "hdmi%d" % source.port
         if error:
@@ -575,7 +535,7 @@ class Worker:
         source = None
         try:
             self.ensure_link()
-            source = self.snapshot(observe_return=True)
+            source = self.snapshot()
             if self.stop.is_set():
                 return False
             now = self.clock()
@@ -644,8 +604,6 @@ def main(argv=None):
     parser.add_argument("--method", choices=("BLENDED", "VIDEO"), default="VIDEO")
     parser.add_argument("--allow-home-preview", action="store_true",
                         help="Use only after VIDEO capture and app-owned live preview are verified")
-    parser.add_argument("--process-controls", action="store_true",
-                        help="Use the fixed optional-app/privacy controller for Home cleanup")
     args = parser.parse_args(argv)
     if args.iterations is not None and not 1 <= args.iterations <= 100000:
         parser.error("iterations must be between 1 and 100000")
@@ -657,30 +615,11 @@ def main(argv=None):
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda _sig, _frame: stop.set())
     cache = None
-    controls = None
-    app_ready = None
     try:
         cache = Cache()
-        if args.process_controls:
-            # The matching controller is shipped in the same app-owned bundle.
-            import importlib.util
-            module_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "process_control.py")
-            for directory in (APP_DIR, os.path.dirname(module_path)):
-                check_directory(os.lstat(directory))
-            check_file(os.lstat(module_path))
-            spec = importlib.util.spec_from_file_location("c5_process_control", module_path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            try:
-                controls = module.Manager(stop)
-            except module.ControlError:
-                # Manager takes the store lock to write its config, so a busy
-                # lock here would otherwise escape as a traceback.
-                raise SafeError("controller_unavailable") from None
-            app_ready = lambda: checked_process_app(module)
         worker = Worker(Luna(executable), cache, stop=stop,
                         capture_method=args.method, allow_home=args.allow_home_preview,
-                        stock_closer=controls, app_ready=app_ready)
+                        app_ready=checked_app)
         limit = 2 if args.once else args.iterations
         count = 0
         while not stop.is_set() and (limit is None or count < limit):
@@ -697,8 +636,6 @@ def main(argv=None):
         # No raw Luna responses, stack traces, content or unbounded logs.
         return 2
     finally:
-        if controls is not None:
-            controls.shutdown()
         if cache is not None:
             cache.close()
 

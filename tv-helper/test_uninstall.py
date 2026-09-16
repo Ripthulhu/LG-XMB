@@ -19,7 +19,7 @@ class UninstallTests(unittest.TestCase):
         link = Mock()
         worker = tc.Worker(luna, cache, installed=lambda: present[0],
                            clock=lambda: now[0], wall=lambda: 0,
-                           ensure_link=link, stock_closer=controller, app_ready=app_ready)
+                           ensure_link=link, app_ready=app_ready)
         self.assertTrue(worker.step())
         luna.reset_mock(); controller.reset_mock(); link.reset_mock()
         present[0] = False
@@ -40,7 +40,7 @@ class UninstallTests(unittest.TestCase):
         luna = Mock(return_value={'returnValue': True, 'state': 'Standby'})
         worker = tc.Worker(luna, Mock(), installed=lambda: True,
                            clock=lambda: now[0], wall=lambda: 0,
-                           ensure_link=Mock(), stock_closer=Mock(last_status={}), app_ready=ready)
+                           ensure_link=Mock(), app_ready=ready)
         self.assertTrue(worker.step())
         luna.assert_not_called()
         now[0] = tc.APP_READY_GRACE_SECONDS - 1
