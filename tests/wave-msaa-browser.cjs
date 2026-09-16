@@ -36,9 +36,14 @@ module.exports=async function(browser,checks,errors,loader){
     assert.equal(await p.evaluate(()=>msaaWave.gl.getError()),0);
    }
    await p.evaluate(()=>msaaWave.setQuality({msaa:4,sampling:1}));
-   await group.getByRole('button',{name:'2×',exact:true}).click();d=await diag();
-   assert.equal(d.surface.msaaSamples,d.surface.msaaSupported.includes(2)?2:0);
-   if(!d.surface.msaaSupported.includes(2))assert.match(d.surface.msaaFallback,/unsupported/);
+   // 2x is offered only where the driver can allocate it. An unsupported level is
+   // never rounded up, so offering it would render without MSAA at all.
+   const twice=group.getByRole('button',{name:'2×',exact:true});
+   if((await diag()).surface.msaaSupported.includes(2)){
+    assert.equal(await twice.count(),1);
+    await twice.click();d=await diag();
+    assert.equal(d.surface.msaaSamples,2);assert.equal(d.surface.msaaFallback,null);
+   } else assert.equal(await twice.count(),0);
    await group.getByRole('button',{name:'4×',exact:true}).click();
    // Still-frame toggles round-trip; independent of menus/text and particles.
    const pixels=()=>p.evaluate(()=>document.getElementById('wave').toDataURL());
