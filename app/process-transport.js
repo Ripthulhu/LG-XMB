@@ -17,6 +17,15 @@
   // Preview clients keep their own local example state and never construct this bridge.
   if (!isTV()) return;
 
+  // Keys are the codes process_control.py actually raises. Both reply paths read
+  // this one map, cause when they each had their own they drifted: the old ones
+  // mapped `revision_conflict`, which the helper has never emitted, so a real
+  // stale revision came out as the generic service error instead.
+  var CODES = {untrusted_app_manifest:'HELPER_MISMATCH',unsafe_app_path:'HELPER_REJECTED',
+    unsafe_file:'HELPER_REJECTED',unsafe_directory:'HELPER_REJECTED',invalid_config:'HELPER_REJECTED',
+    stale_revision:'CONFLICT',busy:'BUSY',home_mapping_requires_custom:'HOME_MAPPING_REQUIRES_CUSTOM',
+    other_home_mapping:'OTHER_HOME_MAPPING'};
+
   function problem(code) {
     var messages = {
       HELPER_MISMATCH: 'The app and helper do not match. Reinstall the lg-xmb IPK.',
@@ -24,6 +33,7 @@
       INVALID_CHOICE: 'This background setting is unavailable.',
       INVALID_REVISION: 'Settings changed. Please refresh and try again.',
       CONFLICT: 'Settings changed. Please refresh and try again.',
+      BUSY: 'The TV is applying another settings change. Try again in a moment.',
       TIMEOUT: 'The TV did not confirm the change. Refresh these settings before trying again.',
       CANCELLED: 'The background settings request was cancelled.',
       INVALID_REPLY: 'The TV returned an unreadable background settings response.',
@@ -52,10 +62,7 @@
       var diagnostic;
       try { diagnostic = JSON.parse(outer.stdoutString); } catch (ignored) {}
       if (object(diagnostic) && diagnostic.returnValue === false) {
-        var codes = {untrusted_app_manifest:'HELPER_MISMATCH',unsafe_app_path:'HELPER_REJECTED',
-          unsafe_file:'HELPER_REJECTED',unsafe_directory:'HELPER_REJECTED',invalid_config:'HELPER_REJECTED',
-          revision_conflict:'CONFLICT',home_mapping_requires_custom:'HOME_MAPPING_REQUIRES_CUSTOM',other_home_mapping:'OTHER_HOME_MAPPING'};
-        if (Object.prototype.hasOwnProperty.call(codes, diagnostic.errorCode)) throw problem(codes[diagnostic.errorCode]);
+        if (Object.prototype.hasOwnProperty.call(CODES, diagnostic.errorCode)) throw problem(CODES[diagnostic.errorCode]);
       }
     }
     // Homebrew exec does not normally return an exit code. Its returnValue is false
@@ -76,7 +83,7 @@
     if (!object(value)) throw problem('INVALID_REPLY');
     if (value.returnValue !== true || nonzeroCode(value.errorCode) || nonzeroCode(value.returnCode) || nonzeroCode(value.exitCode)) {
       var code = value.code || value.errorCode;
-      throw problem(code === 'revision_conflict' ? 'CONFLICT' : code === 'home_mapping_requires_custom' ? 'HOME_MAPPING_REQUIRES_CUSTOM' : code === 'other_home_mapping' ? 'OTHER_HOME_MAPPING' : 'SERVICE_ERROR');
+      throw problem(Object.prototype.hasOwnProperty.call(CODES, code) ? CODES[code] : 'SERVICE_ERROR');
     }
     return value;
   }

@@ -70,6 +70,18 @@ test('Remote Home mapping reads and writes use fixed commands, authoritative fie
   assert.equal(h.calls.length,2,'Invalid mappings never reach the bridge');
 });
 
+test('The codes the helper actually raises get their own message, not the generic one', async () => {
+  // Both reply paths used to map `revision_conflict`, which process_control.py
+  // has never raised, so a real stale revision read as a plain service error.
+  const h=setup();
+  const stale=h.adapter.setEnabled('home',true,3);
+  h.reply(0,{returnValue:false,errorCode:'stale_revision'});
+  await assert.rejects(stale,e=>e.code==='CONFLICT'&&/refresh/i.test(e.message));
+  const busy=h.adapter.setEnabled('home',true,3);
+  h.reply(1,{returnValue:false,errorCode:'busy'});
+  await assert.rejects(busy,e=>e.code==='BUSY'&&/another settings change/i.test(e.message));
+});
+
 test('Remote mapping failures stay explicit, reject malformed actual state, and never retry a timed-out write', async () => {
   const h=setup(),remote=h.window.C5RemoteAdapter;
   const foreign=remote.getState();h.reply(0,{returnValue:true,available:true,revision:3,home:'other',homeKeepClosed:false});assert.equal((await foreign).home,'other');
