@@ -1,7 +1,7 @@
 /* lg-xmb web application, 2026. SPDX-License-Identifier: GPL-3.0-or-later */
 (function(){'use strict';
 var categories=window.C5Catalog, selectedCategory=1, selections=categories.map(function(){return 0;}), busy=false, modalOpen=false, lastDirection=0, toastTimer, announceTimer;
-var preferences={theme:'midnight',motion:'full',sound:false,previewMode:'cached',waveSpeed:'normal',waveBrightness:'normal',backBehavior:'stay',waveMSAA:0,waveSampling:1.5,waveDetail:'high',waveSoftness:0.75,wavePostprocess:'fxaa',waveSmoothing:'normal',musicEnabled:false,musicVolume:0.25,waveParticles:true,waveParticleCount:2000};
+var preferences={theme:'midnight',motion:'full',sound:false,previewMode:'cached',waveSpeed:'normal',waveBrightness:'normal',backBehavior:'stay',waveMSAA:0,waveSampling:1.5,waveDetail:'high',waveSoftness:0.75,wavePostprocess:'wave',waveSmoothing:'strong',musicEnabled:false,musicVolume:0.25,waveParticles:true,waveParticleCount:2000};
 var themes={midnight:{name:'Midnight',background:'#050911',wave:'#738acf',accent:'#a7baf3'},ocean:{name:'Ocean',background:'#030e13',wave:'#4da6ab',accent:'#98dfdf'},ember:{name:'Ember',background:'#130906',wave:'#ac6c45',accent:'#eebd96'},forest:{name:'Forest',background:'#040f0b',wave:'#579b7a',accent:'#b0d6bb'},amber:{name:'Amber',background:'#130f05',wave:'#c49a4a',accent:'#e0c998'},rose:{name:'Rose',background:'#13080d',wave:'#b86e8c',accent:'#e6b2c7'},violet:{name:'Violet',background:'#0d0816',wave:'#9678ca',accent:'#c8b5ec'},graphite:{name:'Graphite',background:'#090b0d',wave:'#83939d',accent:'#ccd4d9'},seasonal:{name:'Seasonal',background:'#080813',wave:'#2e2e73',accent:'#b3b3ea'}};
 // Monthly colours are adapted from OpenXMB config.json, shell.theme-month-colours.
 var monthColours=['#f2e6a6','#9e4540','#4da640','#f299cc','#99cc59','#b399e6','#80d9f2','#3373f2','#2e2e73','#994db3','#cc8040','#e64040'];
@@ -171,7 +171,20 @@ function openWaveSettings(){
       save();updateWaveStatus();
     });
   }
-  qualityChoice('MSAA',[[0,'Off'],[2,'2×'],[4,'4×']],'waveMSAA');
+  // An unsupported level is never rounded up, so offering one the driver cannot
+  // allocate renders with no MSAA at all and reads as a broken setting. The C5
+  // reports 4x only, so 2x is withheld there instead of silently doing nothing.
+  function msaaChoices(){
+    var surface=wave.getDiagnostics().surface,supported=surface?surface.msaaSupported:null;
+    var choices=[[0,'Off']];
+    [2,4].forEach(function(n){if(!supported||supported.indexOf(n)!==-1)choices.push([n,n+'×']);});
+    if(preferences.waveMSAA&&!choices.some(function(choice){return choice[0]===preferences.waveMSAA;})){
+      // Match what the renderer was already doing with an unsupported request.
+      preferences.waveMSAA=0;save();
+    }
+    return choices;
+  }
+  qualityChoice('MSAA',msaaChoices(),'waveMSAA');
   qualityChoice('Supersampling',[[1,'Off'],[1.25,'1.25×'],[1.5,'1.5×'],[2,'2×']],'waveSampling');
   qualityChoice('Mesh detail',[['standard','Standard'],['high','High'],['fine','Fine']],'waveDetail');
   qualityChoice('Edge softness',[[0,'Sharp'],[0.75,'Subtle'],[1.5,'Soft']],'waveSoftness');
@@ -180,7 +193,7 @@ function openWaveSettings(){
   qualityChoice('Post-process antialiasing',[['off','Off'],['fxaa','FXAA'],['wave','Wave FXAA']],'wavePostprocess');
   qualityChoice('Smoothing strength',[['gentle','Gentle'],['normal','Normal'],['strong','Strong']],'waveSmoothing');
   var note=document.createElement('p');note.className='wave-quality-note';
-  note.textContent='MSAA smooths geometric edges when WebGL 2 supports it. Try 4× MSAA with supersampling Off first; enabling both adds cost. Higher supersampling and mesh detail use more graphics resources. FXAA smooths edges at the output resolution, without filtering text. Wave FXAA uses wave opacity to find edges; it is experimental. Smoothing strength applies when either filter is enabled.';
+  note.textContent='MSAA only smooths geometric edges, so it does little for the wave’s soft shading or its particle sprites while costing more than any other option. Supersampling smooths all of them and measured close to free at 1.25× on the C5, so try supersampling with MSAA Off first; enabling both roughly doubles the cost. Higher mesh detail adds processor work as well as graphics work. FXAA smooths edges at the output resolution, without filtering text. Wave FXAA uses wave opacity to find edges and is the default. Smoothing strength applies when either filter is enabled.';
   $('modalContent').appendChild(note);
   var status=document.createElement('p');status.id='waveRenderStatus';status.className='wave-quality-note';status.setAttribute('role','status');
   $('modalContent').appendChild(status);updateWaveStatus();
