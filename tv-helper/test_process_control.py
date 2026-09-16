@@ -104,6 +104,7 @@ class FakeNative(pc.Native):
         self.ad_process = None
         self.live_ports = set(); self.on_video = None; self.video_reads = 0
         self.route = {'defaultApps': {'home': pc.HOME, 'MembershipApp': 'com.webos.app.overlaymembership'}, 'lastAppHandlerPolicy': 'idleApp'}
+        self.powered = True; self.foreground = pc.HOME
     def policies(self): return copy.deepcopy(self.entries)
     def preload(self, key, enabled, permanent=False):
         if self.on_preload: self.on_preload()
@@ -113,6 +114,14 @@ class FakeNative(pc.Native):
         if key == 'running':
             return {'returnValue': True, 'running': [{'id': app, 'processid': str(p['pid'])} for app, p in self.apps.items()]}
         if key == 'home_settings': return {'returnValue': True, 'settings': copy.deepcopy(self.route)}
+        # The between-poll check reads these itself instead of being handed an
+        # observation, so they answer like the real status calls.
+        if key == 'power':
+            self.actions.append((key, copy.deepcopy(payload)))
+            return {'returnValue': True, 'state': 'Active' if self.powered else 'Standby'}
+        if key == 'foreground':
+            self.actions.append((key, copy.deepcopy(payload)))
+            return {'returnValue': True, 'appId': self.foreground}
         if key == 'home_mapping': self.route['defaultApps']['home'] = payload['appId']
         self.actions.append((key, copy.deepcopy(payload))); return {'returnValue': True}
     @property
@@ -152,6 +161,77 @@ class ProcessControlTests(unittest.TestCase):
         item = pc.ITEMS[key]; p = process(pid, item['exe'], item['app'], birth)
         if key == 'home': p['argv'] = [b'/usr/bin/flutter-client', b'-i', item['app'].encode(), b'']
         self.native.processes[pid] = p; return p
+
+    def launches(self):
+        return [a for a in self.native.actions if a[0] == 'launch']
+
+    def test_lg_home_surfacing_after_an_app_closes_reopens_this_menu(self):
+        self.choose('home')
+        self.observe(app=pc.ITEMS['home']['app'])
+        self.assertEqual(self.launches(), [('launch', {'id': pc.HOME})])
+
+    def test_a_leased_visit_to_lg_home_is_never_interrupted(self):
+        # Settings leases LG Home before opening it, and bouncing a deliberate
+        # visit would make that entry impossible to use.
+        self.choose('home')
+        self.store.prepare(pc.ITEMS['home']['app'])
+        self.observe(app=pc.ITEMS['home']['app'])
+        self.assertEqual(self.launches(), [])
+
+    def test_an_invited_visit_survives_the_lease_expiring(self):
+        # The lease only covers the launch, so sitting in LG Home for longer
+        # than it lasts mustn't get interrupted.
+        self.choose('home'); stock = pc.ITEMS['home']['app']
+        self.store.prepare(stock)
+        self.observe(app=stock)
+        self.clock.advance(60)
+        self.observe(app=stock)
+        self.assertEqual(self.launches(), [])
+
+    def test_leaving_lg_home_ends_the_invitation(self):
+        self.choose('home'); stock = pc.ITEMS['home']['app']
+        self.store.prepare(stock); self.observe(app=stock); self.clock.advance(60)
+        self.observe(app=pc.HOME)
+        # A later arrival nobody asked for is still reopened.
+        self.observe(app=stock)
+        self.assertEqual(self.launches(), [('launch', {'id': pc.HOME})])
+
+    def test_lg_home_is_left_alone_when_it_is_not_being_kept_closed(self):
+        self.quiet_defaults()
+        self.observe(app=pc.ITEMS['home']['app'])
+        self.assertEqual(self.launches(), [])
+
+    def test_standby_never_reopens_the_menu(self):
+        self.choose('home')
+        self.observe(app=pc.ITEMS['home']['app'], active=False)
+        self.assertEqual(self.launches(), [])
+
+    def test_attempts_are_capped_and_only_another_foreground_app_resets_them(self):
+        self.choose('home'); stock = pc.ITEMS['home']['app']
+        for _ in range(10):
+            self.observe(app=stock); self.clock.advance(pc.RETURN_INTERVAL)
+        self.assertEqual(len(self.launches()), pc.RETURN_ATTEMPTS)
+        self.observe(app=pc.HOME)
+        self.observe(app=stock)
+        self.assertEqual(len(self.launches()), pc.RETURN_ATTEMPTS + 1)
+
+    def test_a_burst_is_rate_limited_rather_than_sent_every_tick(self):
+        self.choose('home'); stock = pc.ITEMS['home']['app']
+        for _ in range(5): self.observe(app=stock)
+        self.assertEqual(len(self.launches()), 1)
+
+    def test_the_between_poll_check_reopens_the_menu_without_a_full_observation(self):
+        self.choose('home')
+        self.native.foreground = pc.ITEMS['home']['app']
+        self.manager.poll_return()
+        self.assertEqual(self.launches(), [('launch', {'id': pc.HOME})])
+
+    def test_the_between_poll_check_costs_nothing_while_the_choice_is_off(self):
+        # It runs every second, so it mustn't touch the TV with no work to do.
+        self.quiet_defaults()
+        before = len(self.native.actions)
+        self.manager.poll_return()
+        self.assertEqual(len(self.native.actions), before)
 
     def test_fresh_defaults_allow_everything_without_invented_rollback_values(self):
         self.assertEqual([k for k, v in pc.default_config()['enabled'].items() if v], [])

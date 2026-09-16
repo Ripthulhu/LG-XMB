@@ -51,7 +51,16 @@ URLS = {
  'video': 'luna://com.webos.service.videooutput/getStatus',
  'home_settings': 'luna://com.webos.settingsservice/getSystemSettings',
  'home_mapping': 'luna://com.webos.applicationManager/setDefaultApp',
+ 'launch': 'luna://com.webos.applicationManager/launch',
 }
+
+# Closing an app doesn't go through the Home mapping at all. The compositor
+# launches profile.idleApp instead, and this product's layer pins that to LG
+# Home on the read-only rootfs. Do note setConfigs returns true and changes
+# nothing there, cause configd has no writable profile category. So we watch
+# for LG Home turning up and ask for our menu back.
+RETURN_ATTEMPTS = 3
+RETURN_INTERVAL = 2.0
 
 class ControlError(Exception):
     pass
@@ -366,6 +375,12 @@ class Native:
         require(after == expected, 'home_mapping_not_confirmed')
         return after
 
+    def launch(self, app):
+        # Only ever our own menu, so a bug here can't turn into a way to
+        # start arbitrary apps.
+        require(app == HOME, 'invalid_launch')
+        self.call('launch', {'id': app})
+
     def policies(self):
         entries = self.call('policies', {}).get('applications')
         require(isinstance(entries, list) and all(isinstance(x, dict) and isinstance(x.get('id'), str) for x in entries), 'invalid_policies')
@@ -527,9 +542,48 @@ class Manager:
         self.states = {}; self.attempted = {}; self.attempt_times = {}; self.paused = set(); self.last_revision = None; self.last_enabled = {}
         self.restore_starts = {}
         self.last_app = None; self.home_since = 0; self.policy_checked = {}; self.last_status = {'state': 'managed'}
+        self.returns = 0; self.returned_at = 0; self.invited_home = False
         self.away_lease = None
         with self.store.locked():
             c = self.store.config(); self.store.write('background.json', c)
+
+    def return_to_menu(self, c, active, app):
+        stock = ITEMS['home']['app']
+        if app != stock:
+            # Anything else on screen ends the burst and ends the visit, so
+            # coming back to LG Home later counts as a fresh arrival.
+            self.returns = 0; self.invited_home = False
+            return
+        # 'home' already means "I don't want LG Home", and you can only pick
+        # it once our menu owns the Home button, so it's the same intent.
+        if not active or not c['enabled']['home']: return
+        # The UI leases LG Home before opening it from Settings. Do note that
+        # lease only covers the launch, so we remember the visit was invited and
+        # leave it alone until you leave. Without this it bounces you out about
+        # 17 seconds in, right when the lease expires.
+        with self.store.locked():
+            if stock in self.store.leases(): self.invited_home = True
+        if self.invited_home: return
+        now = self.clock()
+        if self.returns >= RETURN_ATTEMPTS or (self.returns and now - self.returned_at < RETURN_INTERVAL): return
+        self.returns += 1; self.returned_at = now
+        # Note that a launch which never takes effect would loop forever, so
+        # the burst is capped and only a different app on screen resets it.
+        try: self.native.launch(HOME)
+        except (ControlError, OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+            self.mark('home', 'Could not reopen this menu', True)
+
+    def poll_return(self):
+        """Only the return decision is time critical, the rest of observe() can
+        keep the capture loop's slower cadence. Costs nothing while the choice is
+        off cause the config read short-circuits before any luna call."""
+        c = self.store.config()
+        if not c['enabled']['home']: return
+        power = self.native.call('power', {})
+        active = power.get('returnValue') is True and power.get('state') == 'Active'
+        foreground = self.native.call('foreground', {})
+        app = foreground.get('appId') if foreground.get('returnValue') is True else None
+        self.return_to_menu(c, active, app)
 
     def mark(self, key, status, enabled):
         self.states[key] = {'status': status, 'enabled': enabled}
@@ -674,6 +728,7 @@ class Manager:
             self.away_lease = (app, expiry) if expiry is not None else None
         elif app not in (HOME, None):
             self.away_lease = None
+        self.return_to_menu(c, active, app)
         self.restore_disabled(c)
         rows = None
         for key in ITEMS:
