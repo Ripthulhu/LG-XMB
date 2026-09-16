@@ -234,10 +234,13 @@
     if (!isTV()) return Promise.resolve(previewResult('platformBack'));
     // LG webOSTV.js 1.2.13 forwards platformBack directly to this platform API.
     // On webOS 6+, the TV owns the exit prompt; panels are handled in app.js first.
-    if (!root.PalmSystem || typeof root.PalmSystem.platformBack !== 'function') {
+    // webOS 6 renamed PalmSystem to webOSSystem. isTV accepts either, so this
+    // has to as well, or Back just rejects on a build that only has the new one.
+    var system = root.PalmSystem || root.webOSSystem;
+    if (!system || typeof system.platformBack !== 'function') {
       return Promise.reject(error('BACK_UNAVAILABLE', 'The TV exit prompt is unavailable.'));
     }
-    try { root.PalmSystem.platformBack(); return Promise.resolve({ok:true,preview:false}); }
+    try { system.platformBack(); return Promise.resolve({ok:true,preview:false}); }
     catch (ignored) { return Promise.reject(error('BACK_UNAVAILABLE', 'The TV could not open its exit prompt.')); }
   }
 

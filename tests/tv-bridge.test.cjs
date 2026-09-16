@@ -253,4 +253,7 @@ test('LG Back uses only the platform exit API on TV, remains preview-only on des
   const desktop=setup({location:{protocol:'http:',search:''},PalmSystem:{identifier:'org.local.openxmb.c5 1234',platformBack(){backs++;}}});
   assert.equal((await desktop.tv.platformBack()).preview,true);assert.equal(backs,1);
   await assert.rejects(setup().tv.platformBack(),problem=>problem.code==='BACK_UNAVAILABLE');
+  // webOS 6 renamed PalmSystem to webOSSystem and isTV already accepts either.
+  const renamed=setup({PalmSystem:undefined,webOSSystem:{identifier:'org.local.openxmb.c5 1234',platformBack(){backs++;}}});
+  assert.equal((await renamed.tv.platformBack()).preview,false);assert.equal(backs,2);
 });
