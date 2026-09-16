@@ -31,7 +31,8 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
     }
     assert.notEqual(frames.fxaa,frames.off);assert.notEqual(frames.wave,frames.off);
     await page.evaluate(()=>postTestWave.setQuality({postprocess:'fxaa'}));assert.equal(await image(),frames.fxaa);
-    for(const strength of ['gentle','strong','normal'])await page.evaluate(strength=>postTestWave.setQuality({strength}),strength);
+    // The captured frame used the default strength, so end the sweep back on it.
+    for(const strength of ['gentle','normal','strong'])await page.evaluate(strength=>postTestWave.setQuality({strength}),strength);
     assert.equal(await image(),frames.fxaa,'Changing strength never advances a frozen spline');
     assert.deepEqual(await page.locator('#categories').boundingBox(),geometry);
     await page.evaluate(()=>{postTestWave.setPaused(true);postTestWave.setQuality({postprocess:'wave'});});
