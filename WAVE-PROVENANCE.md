@@ -253,3 +253,42 @@ their own angles and are untouched.
 
 The band is now about 82% taller, so the cropped surface and the wave's fill
 cost grow with it. That has not been measured on the TV.
+
+## Wave structure fitted to a real capture (after 0.1.30)
+
+Measured against 1080p60 footage of a real XMB, using vertical slices through
+the band, high-passed to kill the background gradient, counting filament peaks
+and their widths at half maximum.
+
+| | real XMB | before | after |
+|---|---|---|---|
+| filaments per slice | 3.0 | 5.0 | 3.0 |
+| filament width, median | 8.0 px | 5.0 px | 4.0 px |
+| filament width, p90 | 23 px | 13 px | 19 px |
+| filament peak | 26.3 | 56.1 | 26.6 |
+| slice contrast | 79.8 | 117.3 | 75.4 |
+
+Two changes, found by fitting rather than taste.
+
+The depth-fold frequencies in the height kernel drop from 7 to 2.8 and from 4 to
+1.2. Those two z terms set how often the sheet folds through its own depth, and
+a vertical slice reads each fold as a separate ribbon. At the old rates a slice
+crossed five thin strands where a real XMB shows three broad ones. Nothing else
+about the kernel moves, and the shading exponent was tested first and ruled out:
+sweeping it from 4.0 to 2.2 left filament width at exactly 5.0 px, so width is
+geometry, not lighting.
+
+The fragment shader gains a body term, and the rim light drops to make room for
+it. Rim light alone lights only the crest of each fold, which drew the wave as
+traceable wires while the real one reads as a translucent sheet. Lighting the
+whole surface faintly fills between the crests. Rim used to outweigh body about
+six to one; inverting that is what stopped it looking like line art. The
+exponent also softens from 4.0 to 2.5.
+
+Filament width is the one number still short, 4 px against 8. Some of that gap
+is not real: the reference is HEVC at 20 Mbit, which smooths fine structure and
+inflates a half-maximum width, while our output is supersampled and sharpened by
+FXAA. Chasing it with blur would cost more than it returns.
+
+Brightness is compared in our own rgb preset against the console's own blue, so
+the absolute figures carry palette error. Count, width and contrast do not.

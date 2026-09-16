@@ -126,10 +126,10 @@
         var kt = kv - floor;
         var core = (mix(kernel[k0],kernel[k1],kt)*0.45 + mix(kernel[k0+1],kernel[k1+1],kt)*0.25 +
           mix(kernel[k0+2],kernel[k1+2],kt)*0.2 + mix(kernel[k0+3],kernel[k1+3],kt)*0.1)*0.04 +
-          Math.sin(rowPhase + x*6.2)*0.2 + Math.cos(z*7 + x*4.8 + flow*0.09)*0.025;
+          Math.sin(rowPhase + x*6.2)*0.2 + Math.cos(z*2.8 + x*4.8 + flow*0.09)*0.025;
         var travelling = Math.sin(x*Math.PI*1.3 + z*0.8 - flow*0.25)*0.014*0.12 +
           Math.sin(x*Math.PI*2.8 - z*1.2 + flow*0.15)*0.008 +
-          0.0998587*0.07*Math.sin((x*(4+0.306001*2) + z*4 - flow*0.6)*4.07658);
+          0.0998587*0.07*Math.sin((x*(4+0.306001*2) + z*1.2 - flow*0.6)*4.07658);
         cp[i] = core*0.45 + travelling*0.55;
       }
       for (x = 0; x <= columns; x++) {
