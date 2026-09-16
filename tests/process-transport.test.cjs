@@ -52,24 +52,6 @@ test('fixed get and set commands use only the existing exec service and bounded 
   assert.equal(Object.keys(h.adapter).sort().join(','), 'getState,prepareLaunch,setEnabled');
 });
 
-test('Remote Home mapping reads and writes use fixed commands, authoritative fields and a bounded legacy restore wait', async () => {
-  const h=setup(),remote=h.window.C5RemoteAdapter;
-  const get=remote.getState();
-  assert.equal(h.calls[0].body.command,'/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py remote-get');
-  assert.equal([...h.timers.values()][0].delay,8000);
-  h.reply(0,{returnValue:true,available:true,revision:3,home:'custom',homeKeepClosed:true});
-  assert.equal((await get).home,'custom');
-  const set=remote.setHome('stock',3);
-  assert.equal(h.calls[1].body.command,'/usr/bin/python3 -I -B /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper/process_control.py remote-set stock 3');
-  assert.equal([...h.timers.values()][0].delay,40000);
-  h.reply(1,{returnValue:true,available:true,revision:4,home:'stock',homeKeepClosed:false});
-  const result=await set;assert.equal(result.home,'stock');assert.equal(result.homeKeepClosed,false);
-  assert.equal(h.timers.size,0);assert.ok(h.bridges.every(bridge=>bridge.cancelled));
-  for(const home of ['other','custom;reboot','$(id)','stock\nreboot',null,{}])await assert.rejects(remote.setHome(home,4));
-  for(const revision of [-1,1.5,'4',NaN,Infinity])await assert.rejects(remote.setHome('custom',revision));
-  assert.equal(h.calls.length,2,'Invalid mappings never reach the bridge');
-});
-
 test('The codes the helper actually raises get their own message, not the generic one', async () => {
   // Both reply paths used to map `revision_conflict`, which process_control.py
   // has never raised, so a real stale revision read as a plain service error.
@@ -80,17 +62,6 @@ test('The codes the helper actually raises get their own message, not the generi
   const busy=h.adapter.setEnabled('home',true,3);
   h.reply(1,{returnValue:false,errorCode:'busy'});
   await assert.rejects(busy,e=>e.code==='BUSY'&&/another settings change/i.test(e.message));
-});
-
-test('Remote mapping failures stay explicit, reject malformed actual state, and never retry a timed-out write', async () => {
-  const h=setup(),remote=h.window.C5RemoteAdapter;
-  const foreign=remote.getState();h.reply(0,{returnValue:true,available:true,revision:3,home:'other',homeKeepClosed:false});assert.equal((await foreign).home,'other');
-  const malformed=remote.getState();h.reply(1,{returnValue:true,available:true,revision:3,home:'arbitrary.app.id',homeKeepClosed:false});await assert.rejects(malformed,e=>e.code==='INVALID_REPLY');
-  const denied=h.adapter.setEnabled('home',true,3);h.reply(2,{returnValue:false,errorCode:'home_mapping_requires_custom'});await assert.rejects(denied,/Choose this menu for the Home button/);
-  const timeout=remote.setHome('stock',3);const late=h.calls[3].bridge.onservicecallback;
-  [...h.timers.values()][0].fn();await assert.rejects(timeout,e=>e.code==='TIMEOUT');
-  late(JSON.stringify({returnValue:true,stdoutString:JSON.stringify({returnValue:true,available:true,revision:4,home:'stock',homeKeepClosed:false}),stderrString:''}));
-  assert.equal(h.calls.length,4);assert.equal(h.timers.size,0);
 });
 
 test('all catalogue keys can use only their fixed spelling and boolean literal', async () => {

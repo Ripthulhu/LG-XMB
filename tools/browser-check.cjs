@@ -111,7 +111,6 @@ assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
  console.log('Browser suite: appearance settings');
  await require('../tests/settings-appearance-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
  console.log('Browser suite: remote settings');
- await require('../tests/remote-settings-browser.cjs')(browser,checks,errors);assert.deepEqual(errors,[]);
  fs.writeFileSync(path.join(dir,'browser-check.json'),JSON.stringify({passed:checks.length,checks,browser:await browser.version(),testedOnTV:false},null,2));console.log(JSON.stringify({passed:checks.length,checks},null,2));
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -186,18 +186,5 @@
     }, function () { return { prepared: false, reason: 'unavailable' }; });
   }
 
-  function remoteState(value) {
-    if (value.available !== true || !Number.isSafeInteger(value.revision) || value.revision < 0 ||
-        ['custom','stock','other'].indexOf(value.home) === -1 || typeof value.homeKeepClosed !== 'boolean') throw problem('INVALID_REPLY');
-    return {available:true,revision:value.revision,home:value.home,homeKeepClosed:value.homeKeepClosed};
-  }
-  function getRemoteState() { return mapped(request(COMMAND + 'remote-get', 8000), remoteState); }
-  function setRemoteHome(home, revision) {
-    if (['custom','stock'].indexOf(home) === -1) return Promise.reject(problem('INVALID_CHOICE'));
-    if (!Number.isSafeInteger(revision) || revision < 0) return Promise.reject(problem('INVALID_REVISION'));
-    return mapped(request(COMMAND + 'remote-set ' + home + ' ' + revision, 40000), remoteState);
-  }
-
   root.C5ProcessAdapter = Object.freeze({ getState: getState, setEnabled: setEnabled, prepareLaunch: prepareLaunch });
-  root.C5RemoteAdapter = Object.freeze({getState:getRemoteState,setHome:setRemoteHome});
 }(typeof window !== 'undefined' ? window : globalThis));

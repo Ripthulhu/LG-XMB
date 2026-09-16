@@ -49,18 +49,7 @@ URLS = {
  'policy': 'luna://com.webos.service.preloadmanager/setPreloadPolicy',
  'ads_start': 'luna://com.webos.service.admanager/start',
  'video': 'luna://com.webos.service.videooutput/getStatus',
- 'home_settings': 'luna://com.webos.settingsservice/getSystemSettings',
- 'home_mapping': 'luna://com.webos.applicationManager/setDefaultApp',
- 'launch': 'luna://com.webos.applicationManager/launch',
 }
-
-# Closing an app doesn't go through the Home mapping at all. The compositor
-# launches profile.idleApp instead, and this product's layer pins that to LG
-# Home on the read-only rootfs. Do note setConfigs returns true and changes
-# nothing there, cause configd has no writable profile category. So we watch
-# for LG Home turning up and ask for our menu back.
-RETURN_ATTEMPTS = 3
-RETURN_INTERVAL = 2.0
 
 class ControlError(Exception):
     pass
@@ -286,47 +275,9 @@ class Store:
             require(c['revision'] == revision, 'stale_revision')
             if c['enabled'][key] != enabled:
                 require(c['revision'] < 1000000000, 'revision_limit')
-                if key == 'home' and enabled:
-                    require((native or Native()).home_settings()['defaultApps'].get('home') == HOME, 'home_mapping_requires_custom')
                 c['enabled'][key] = enabled; c['revision'] += 1
                 self.write('background.json', c)
         return self.public()
-
-    def remote_state(self, native=None):
-        with self.locked():
-            return self.remote_public(self.config(), (native or Native()).home_settings())
-
-    @staticmethod
-    def remote_public(c, settings):
-        app = settings['defaultApps'].get('home')
-        target = 'custom' if app == HOME else 'stock' if app in (None, ITEMS['home']['app']) else 'other'
-        return {'returnValue': True, 'available': True, 'revision': c['revision'], 'home': target,
-                'homeKeepClosed': c['enabled']['home']}
-
-    def set_remote_home(self, target, revision, native=None):
-        require(target in ('custom', 'stock'), 'invalid_home_target')
-        require(type(revision) is int and 0 <= revision <= 1000000000, 'invalid_revision')
-        native = native or Native()
-        with self.locked():
-            c = self.config(); require(c['revision'] == revision, 'stale_revision')
-            before = native.home_settings()
-            current = self.remote_public(c, before)['home']
-            require(current != 'other', 'other_home_mapping')
-            restore = target == 'stock' and 'home' in c['saved']
-            allow = target == 'stock' and c['enabled']['home']
-            if current == target and not restore and not allow: return self.remote_public(c, before)
-            require(c['revision'] < 1000000000, 'revision_limit')
-            # Invalidate older helper/UI work before a native change. A failure
-            # keeps stock Home allowed with its baseline available for retry.
-            c['revision'] += 1
-            if target == 'stock': c['enabled']['home'] = False
-            self.write('background.json', c)
-            if restore:
-                saved = c['saved']['home']
-                native.preload('home', saved['enabled'], saved['permanentRestore'])
-                del c['saved']['home']; self.write('background.json', c)
-            after = native.set_home_mapping(target, before)
-            return self.remote_public(c, after)
 
     def public(self):
         with self.locked():
@@ -355,31 +306,6 @@ class Native:
         value = json.loads(p.stdout)
         require(isinstance(value, dict) and value.get('returnValue') is True, 'native_refused')
         return value
-
-    def home_settings(self):
-        value = self.call('home_settings', {'category': 'general', 'keys': ['defaultApps', 'lastAppHandlerPolicy'], 'subscribe': False}).get('settings')
-        require(isinstance(value, dict) and isinstance(value.get('defaultApps'), dict)
-                and all(isinstance(k, str) and isinstance(v, str) for k, v in value['defaultApps'].items())
-                and isinstance(value.get('lastAppHandlerPolicy'), str), 'invalid_home_settings')
-        return {key: copy.deepcopy(value[key]) for key in ('defaultApps', 'lastAppHandlerPolicy')}
-
-    def set_home_mapping(self, target, before):
-        require(target in ('custom', 'stock'), 'invalid_home_target')
-        current = self.home_settings()
-        require(current == before, 'home_mapping_changed')
-        require(current['defaultApps'].get('home') in (None, HOME, ITEMS['home']['app']), 'other_home_mapping')
-        app = HOME if target == 'custom' else ITEMS['home']['app']
-        if current['defaultApps'].get('home') == app: return current
-        self.call('home_mapping', {'category': 'home', 'appId': app})
-        after = self.home_settings(); expected = copy.deepcopy(before); expected['defaultApps']['home'] = app
-        require(after == expected, 'home_mapping_not_confirmed')
-        return after
-
-    def launch(self, app):
-        # Only ever our own menu, so a bug here can't turn into a way to
-        # start arbitrary apps.
-        require(app == HOME, 'invalid_launch')
-        self.call('launch', {'id': app})
 
     def policies(self):
         entries = self.call('policies', {}).get('applications')
@@ -542,48 +468,9 @@ class Manager:
         self.states = {}; self.attempted = {}; self.attempt_times = {}; self.paused = set(); self.last_revision = None; self.last_enabled = {}
         self.restore_starts = {}
         self.last_app = None; self.home_since = 0; self.policy_checked = {}; self.last_status = {'state': 'managed'}
-        self.returns = 0; self.returned_at = 0; self.invited_home = False
         self.away_lease = None
         with self.store.locked():
             c = self.store.config(); self.store.write('background.json', c)
-
-    def return_to_menu(self, c, active, app):
-        stock = ITEMS['home']['app']
-        if app != stock:
-            # Anything else on screen ends the burst and ends the visit, so
-            # coming back to LG Home later counts as a fresh arrival.
-            self.returns = 0; self.invited_home = False
-            return
-        # 'home' already means "I don't want LG Home", and you can only pick
-        # it once our menu owns the Home button, so it's the same intent.
-        if not active or not c['enabled']['home']: return
-        # The UI leases LG Home before opening it from Settings. Do note that
-        # lease only covers the launch, so we remember the visit was invited and
-        # leave it alone until you leave. Without this it bounces you out about
-        # 17 seconds in, right when the lease expires.
-        with self.store.locked():
-            if stock in self.store.leases(): self.invited_home = True
-        if self.invited_home: return
-        now = self.clock()
-        if self.returns >= RETURN_ATTEMPTS or (self.returns and now - self.returned_at < RETURN_INTERVAL): return
-        self.returns += 1; self.returned_at = now
-        # Note that a launch which never takes effect would loop forever, so
-        # the burst is capped and only a different app on screen resets it.
-        try: self.native.launch(HOME)
-        except (ControlError, OSError, ValueError, TypeError, subprocess.TimeoutExpired):
-            self.mark('home', 'Could not reopen this menu', True)
-
-    def poll_return(self):
-        """Only the return decision is time critical, the rest of observe() can
-        keep the capture loop's slower cadence. Costs nothing while the choice is
-        off cause the config read short-circuits before any luna call."""
-        c = self.store.config()
-        if not c['enabled']['home']: return
-        power = self.native.call('power', {})
-        active = power.get('returnValue') is True and power.get('state') == 'Active'
-        foreground = self.native.call('foreground', {})
-        app = foreground.get('appId') if foreground.get('returnValue') is True else None
-        self.return_to_menu(c, active, app)
 
     def mark(self, key, status, enabled):
         self.states[key] = {'status': status, 'enabled': enabled}
@@ -728,7 +615,6 @@ class Manager:
             self.away_lease = (app, expiry) if expiry is not None else None
         elif app not in (HOME, None):
             self.away_lease = None
-        self.return_to_menu(c, active, app)
         self.restore_disabled(c)
         rows = None
         for key in ITEMS:
@@ -756,14 +642,10 @@ def main(argv=None):
     store = None
     try:
         require(os.geteuid() == 0, 'root_required')
-        require(args and args[0] in ('get', 'set', 'prepare', 'restore', 'remote-get', 'remote-set'), 'invalid_command')
+        require(args and args[0] in ('get', 'set', 'prepare', 'restore'), 'invalid_command')
         if args[0] != 'restore': checked_app()
         store = Store()
         if args == ['get']: result = store.public()
-        elif args == ['remote-get']: result = store.remote_state()
-        elif len(args) == 3 and args[0] == 'remote-set':
-            require(args[1] in ('custom', 'stock') and re.fullmatch(r'0|[1-9][0-9]{0,9}', args[2]), 'invalid_arguments')
-            result = store.set_remote_home(args[1], int(args[2]))
         elif len(args) == 4 and args[0] == 'set':
             require(args[1] in ITEMS and args[2] in ('0', '1') and re.fullmatch(r'0|[1-9][0-9]{0,9}', args[3]), 'invalid_arguments')
             result = store.set_choice(args[1], args[2] == '1', int(args[3]))
@@ -784,9 +666,7 @@ def main(argv=None):
         print(json.dumps(result, separators=(',', ':'))); return 0
     except (ControlError, OSError, ValueError, TypeError, subprocess.TimeoutExpired) as e:
         code = str(e) if isinstance(e, ControlError) else 'local_operation_failed'
-        messages = {'home_mapping_requires_custom': 'Choose this menu for the Home button before keeping LG Home closed.',
-                    'other_home_mapping': 'A different Home app is assigned. Its mapping was left unchanged.'}
-        print(json.dumps({'returnValue': False, 'errorCode': code, 'message': messages.get(code, 'The setting could not be completed. Refresh its current state.')})); return 2
+        print(json.dumps({'returnValue': False, 'errorCode': code, 'message': 'The setting could not be completed. Refresh its current state.'})); return 2
     finally:
         if store is not None: store.close()
 

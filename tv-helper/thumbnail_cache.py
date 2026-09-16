@@ -26,10 +26,6 @@ WIDTH, HEIGHT = 480, 270
 PANEL_WIDTH, PANEL_HEIGHT = 3840, 2160
 PIG_CAPTURE_WIDTH, PIG_CAPTURE_HEIGHT = 1920, 1080
 POLL_SECONDS, SETTLE_SECONDS, REFRESH_SECONDS = 5, 5, 60
-# Capture work keeps the five second cadence. Spotting LG Home is the one thing
-# you actually wait on though, so it gets checked between those polls with two
-# status reads instead of a whole capture pass.
-RETURN_POLL_SECONDS = 1
 APP_READY_GRACE_SECONDS = 90
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
 URIS = {
@@ -521,11 +517,10 @@ class Worker:
             return None
         foreground = self.luna("foreground", {})
         if observe_return:
-            # Broad on purpose, same as the poll_return call in main(). The
-            # controller raises its own error type from a module loaded at
-            # runtime so we can't name it here. Note that nothing restarts this
-            # process, so a controller fault taking the capture loop down costs
-            # you thumbnails until the next reboot.
+            # Broad on purpose. The controller raises its own error type from
+            # a module loaded at runtime so we can not name it here. Note that
+            # nothing restarts this process, so a controller fault taking the
+            # capture loop down costs you thumbnails until the next reboot.
             try:
                 self.stock_closer.observe(power, foreground)
             except Exception:
@@ -693,21 +688,7 @@ def main(argv=None):
                 break
             count += 1
             if limit is None or count < limit:
-                remaining = POLL_SECONDS
-                while remaining > 0 and not stop.is_set():
-                    slice_seconds = min(RETURN_POLL_SECONDS, remaining)
-                    if stop.wait(slice_seconds):
-                        break
-                    remaining -= slice_seconds
-                    if controls is not None and remaining > 0:
-                        # Broad on purpose. The controller raises its own error
-                        # type from a module loaded at runtime so we can't name
-                        # it here. Note that a bad status read must not kill the
-                        # capture loop, the next full observation reports it.
-                        try:
-                            controls.poll_return()
-                        except Exception:
-                            pass
+                stop.wait(POLL_SECONDS)
         cache.remove_temp()
         if stop.is_set():
             worker.status("stopped")
