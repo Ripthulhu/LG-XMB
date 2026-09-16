@@ -74,6 +74,38 @@ To undo it:
 umount /usr/palm/applications/com.webos.app.home && systemctl restart sam
 ```
 
+## Copy the stock manifest's declarations, not just its id
+
+Shadowing the id gets you the app slot. It does not get you anything the system
+infers from the stock `appinfo.json`, and some of that is load-bearing.
+
+Wake-on-LAN is the one that caught us. `tvpowerd` decides whether to arm
+quick-start standby, which is the shallow sleep that leaves the network
+interface powered, and it decides by asking SAM about the home app:
+
+    strings /usr/sbin/tvpowerd | grep -i quickstart
+    _ZN13QuickBootdMgr21check_quickStartValueEv
+    {"properties":["id", "supportQuickStart", "defaultWindowType"]}
+    %s=appId : %s,  supportQuickStart : %d
+    read-[var/luna/preference/option] quickStartMode - %s
+
+Stock Home declares `"supportQuickStart": true`. Ours did not, so SAM answered
+`"notSpecified":["supportQuickStart"]`:
+
+    luna-send -n 1 -a com.webos.surfacemanager       luna://com.webos.applicationManager/getAppInfo       '{"id":"com.webos.app.home","properties":["id","supportQuickStart"]}'
+
+`quickStartMode` was already `on` in the TV's own settings. The setting was
+never the problem, the app just wasn't claiming support, so `tvpowerd` skipped
+arming it and the TV slept deep enough to stop answering the magic packet.
+Adding the flag makes SAM answer `"supportQuickStart":true` and wake works
+again.
+
+Do note this is a class of bug, not one field. Diff both manifests before you
+trust the mount, cause anything only the stock one declares is silently gone.
+On this C5 that listed 14 keys, including `requiredPermissions`,
+`handleScreenRemoteKey`, `nativeLifeCycleInterfaceVersion` and
+`class: {"hidden": true}`. Only `supportQuickStart` is known to bite so far.
+
 ## Gotchas
 
 - The mount doesn't survive a reboot. That's useful while you're testing, cause
