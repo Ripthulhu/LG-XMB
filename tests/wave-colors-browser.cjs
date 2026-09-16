@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {createHash}=require('node:crypto');
+// Compare a digest, not the data URL: an inequality prints a hash instead of
+// half a megabyte of base64, and identity is just as exact.
+const digest=s=>createHash('sha256').update(s).digest('hex');
 module.exports=async function(browser,checks,errors,loader){
   const load=loader||((p)=>p.goto('http://127.0.0.1:8765/'));
   const capture=()=>{
@@ -65,12 +69,13 @@ module.exports=async function(browser,checks,errors,loader){
       await page.locator('#wave').screenshot({path:path.join(output,`depth-particles-${width}.png`)});
       if(await page.evaluate(()=>!!colorTestWave.gl.getExtension('WEBGL_lose_context'))){
         const before=await page.evaluate(()=>({palette:colorTestWave.palette,frame:document.getElementById('wave').toDataURL()}));
+        before.frame=digest(before.frame);
         await page.evaluate(()=>{window.colorLose=colorTestWave.gl.getExtension('WEBGL_lose_context');colorLose.loseContext();});
         await page.waitForFunction(()=>colorTestWave.contextLost);
         await page.evaluate(()=>colorLose.restoreContext());
         await page.waitForFunction(()=>!colorTestWave.contextLost&&colorTestWave.mode==='webgl');
         assert.deepEqual(await page.evaluate(()=>colorTestWave.palette),before.palette);
-        assert.equal(await page.evaluate(()=>document.getElementById('wave').toDataURL()),before.frame);
+        assert.equal(digest(await page.evaluate(()=>document.getElementById('wave').toDataURL())),before.frame);
       }
       checks.push(`Colours ${width}: all 24 presets, GPU pixel samples, original RGB controls, saved values, D-pad focus, Back and suspended redraw`);
     }finally{await page.close();}

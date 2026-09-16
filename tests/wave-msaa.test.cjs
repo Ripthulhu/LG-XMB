@@ -5,11 +5,13 @@ function fixture(options={}) {
  const calls=[],live=new Set();let id=0,error=0,count=0;
  const gl={NO_ERROR:0,OUT_OF_MEMORY:1285,RGBA8:32856,RENDERBUFFER:36161,FRAMEBUFFER:36160,
  READ_FRAMEBUFFER:36008,DRAW_FRAMEBUFFER:36009,RENDERBUFFER_SAMPLES:36011,COLOR_ATTACHMENT0:36064,
- SAMPLES:32937,MAX_RENDERBUFFER_SIZE:34024,FRAMEBUFFER_COMPLETE:36053,COLOR_BUFFER_BIT:16384,NEAREST:9728};
+ SAMPLES:32937,MAX_RENDERBUFFER_SIZE:34024,FRAMEBUFFER_COMPLETE:36053,COLOR_BUFFER_BIT:16384,NEAREST:9728,
+ MAX_SAMPLES:36183};
  const add=k=>{const v={k,id:++id};live.add(v);return v;};
  Object.assign(gl,{
  getInternalformatParameter:(...a)=>{calls.push(['counts',...a]);return new Int32Array(options.counts||[4,2]);},
- getParameter:()=>options.limit||4096,getError:()=>{const e=error;error=0;return e;},isContextLost:()=>false,
+ getParameter:p=>p===gl.MAX_SAMPLES?(options.maxSamples===undefined?32:options.maxSamples):(options.limit||4096),
+ getError:()=>{const e=error;error=0;return e;},isContextLost:()=>false,
  createRenderbuffer:()=>add('rb'),createFramebuffer:()=>add('fb'),
  deleteRenderbuffer:v=>{assert.ok(live.delete(v));},deleteFramebuffer:v=>{assert.ok(live.delete(v));},
  bindRenderbuffer:(...a)=>calls.push(['bindRB',...a]),bindFramebuffer:(...a)=>calls.push(['bindFB',...a]),
@@ -28,6 +30,15 @@ test('MSAA is opt-in and its supported sample list is format-specific',()=>{
  assert.ok(m.prepare(4,1920,264));assert.ok(m.prepare(4,1920,264));assert.equal(h.calls.filter(c=>c[0]==='allocate').length,1);
  assert.equal(m.diagnostics().samples,4);assert.equal(m.diagnostics().bytes,1920*264*4*4);
  m.prepare(0,1920,264);assert.equal(h.live.size,0);assert.equal(m.diagnostics().samples,0);m.destroy(false);
+});
+test('Sample counts above MAX_SAMPLES are not reported or requested',()=>{
+ // The C5's Mali-G52 lists 16, 8 and 4 for RGBA8 while MAX_SAMPLES is 4;
+ // allocating 16 or 8 fails with INVALID_VALUE and an incomplete framebuffer.
+ const h=fixture({counts:[16,8,4],maxSamples:4}),m=window.LGXMBWaveMSAA.create(h.gl);
+ assert.deepEqual(Array.from(m.diagnostics().supported),[4]);
+ assert.ok(m.prepare(4,1920,264));
+ assert.deepEqual(h.calls.filter(c=>c[0]==='allocate').map(c=>c[2]),[4]);
+ assert.equal(m.diagnostics().samples,4);m.destroy(false);
 });
 test('MSAA resolve has matching dimensions/formats and resets READ and DRAW framebuffer bindings',()=>{
  const h=fixture(),m=window.LGXMBWaveMSAA.create(h.gl);m.prepare(4,1920,264);assert.ok(m.target());

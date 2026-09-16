@@ -1,5 +1,9 @@
 'use strict';
 const assert=require('node:assert/strict'),path=require('node:path');
+const {createHash}=require('node:crypto');
+// Compare a digest, not the data URL: an inequality prints a hash instead of
+// half a megabyte of base64, and identity is just as exact.
+const digest=s=>createHash('sha256').update(s).digest('hex');
 // CI loads the packaged page normally. The optional loader is for offline shader tests.
 module.exports=async function checkWavePost(browser,checks,errors,loader) {
   const load=loader||((p)=>p.goto('http://127.0.0.1:8765/'));
@@ -12,13 +16,13 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
   const prefs=()=>{if(!localStorage.getItem('lg-xmb-preferences-v1'))localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify({motion:'reduced',theme:'ocean',previewMode:'live',waveSampling:2,waveDetail:'fine',waveSoftness:0}));};
   const page=await browser.newPage({viewport:{width:1920,height:1080}});
   page.on('pageerror',e=>errors.push(e.message));
-  const image=()=>page.evaluate(()=>document.getElementById('wave').toDataURL());
+  const image=async()=>digest(await page.evaluate(()=>document.getElementById('wave').toDataURL()));
   const diag=()=>page.evaluate(()=>postTestWave.getDiagnostics());
   try {
     await page.addInitScript(capture);await page.addInitScript(prefs);await load(page,[capture,prefs]);
     await page.waitForFunction(()=>window.C5App&&C5App.getState().waveMode==='webgl');
     await page.evaluate(()=>{postTestWave.time=14;postTestWave._draw();});
-    let d=await diag();assert.equal(d.surface.postprocess,'fxaa');assert.equal(d.surface.strength,'normal');
+    let d=await diag();assert.equal(d.surface.postprocess,'wave');assert.equal(d.surface.strength,'strong');
     assert.deepEqual([d.surface.postWidth,d.surface.postHeight,d.backingWidth,d.backingHeight],[1920,d.surface.bandHeight,1920,1080]);
     assert.equal(d.surface.surfaceWidth,3840);assert.equal(d.surface.virtualHeight,2160);assert.ok(d.surface.surfaceHeight<2160);
     const geometry=await page.locator('#categories').boundingBox();
@@ -31,7 +35,8 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
     }
     assert.notEqual(frames.fxaa,frames.off);assert.notEqual(frames.wave,frames.off);
     await page.evaluate(()=>postTestWave.setQuality({postprocess:'fxaa'}));assert.equal(await image(),frames.fxaa);
-    for(const strength of ['gentle','strong','normal'])await page.evaluate(strength=>postTestWave.setQuality({strength}),strength);
+    // The captured frame used the default strength, so end the sweep back on it.
+    for(const strength of ['gentle','normal','strong'])await page.evaluate(strength=>postTestWave.setQuality({strength}),strength);
     assert.equal(await image(),frames.fxaa,'Changing strength never advances a frozen spline');
     assert.deepEqual(await page.locator('#categories').boundingBox(),geometry);
     await page.evaluate(()=>{postTestWave.setPaused(true);postTestWave.setQuality({postprocess:'wave'});});
@@ -71,7 +76,7 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
       assert.equal((await diag()).surface.postprocess,'wave');assert.equal((await diag()).surface.strength,'strong');
       await page.evaluate(()=>{const p=JSON.parse(localStorage.getItem('lg-xmb-preferences-v1'));p.wavePostprocess='__proto__';p.waveSmoothing=5;localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(p));});
       await page.reload();await page.waitForFunction(()=>window.C5App&&C5App.getState().waveMode==='webgl');
-      assert.equal((await diag()).surface.postprocess,'fxaa');assert.equal((await diag()).surface.strength,'normal');
+      assert.equal((await diag()).surface.postprocess,'wave');assert.equal((await diag()).surface.strength,'strong');
       assert.equal((await diag()).surface.requestedScale,2);
     }
     // A synthetic stair edge must acquire fractional coverage, not just a new size.
@@ -116,7 +121,7 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
       await load(p,[capture,quiet,inject]);await p.waitForFunction(()=>window.C5App&&C5App.getState().waveMode==='webgl');
       const d=await p.evaluate(()=>postTestWave.getDiagnostics());assert.equal(d.pattern,'ps3');assert.equal(d.surface.postprocess,'off');assert.match(d.surface.postprocessFallback,/refused/);
       const attempts=await p.evaluate(()=>postRefusals);await p.evaluate(()=>{for(let i=0;i<3;i++)postTestWave._draw();});assert.equal(await p.evaluate(()=>postRefusals),attempts);
-      assert.equal(await p.locator('#items').isVisible(),true);assert.equal(await p.evaluate(()=>C5App.getState().preferences.wavePostprocess),'fxaa');
+      assert.equal(await p.locator('#items').isVisible(),true);assert.equal(await p.evaluate(()=>C5App.getState().preferences.wavePostprocess),'wave');
       checks.push('Optional FXAA '+kind+' refusal keeps PS3 waves, reports fallback and does not retry every frame');
     } finally {await p.close();}
   }

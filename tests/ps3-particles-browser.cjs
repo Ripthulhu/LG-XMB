@@ -1,6 +1,10 @@
 // Real shader and UI checks; no native TV commands. Optional loader for offline QA.
 'use strict';
 const assert=require('node:assert/strict');
+const {createHash}=require('node:crypto');
+// Compare a digest, not the data URL: an inequality prints a hash instead of
+// half a megabyte of base64, and identity is just as exact.
+const digest=s=>createHash('sha256').update(s).digest('hex');
 const path=require('node:path');
 const fs=require('node:fs');
 module.exports=async function checkParticles(browser,checks,errors,loader){
@@ -13,7 +17,7 @@ module.exports=async function checkParticles(browser,checks,errors,loader){
       await load();await page.waitForFunction(()=>window.C5App&&C5App.getState().waveMode==='webgl');
       const state=()=>page.evaluate(()=>C5App.getState());
       let d=(await state()).waveDiagnostics;assert.equal(d.surface.particleCount,2000);assert.equal(d.surface.particlesFallback,null);
-      const still=()=>page.evaluate(()=>document.getElementById('wave').toDataURL());
+      const still=async()=>digest(await page.evaluate(()=>document.getElementById('wave').toDataURL()));
       const withParticles=await still();await page.waitForTimeout(120);assert.equal(await still(),withParticles,'Animation Off freezes both layers');
       await page.getByRole('button',{name:'Settings',exact:true}).click();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
       const group=name=>page.getByRole('group',{name,exact:true});
@@ -36,24 +40,25 @@ module.exports=async function checkParticles(browser,checks,errors,loader){
         window.particleWave=new C5Wave(particleCanvas,{adaptive:false});particleWave.setQuality({particles:true,particleCount:2000});particleWave.setReducedMotion(true);
       });
       await page.waitForFunction(()=>particleWave.mode==='webgl');
-      const frozen=await page.evaluate(()=>particleCanvas.toDataURL());
+      const particleStill=async()=>digest(await page.evaluate(()=>particleCanvas.toDataURL()));
+      const frozen=await particleStill();
       await page.evaluate(()=>{particleWave.setPaused(true);particleWave.setQuality({particleCount:500});});
       assert.equal(await page.evaluate(()=>particleWave.getDiagnostics().surface.particleCount),2000);
-      assert.equal(await page.evaluate(()=>particleCanvas.toDataURL()),frozen);
+      assert.equal(await particleStill(),frozen);
       await page.evaluate(()=>particleWave.setPaused(false));assert.equal(await page.evaluate(()=>particleWave.getDiagnostics().surface.particleCount),500);
       await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));particleWave.setQuality({particleCount:2000});});
       assert.equal(await page.evaluate(()=>particleWave.getDiagnostics().surface.particleCount),500);
       await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
-      assert.equal(await page.evaluate(()=>particleCanvas.toDataURL()),frozen,'Hidden settings do not move the shared particle clock');
+      assert.equal(await particleStill(),frozen,'Hidden settings do not move the shared particle clock');
       const extension=await page.evaluate(()=>!!particleWave.gl.getExtension('WEBGL_lose_context'));
       if(extension){
         await page.evaluate(()=>{window.particleLose=particleWave.gl.getExtension('WEBGL_lose_context');particleLose.loseContext();});
         await page.waitForFunction(()=>particleWave.contextLost);await page.evaluate(()=>particleLose.restoreContext());
         await page.waitForFunction(()=>!particleWave.contextLost&&particleWave.mode==='webgl');
-        assert.equal(await page.evaluate(()=>particleCanvas.toDataURL()),frozen,'Context recreation restores deterministic particle seeds');
+        assert.equal(await particleStill(),frozen,'Context recreation restores deterministic particle seeds');
       }
       await page.evaluate(()=>particleWave.setReducedMotion(false));await page.waitForFunction(()=>particleWave.time>14.05);await page.evaluate(()=>particleWave.setReducedMotion(true));
-      assert.notEqual(await page.evaluate(()=>particleCanvas.toDataURL()),frozen,'Particles and spline advance in motion');
+      assert.notEqual(await particleStill(),frozen,'Particles and spline advance in motion');
       await page.evaluate(()=>{particleWave.destroy();particleCanvas.remove();});
       // Optional layer refused: count is zero, spline still renders, one attempt.
       await page.evaluate(()=>{
