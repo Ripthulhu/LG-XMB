@@ -65,6 +65,23 @@ def regular_file(info, app_file=False):
             and (app_file or not info.st_mode & 0o022))
 
 
+def restore_owner_only_write(fd, info):
+    """LG resets this tree to 0777 at boot, which leaves the bundle unreadable
+    by the check above and the helper unable to start until someone chmods it
+    by hand. Repair it on the descriptor we already hold, so no second pathname
+    lookup can aim the chmod somewhere else. The bundle is trusted by its build
+    pin and per-file hashes, not by its mode, so this only puts back what the
+    installer set.
+    """
+    if not info.st_mode & 0o022:
+        return info
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1)
+    os.fchmod(fd, stat.S_IMODE(info.st_mode) & ~0o022)
+    repaired = os.fstat(fd)
+    require(not repaired.st_mode & 0o022)
+    return repaired
+
+
 def read_file(directory, name, limit=131072, optional=False, app_file=False):
     try:
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
@@ -74,7 +91,10 @@ def read_file(directory, name, limit=131072, optional=False, app_file=False):
             return None
         raise SetupError("bundle_incomplete") from None
     try:
-        regular_file(os.fstat(fd), app_file)
+        info = os.fstat(fd)
+        if not app_file:
+            info = restore_owner_only_write(fd, info)
+        regular_file(info, app_file)
         raw = bytearray()
         while len(raw) <= limit:
             chunk = os.read(fd, min(8192, limit + 1 - len(raw)))

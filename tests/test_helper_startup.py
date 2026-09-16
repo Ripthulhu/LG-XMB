@@ -312,12 +312,26 @@ class SetupFixture(unittest.TestCase):
         with self.assertRaises(OSError):
             self.run_setup()
 
-    def test_hardlinked_or_writable_bundle_member_is_rejected(self):
+    def test_hardlinked_bundle_member_is_rejected(self):
         member = self.bundle / 'process_control.py'
         os.link(member, self.root / 'extra-link')
         with self.assertRaises(startup.SetupError):
             self.run_setup()
-        (self.root / 'extra-link').unlink()
+
+    def test_root_owned_writable_bundle_member_is_repaired_not_rejected(self):
+        # LG resets this tree to 0777 at boot. Rejecting that left the helper
+        # dead until someone chmodded it by hand, and the directory repair below
+        # could never run, cause reading the bundle failed first.
+        member = self.bundle / 'process_control.py'
+        member.chmod(0o666)
+        self.run_setup()
+        self.assertEqual(stat.S_IMODE(member.stat().st_mode), 0o644)
+
+    def test_a_repaired_member_is_still_verified_against_the_build_pin(self):
+        # The mode is put back before the read, so the hash stays the thing that
+        # decides trust. Tampered bytes are refused whatever the mode says.
+        member = self.bundle / 'process_control.py'
+        member.write_bytes(member.read_bytes() + b'# changed')
         member.chmod(0o666)
         with self.assertRaises(startup.SetupError):
             self.run_setup()
