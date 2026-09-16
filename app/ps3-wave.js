@@ -219,13 +219,17 @@
     BACKGROUND_COLOR,
     'void main() { gl_FragColor = vec4(backgroundColor(vUV,uBackground,uWave),1.0); }'
   ].join('\n');
+  // Where the band sits vertically, in clip space, where 2.0 spans the output
+  // height. It sat a twentieth of the height higher up to 0.1.30.
+  // ps3-particles.js repeats the number: it loads before this file and so
+  // cannot read it from here.
+  var BAND_OFFSET = -0.07;
   var VERTEX = [
     'attribute vec4 aPosition; attribute vec3 aNormal;',
     'varying vec3 vNormal; varying float vDepth;',
     'void main() {',
     '  vNormal = aNormal; vDepth = aPosition.w;',
-    // Raise the band by 20% of output height from 0.1.22; match particles.
-    '  gl_Position = vec4(aPosition.x*1.04, aPosition.y+0.03, aPosition.z*0.65,1.0);',
+    '  gl_Position = vec4(aPosition.x*1.04, aPosition.y+(' + BAND_OFFSET.toFixed(3) + '), aPosition.z*0.65,1.0);',
     '}'
   ].join('\n');
   var FRAGMENT = [
@@ -388,8 +392,8 @@
       // Includes a raster/filter guard plus the FXAA shader's bounded edge search.
       // Pixel-aligned output origin; the mesh uses a shifted FULL virtual viewport,
       // not a rescaled projection. Fractional SSAA retains its global sample phase.
-      var low = Math.max(0,Math.floor((geometry.bounds.minY+0.03+1)*0.5*targetHeight)-bandPadding);
-      var high = Math.min(targetHeight,Math.ceil((geometry.bounds.maxY+0.03+1)*0.5*targetHeight)+bandPadding);
+      var low = Math.max(0,Math.floor((geometry.bounds.minY+BAND_OFFSET+1)*0.5*targetHeight)-bandPadding);
+      var high = Math.min(targetHeight,Math.ceil((geometry.bounds.maxY+BAND_OFFSET+1)*0.5*targetHeight)+bandPadding);
       if (bandRect && low >= bandRect.y && high <= bandRect.y+bandRect.height) return;
       var h = Math.min(targetHeight,Math.max(bandRect ? bandRect.height : 0,Math.ceil((high-low)/32)*32,32));
       var bottom = Math.max(0,Math.min(targetHeight-h,Math.floor((low+high-h)*0.5)));

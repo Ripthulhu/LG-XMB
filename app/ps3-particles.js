@@ -34,8 +34,9 @@
     '  float energy=clamp(sharpSize*sharpSize/(spriteSize*spriteSize),0.18,1.0);',
     '  float wrapFade=smoothstep(0.0,0.045,travel)*(1.0-smoothstep(0.955,1.0,travel));',
     '  vAlpha=opVar*opVar*(1.0-fract(aSeed.x+time*0.00285))*energy*wrapFade;',
-    // Share the spline's raised band; this is independent of audio.
-    '  gl_Position=vec4(x,y+0.03,0.0,1.0);',
+    // Shares the spline's band offset; keep in step with BAND_OFFSET in
+    // ps3-wave.js. Independent of audio.
+    '  gl_Position=vec4(x,y+(-0.070),0.0,1.0);',
     '}'
   ].join('\n');
   var FRAGMENT = [
