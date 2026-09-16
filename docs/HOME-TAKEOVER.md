@@ -130,6 +130,19 @@ with it.
 - The mount doesn't survive a reboot. That's useful while you're testing, cause
   a power cycle gets you back to stock. To keep it, re-apply from a Homebrew
   startup hook in `/var/lib/webosbrew/init.d/`.
+- Don't ask `mount` whether your bind is up. Busybox prints a bind using the
+  source *device*, so yours shows as `/dev/mmcblk0pNN on /usr/palm/...` and
+  reads exactly like the stock partition being mounted there. It also can't
+  tell your payload from a stale bind left by an earlier attempt. A bind makes
+  the two paths the same directory, so compare them instead:
+
+  ```sh
+  [ "$TARGET" -ef "$APP" ] && exit 0   # already ours, nothing to do
+  ```
+
+  `/proc/self/mountinfo` is the other honest source: its fourth field is the
+  subtree root, so your bind appears there as `/var/lib/lg-xmb-home` rather
+  than `/`.
 - The real LG Home becomes unreachable while the mount is up. Anything that
   launches `com.webos.app.home` gets your app, including your own "open LG Home"
   menu entry if you have one.
