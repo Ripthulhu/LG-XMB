@@ -6,6 +6,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../app/wave.js'), 'utf8');
+// The animation clock's rate lives in wave.js. Read it from the source rather
+// than repeating it here, so retuning the wave's speed does not fail these
+// tests, which are about pacing behaviour and not about the rate itself.
+const RATE = Number(/\*([0-9.]+)\*this\.speed/.exec(source)[1]);
 
 function setup({ hidden = false, reducedMotion = false, initialize = true,
   options = {quality: '720p', adaptive: false} } = {}) {
@@ -135,11 +139,11 @@ test('Wave style defaults preserve quality and timing, validates bounded choices
   assert.equal(h.contextRequests.length, 1);
   const beforeTime = h.wave.time;
   h.wave.lastFrame = 1000; h.wave._tick(1100);
-  assert.ok(Math.abs(h.wave.time - beforeTime - 0.035) < 1e-10);
+  assert.ok(Math.abs(h.wave.time - beforeTime - RATE*1.5/30) < 1e-10);
   h.wave.setStyle({speed: 2.25, brightness: 1.5});
   const fastTime = h.wave.time;
   h.wave.lastFrame = 2000; h.wave._tick(2100);
-  assert.ok(Math.abs(h.wave.time - fastTime - 0.1575) < 1e-10);
+  assert.ok(Math.abs(h.wave.time - fastTime - 0.1*RATE*2.25) < 1e-10);
   const after = h.wave.getDiagnostics();
   assert.equal(after.targetFps, initial.targetFps); assert.equal(after.quality, initial.quality);
   assert.equal(after.adaptive, initial.adaptive); assert.deepEqual(h.metrics.writes, []);

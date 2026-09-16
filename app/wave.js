@@ -429,7 +429,11 @@
     var interval = 1000/30;
     if (!this.nextFrame) this.nextFrame = this.lastFrame+interval;
     if (now >= this.nextFrame-0.5) {
-      this.time += Math.min((now-this.lastFrame)/1000,0.1)*0.70*this.speed;
+      // 0.39 rather than the 0.70 this ran at until now. Measured against real
+      // XMB footage the band's centre moved 1.9% of screen height per second
+      // against the console's 1.47, so the whole animation was simply too fast.
+      // This is the single knob for that: every term downstream reads the clock.
+      this.time += Math.min((now-this.lastFrame)/1000,0.1)*0.39*this.speed;
       this._wrapClock(false);
       this.lastFrame = now;
       // Retain the 30/20 Hz phase after a late callback. Resetting the deadline

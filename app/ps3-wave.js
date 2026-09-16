@@ -132,16 +132,26 @@
         var kv = referenceRow*0.93 + i*0.61 + flow*0.35;
         var floor = Math.floor(kv), k0 = wrap(floor,KERNEL_SIZE)*4, k1 = wrap(floor+1,KERNEL_SIZE)*4;
         var kt = kv - floor;
-        // The two z terms set how often the sheet folds through its own depth,
-        // and that is what a vertical slice reads as separate ribbons. They ran
-        // at 7 and (below) 4, which put five thin strands in a slice against the
-        // three broad ones a real XMB shows. Dropped until the count matched.
+        // Three numbers here, all fitted against real XMB footage.
+        //
+        // The z terms, 3.6 and (below) 1.6, set how often the sheet folds
+        // through its own depth, which a vertical slice reads as separate
+        // ribbons. They ran at 7 and 4 and put five thin strands in a slice
+        // where the console shows three.
+        //
+        // x*3.4 is how much the sheet curves across the screen: a bit over half
+        // a cycle. It was 6.2, a full one, and that is what made ours read as a
+        // deep S against the console's long shallow sweep.
+        //
+        // The 0.30 is how far the sheet travels vertically as it animates. It
+        // and x*3.4 came out of one term, so raising travel used to bend the
+        // sheet as a side effect. Splitting them is why both fit now.
         var core = (mix(kernel[k0],kernel[k1],kt)*0.45 + mix(kernel[k0+1],kernel[k1+1],kt)*0.25 +
           mix(kernel[k0+2],kernel[k1+2],kt)*0.2 + mix(kernel[k0+3],kernel[k1+3],kt)*0.1)*0.04 +
-          Math.sin(rowPhase + x*6.2)*0.2 + Math.cos(z*2.8 + x*4.8 + flow*0.09)*0.025;
+          Math.sin(rowPhase + x*3.4)*0.30 + Math.cos(z*3.6 + x*4.8 + flow*0.09)*0.025;
         var travelling = Math.sin(x*Math.PI*1.3 + z*0.8 - flow*0.25)*0.014*0.12 +
           Math.sin(x*Math.PI*2.8 - z*1.2 + flow*0.15)*0.008 +
-          0.0998587*0.07*Math.sin((x*(4+0.306001*2) + z*1.2 - flow*0.6)*4.07658);
+          0.0998587*0.07*Math.sin((x*(4+0.306001*2) + z*1.6 - flow*0.6)*4.07658);
         cp[i] = core*0.45 + travelling*0.55;
       }
       for (x = 0; x <= columns; x++) {
@@ -262,10 +272,10 @@
     '  vec3 tint = mix(vec3(1.0),uWave,0.16);',
     // Rim light alone only draws the crest of every fold, so the wave came out
     // as traceable wires where the real one is a translucent sheet. The second
-    // term lights the whole surface faintly and fills between the crests. The
-    // balance matters more than either number: rim used to outweigh body about
-    // six to one, and inverting that is what stopped it reading as line art.
-    '  gl_FragColor = vec4(tint,clamp((fresnel*0.165+0.069)*0.98*uBrightness*edge,0.0,1.0));',
+    // term lights the whole surface faintly and fills between the crests.
+    // It wants a light touch: at 0.069 the sheet stopped being wires and became
+    // a solid slab instead, and the console's is a veil you can see through.
+    '  gl_FragColor = vec4(tint,clamp((fresnel*0.185+0.030)*0.98*uBrightness*edge,0.0,1.0));',
     '}'
   ].join('\n');
 

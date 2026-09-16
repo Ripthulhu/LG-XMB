@@ -5,6 +5,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname,'../app/wave.js'),'utf8');
+// The animation clock's rate lives in wave.js. Read it from the source rather
+// than repeating it here, so retuning the wave's speed does not fail these
+// tests, which are about pacing behaviour and not about the rate itself.
+const RATE = Number(/\*([0-9.]+)\*this\.speed/.exec(source)[1]);
 
 function setup() {
   const document = {hidden:false}, draws = [], pending = new Map();
@@ -31,7 +35,7 @@ test('a late WebGL frame retains the original 30 Hz phase', () => {
   [1000,1017,1040,1050,1067,1084,1100].forEach(h.step);
   assert.deepEqual(h.draws,[1040,1067,1100]);
   assert.ok(Math.abs(h.wave.nextFrame-(1000+4*1000/30))<1e-9);
-  assert.ok(Math.abs(h.wave.time-(14+0.1*0.70*1.5))<1e-9,'Use actual elapsed animation time');
+  assert.ok(Math.abs(h.wave.time-(14+0.1*RATE*1.5))<1e-9,'Use actual elapsed animation time');
 });
 
 test('a long stall skips missed deadlines instead of drawing a catch-up burst', () => {
@@ -39,7 +43,7 @@ test('a long stall skips missed deadlines instead of drawing a catch-up burst', 
   h.step(1000);h.step(2040);
   assert.deepEqual(h.draws,[2040]);
   assert.ok(h.wave.nextFrame>2040&&h.wave.nextFrame<=2040+1000/30);
-  assert.ok(Math.abs(h.wave.time-(14+0.1*0.70*1.5))<1e-9,'Retain the existing long-gap clock clamp');
+  assert.ok(Math.abs(h.wave.time-(14+0.1*RATE*1.5))<1e-9,'Retain the existing long-gap clock clamp');
   h.step(2041);assert.equal(h.draws.length,1);
   h.step(2067);assert.deepEqual(h.draws,[2040,2067]);
 });

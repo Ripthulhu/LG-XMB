@@ -292,3 +292,43 @@ FXAA. Chasing it with blur would cost more than it returns.
 
 Brightness is compared in our own rgb preset against the console's own blue, so
 the absolute figures carry palette error. Count, width and contrast do not.
+
+## How the wave moves, fitted to real footage (after 0.1.30)
+
+The structure fit above got the band's look closer but not its motion. Measured
+per frame, per horizontal eighth, as the energy-weighted centre of the band,
+then averaged over an 18 second window:
+
+| | real XMB | before | after |
+|---|---|---|---|
+| band centre | 46.4% and 49.6% | 50.6% | 47.0% |
+| vertical speed | 1.47-1.50 %/s | 1.91 | 1.32 |
+| vertical travel | 5.4-6.2% | 4.55% | 4.99% |
+
+The animation clock in `app/wave.js` drops from 0.70 to 0.39. Everything
+downstream reads that clock, so it is the one knob for how fast the whole thing
+moves, and it was simply too fast.
+
+`x*6.2` becomes `x*3.4` in the height kernel. That is how much the sheet curves
+across the screen, and a full cycle is what made ours read as a deep S against
+the console's long shallow sweep. The same term carries the vertical travel, so
+raising travel used to bend the sheet as a side effect. Splitting curvature from
+travel, with the sweep amplitude at 0.30, is why both fit at once.
+
+Two measurement traps worth recording, cause both produced confident wrong
+answers before they were caught:
+
+A single vertical strip does not measure where the band sits. The sheet sweeps
+diagonally, so a strip reads wherever the crest happens to be at that x. Two
+clips of the same wave gave 49-74% and 31-49% that way. Averaging the centre
+across the full width, over time, is what agrees between clips.
+
+The measurement window has to match. Travel is a standard deviation over a
+window, so a slower wave covers less of its cycle in a fixed one. Measuring ours
+over 12 seconds against the console's 18 made slowing the clock look like it
+reduced travel, which it does not.
+
+Matching the numbers is also not the same as matching the picture. Raising
+amplitude hit the travel figure and produced a deep S, and a body term strong
+enough to stop the wave reading as wires turned it into a solid slab where the
+console's is a veil. Both passed their statistic and failed on sight.
