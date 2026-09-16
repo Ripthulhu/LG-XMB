@@ -14,8 +14,17 @@
       try {
         var counts = gl.getInternalformatParameter(gl.RENDERBUFFER, gl.RGBA8, gl.SAMPLES);
         limit = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE);
-        if (gl.getError() !== gl.NO_ERROR || !counts || !Number.isFinite(limit)) throw new Error('Sample query refused');
-        available = Array.prototype.filter.call(counts, function (n) { return Number.isInteger(n) && n > 1 && n <= 32; });
+        // The C5's Mali-G52 advertises RGBA8 sample counts above its own
+        // MAX_SAMPLES: the list reads 16, 8, 4 while the limit is 4, and asking
+        // for 16 or 8 fails with INVALID_VALUE and an incomplete framebuffer.
+        // Clamp to MAX_SAMPLES so the reported list only holds counts that can
+        // actually be allocated.
+        var maxSamples = gl.getParameter(gl.MAX_SAMPLES);
+        if (gl.getError() !== gl.NO_ERROR || !counts || !Number.isFinite(limit) ||
+            !Number.isFinite(maxSamples)) throw new Error('Sample query refused');
+        available = Array.prototype.filter.call(counts, function (n) {
+          return Number.isInteger(n) && n > 1 && n <= 32 && n <= maxSamples;
+        });
         available = available.filter(function (n, i, list) { return list.indexOf(n) === i; }).sort(function (a, b) { return b - a; });
       } catch (ignore) { probeError = 'MSAA capability query failed'; }
     }
