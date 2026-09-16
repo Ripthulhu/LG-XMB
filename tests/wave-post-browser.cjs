@@ -1,5 +1,9 @@
 'use strict';
 const assert=require('node:assert/strict'),path=require('node:path');
+const {createHash}=require('node:crypto');
+// Compare a digest, not the data URL: an inequality prints a hash instead of
+// half a megabyte of base64, and identity is just as exact.
+const digest=s=>createHash('sha256').update(s).digest('hex');
 // CI loads the packaged page normally. The optional loader is for offline shader tests.
 module.exports=async function checkWavePost(browser,checks,errors,loader) {
   const load=loader||((p)=>p.goto('http://127.0.0.1:8765/'));
@@ -12,7 +16,7 @@ module.exports=async function checkWavePost(browser,checks,errors,loader) {
   const prefs=()=>{if(!localStorage.getItem('lg-xmb-preferences-v1'))localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify({motion:'reduced',theme:'ocean',previewMode:'live',waveSampling:2,waveDetail:'fine',waveSoftness:0}));};
   const page=await browser.newPage({viewport:{width:1920,height:1080}});
   page.on('pageerror',e=>errors.push(e.message));
-  const image=()=>page.evaluate(()=>document.getElementById('wave').toDataURL());
+  const image=async()=>digest(await page.evaluate(()=>document.getElementById('wave').toDataURL()));
   const diag=()=>page.evaluate(()=>postTestWave.getDiagnostics());
   try {
     await page.addInitScript(capture);await page.addInitScript(prefs);await load(page,[capture,prefs]);

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {createHash}=require('node:crypto');
+// Compare a digest, not the data URL: an inequality prints a hash instead of
+// half a megabyte of base64, and identity is just as exact.
+const digest=s=>createHash('sha256').update(s).digest('hex');
 module.exports=async function(browser,checks,errors,loader){
  const load=loader||((p)=>p.goto('http://127.0.0.1:8765/'));
  const capture=()=>{
@@ -46,7 +50,7 @@ module.exports=async function(browser,checks,errors,loader){
    } else assert.equal(await twice.count(),0);
    await group.getByRole('button',{name:'4×',exact:true}).click();
    // Still-frame toggles round-trip; independent of menus/text and particles.
-   const pixels=()=>p.evaluate(()=>document.getElementById('wave').toDataURL());
+   const pixels=async()=>digest(await p.evaluate(()=>document.getElementById('wave').toDataURL()));
    const before=await pixels(),at=await p.evaluate(()=>msaaWave.time);
    await group.getByRole('button',{name:'Off',exact:true}).click();const off=await pixels();assert.notEqual(off,before);
    assert.equal((await diag()).surface.msaaBytes,0);
@@ -79,10 +83,11 @@ module.exports=async function(browser,checks,errors,loader){
   :()=>{WebGL2RenderingContext.prototype.blitFramebuffer=function(){window.msaaFailures=(window.msaaFailures||0)+1;throw new Error('Test MSAA resolve refused');};};
   const p=await page(1280,init);
   try{
-   const off=await p.evaluate(()=>document.getElementById('wave').toDataURL());
+   const pixels=async()=>digest(await p.evaluate(()=>document.getElementById('wave').toDataURL()));
+   const off=await pixels();
    await p.evaluate(()=>msaaWave.setQuality({msaa:4}));
    const d=await p.evaluate(()=>msaaWave.getDiagnostics());assert.equal(d.pattern,'ps3');assert.equal(d.surface.msaaSamples,0);assert.ok(d.surface.msaaFallback);
-   assert.equal(await p.evaluate(()=>document.getElementById('wave').toDataURL()),off,'Fallback must redraw, not present a stale MSAA resolve');
+   assert.equal(await pixels(),off,'Fallback must redraw, not present a stale MSAA resolve');
    const attempts=await p.evaluate(()=>window.msaaFailures||0);
    await p.evaluate(()=>{for(let n=0;n<4;n++)msaaWave._draw();});assert.equal(await p.evaluate(()=>window.msaaFailures||0),attempts);
    assert.equal(await p.evaluate(()=>msaaWave.gl.getError()),0);
