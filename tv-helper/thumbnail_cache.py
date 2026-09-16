@@ -521,7 +521,15 @@ class Worker:
             return None
         foreground = self.luna("foreground", {})
         if observe_return:
-            self.stock_closer.observe(power, foreground)
+            # Broad on purpose, same as the poll_return call in main(). The
+            # controller raises its own error type from a module loaded at
+            # runtime so we can't name it here. Note that nothing restarts this
+            # process, so a controller fault taking the capture loop down costs
+            # you thumbnails until the next reboot.
+            try:
+                self.stock_closer.observe(power, foreground)
+            except Exception:
+                pass
         app_id = foreground.get("appId")
         if not (re.fullmatch(r"com\.webos\.app\.hdmi[1-4]", app_id or "")
                 or (self.allow_home and app_id == HOME_ID)):
@@ -668,7 +676,12 @@ def main(argv=None):
             spec = importlib.util.spec_from_file_location("c5_process_control", module_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-            controls = module.Manager(stop)
+            try:
+                controls = module.Manager(stop)
+            except module.ControlError:
+                # Manager takes the store lock to write its config, so a busy
+                # lock here would otherwise escape as a traceback.
+                raise SafeError("controller_unavailable") from None
             app_ready = lambda: checked_process_app(module)
         worker = Worker(Luna(executable), cache, stop=stop,
                         capture_method=args.method, allow_home=args.allow_home_preview,

@@ -92,6 +92,21 @@ class WorkerTests(unittest.TestCase):
         self.now = at
         return self.worker.step()
 
+    def test_a_broken_controller_does_not_stop_thumbnail_capture(self):
+        # Nothing restarts this process, so a controller fault used to cost you
+        # thumbnails until the next reboot.
+        class ControlError(Exception):
+            pass
+        closer = SimpleNamespace(observe=Mock(side_effect=ControlError('invalid_config')),
+                                 last_status={'state': 'managed'})
+        worker = tc.Worker(self.luna, self.cache, installed=lambda: self.installed,
+                           clock=lambda: self.now, wall=lambda: 1000 + self.now,
+                           ensure_link=lambda: None, stock_closer=closer)
+        self.now = 0; self.assertIs(worker.step(), True)
+        self.now = 5; self.assertIs(worker.step(), True)
+        self.assertTrue(closer.observe.called)
+        self.assertEqual(self.cache.published, [1])
+
     def test_settles_then_captures_only_existing_input(self):
         self.tick(0)
         self.tick(4.9)
