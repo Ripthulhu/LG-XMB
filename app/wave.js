@@ -131,6 +131,15 @@
     {name:'720p',width:1280,height:720},
     {name:'540p',width:960,height:540}
   ];
+  // The clock is accumulated in double precision but reaches the shaders as a
+  // float32 uniform, so its resolution falls as it grows. A frame advances the
+  // clock by about 0.035; float32 steps by that much near 600,000, which a
+  // resident launcher reaches after a few days of visible time, and motion
+  // quantises well before then. The curves mix incommensurate frequencies, so
+  // no wrap is seamless: wrap only while nothing is on screen. WRAP keeps the
+  // step at 0.7% of a frame; CEILING is the backstop for a launcher that is
+  // never hidden, where one imperceptible jump beats degrading indefinitely.
+  var TIME_WRAP = 4096, TIME_CEILING = 131072;
 
   function nowMs() {
     return global.performance && global.performance.now ? global.performance.now() : Date.now();
@@ -601,6 +610,7 @@
     if (!this.nextFrame) this.nextFrame = this.lastFrame+interval;
     if (now >= this.nextFrame-0.5) {
       this.time += Math.min((now-this.lastFrame)/1000,0.1)*0.70*this.speed;
+      this._wrapClock(false);
       this.lastFrame = now;
       // Retain the 30/20 Hz phase after a late callback. Resetting the deadline
       // to 'now' loses the remainder and can turn small jitter into 50 ms gaps.
@@ -611,11 +621,19 @@
     if (!this.raf) this.raf = global.requestAnimationFrame(this._tickBound);
   };
 
+  C5Wave.prototype._wrapClock = function (hidden) {
+    // Wrapping shifts every curve's phase, so only do it out of sight. The
+    // ceiling is the exception: past it the float32 uniform loses too much of a
+    // frame's step to keep motion smooth, and one jump is the lesser fault.
+    var wrap = hidden ? TIME_WRAP : TIME_CEILING;
+    if (this.time > wrap) this.time = this.time % TIME_WRAP;
+  };
+
   C5Wave.prototype._visibility = function () {
     var hidden = !!document.hidden;
     if (hidden === this.documentHidden) return;
     this.documentHidden = hidden;
-    if (hidden) this._cancel();
+    if (hidden) { this._cancel(); this._wrapClock(true); }
     else this._resume();
   };
 
@@ -664,7 +682,8 @@
     if (this.destroyed || this.paused === value) return;
     this.paused = value;
     this._cancel();
-    if (!this.paused) this._resume();
+    if (this.paused) this._wrapClock(true);
+    else this._resume();
   };
 
   C5Wave.prototype.destroy = function () {
