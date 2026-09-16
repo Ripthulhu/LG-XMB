@@ -62,8 +62,9 @@ Rooted installations prepare their helper on first launch. Recovery is covered i
 the same guide.
 
 Releases include the installable IPK, SHA-256 checksums and matching source.
-**0.1.12 is a C5 prerelease**, not a stable or broadly compatible release; read its
-known limitations before installing. Unpublished development builds remain in
+Releases are C5 prereleases, not stable or broadly compatible ones. Read the notes
+for the version you download in [docs/releases/](docs/releases/), cause the known
+limitations differ between them. Unpublished development builds remain in
 GitHub Actions as `lg-xmb-candidate` after **Checks** succeeds.
 
 ## Develop

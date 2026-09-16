@@ -8,8 +8,8 @@ The helper adds cached HDMI pictures, background controls and Home-button assign
 | --- | --- |
 | `thumbnail_cache.py` | Installed app's `helper/thumbnail_cache.py` |
 | `process_control.py` | Installed app's `helper/process_control.py` |
-| `../app/helper-startup.py` | App container; `init.d/60-openxmb-thumbnails` symlinks to it |
-| `recovery/stop_thumbnail_helper.py` | `/var/lib/lg-xmb/stop-helper.py` |
+| `../app/helper-startup.py` | App container; `init.d/60-lg-xmb` symlinks to it (recovery also removes the legacy `60-openxmb-thumbnails` hook) |
+| `recovery/stop_thumbnail_helper.py` | Installed app’s `helper/stop_thumbnail_helper.py` |
 
 The packaged startup entry starts one detached Python worker with
 `--allow-home-preview --process-controls`, then exits without blocking boot.
