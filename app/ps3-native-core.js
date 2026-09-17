@@ -333,6 +333,10 @@
   // target positions and they're animated with the console's own position curve
   // (selector 5, 200 ms), so nothing reads the page's layout per frame.
   var APPROACH = 0.22058835625648499, ICON_ASPECT = f(1.7777777910232544), UI_BROWNIAN = f(0.6000000238418579);
+  // LG-XMB tuning, not a recovered coefficient. Scale the sampled vertical
+  // wind, not its byte field: fast/above-bar moves already saturate that field.
+  // Keep the original spatial footprint and decay, without the full-speed kick.
+  var VERTICAL_ICON_WIND_SCALE = .25;
   function Interaction(particles, birth) {
     this.particles = particles; this.birth = birth;
     this.response = new birth.DpadResponse();
@@ -460,6 +464,10 @@
       var lo = f(f(b - a) * fx + a), hi = f(f(d - c) * fx + c);
       v[k] = f(f(hi - lo) * fy + lo);
     }
+    // Only tune the live menu interaction. Raw reference replays stay unchanged;
+    // X/Z wind, launch velocity, gravity, drag and the d-pad response are separate.
+    if (this.interaction)
+      v[1] = f(v[1] * VERTICAL_ICON_WIND_SCALE);
     transform4(v[0], v[1], v[2], 0, p.fieldToWorld, this.fieldSample);
   };
   Particles.prototype.update = function () {
