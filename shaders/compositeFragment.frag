@@ -18,6 +18,7 @@ uniform vec2 uColorDir;
 uniform vec2 uColorRange;
 uniform sampler2D uMonthly;
 uniform bool uMonthlyEnabled;
+uniform float uSceneScale;
 in vec2 vUV;
 layout(location=0) out vec4 outColor;
 // Cubic B-spline upsample of the 64x32 monthly pass through four bilinear
@@ -112,5 +113,7 @@ void main() {
     float t=clamp((dot(vec2(vUV.x,1.0-vUV.y),uColorDir)-uColorRange.x)/max(uColorRange.y,0.000001),0.0,1.0);
     background=mix(uColorStart,uColorEnd,t*t*(3.0-2.0*t));
   }
-  outColor=vec4(background+scene,1.0);
+  // RGB goes to the scene target (scaled into range when it's RGBA8); alpha
+  // carries the backdrop's peak for the presentation shoulder's knee.
+  outColor=vec4((background+scene)*uSceneScale,max(background.r,max(background.g,background.b)));
 }

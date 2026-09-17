@@ -80,6 +80,18 @@
     this.maxDimension = Math.min(3840, limit, gl.getParameter(gl.MAX_TEXTURE_SIZE), vp[0], vp[1]);
     var maxSamples = gl.getParameter(gl.MAX_SAMPLES), counts = gl.getInternalformatParameter(gl.RENDERBUFFER, gl.RGBA8, gl.SAMPLES);
     this.msaaSupported = Array.from(counts || []).filter(function (n) { return n > 1 && n <= 4 && n <= maxSamples; }).sort(function (a, b) { return b - a; });
+    // Half-float accumulation so stacked folds and particles don't clip at 1.
+    // Without EXT_color_buffer_float the scene is RGBA8 with RGB scaled into
+    // 0..8, which keeps the shoulder working at lower precision.
+    this.floatColour = !!gl.getExtension('EXT_color_buffer_float');
+    this.msaaSupported16F = [];
+    if (this.floatColour) {
+      var counts16 = gl.getInternalformatParameter(gl.RENDERBUFFER, gl.RGBA16F, gl.SAMPLES);
+      this.msaaSupported16F = Array.from(counts16 || []).filter(function (n) { return n > 1 && n <= 4 && n <= maxSamples; }).sort(function (a, b) { return b - a; });
+    }
+    this.scene = null;
+    this.sceneScale = this.floatColour ? 1 : 0.125;
+    this.sceneFallback = this.floatColour ? null : 'EXT_color_buffer_float unavailable; RGB range 0..8 in RGBA8';
     this.parallel = gl.getExtension('KHR_parallel_shader_compile');
     try {
       this.waveProgram = this.program(Shaders.waveVertex, Shaders.waveFragment, ['tfPosition', 'tfNormal']);
@@ -87,6 +99,7 @@
       this.glareProgram = this.program(Shaders.glareVertex, Shaders.glareFragment);
       this.compositeProgram = this.program(Shaders.fullscreenVertex, Shaders.compositeFragment);
       this.monthlyProgram = this.program(Shaders.fullscreenVertex, Shaders.monthlyBackground);
+      this.presentProgram = this.program(Shaders.fullscreenVertex, Shaders.presentFragment);
     }
     catch (error) {
       this.destroy(false);
@@ -164,6 +177,7 @@
     this.uniforms.glare = this.locations(this.glareProgram);
     this.uniforms.composite = this.locations(this.compositeProgram);
     this.uniforms.monthly = this.locations(this.monthlyProgram);
+    this.uniforms.present = this.locations(this.presentProgram);
     this.waveVAO = this.resource('VertexArray');
     this.indexBuffer = this.resource('Buffer');
     this.fullscreenVAO = this.resource('VertexArray');
@@ -286,6 +300,16 @@
     this.indexCount = indices.length;
     this.changed = true;
   };
+  // Full-resolution scene the composite and particles render into before the
+  // presentation pass. Sized to the output, not the supersampled wave target.
+  Renderer.prototype.prepareScene = function (w, h) {
+    if (this.scene && this.scene.width === w && this.scene.height === h)
+      return;
+    var next = this.allocate(w, h, 0, this.floatColour ? this.gl.RGBA16F : this.gl.RGBA8);
+    this.releaseTarget(this.scene);
+    this.scene = next;
+    this.allocations++;
+  };
   Renderer.prototype.releaseTarget = function (t) {
     if (!t)
       return;
@@ -299,15 +323,15 @@
     if (t.texture)
       gl.deleteTexture(t.texture);
   };
-  Renderer.prototype.allocate = function (w, h, samples) {
-    var gl = this.gl, t = { width: w, height: h, samples: samples }, ok = false;
+  Renderer.prototype.allocate = function (w, h, samples, format) {
+    var gl = this.gl, t = { width: w, height: h, samples: samples, format: format || gl.RGBA8 }, ok = false;
     try {
       t.texture = gl.createTexture();
       t.framebuffer = gl.createFramebuffer();
       if (!t.texture || !t.framebuffer)
         throw new Error('No render target');
       gl.bindTexture(gl.TEXTURE_2D, t.texture);
-      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, t.format, w, h);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -322,7 +346,7 @@
         if (!t.msaaBuffer || !t.msaaFbo)
           throw new Error('No MSAA target');
         gl.bindRenderbuffer(gl.RENDERBUFFER, t.msaaBuffer);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, w, h);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, t.format, w, h);
         if (gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_SAMPLES) !== samples)
           throw new Error('MSAA sample mismatch');
         gl.bindFramebuffer(gl.FRAMEBUFFER, t.msaaFbo);
@@ -353,15 +377,16 @@
       if (size === last)
         continue;
       last = size;
-      var samples = this.msaaSupported.filter(function (n) { return n <= s.msaa; });
+      var supported = this.floatColour ? this.msaaSupported16F : this.msaaSupported;
+      var samples = supported.filter(function (n) { return n <= s.msaa; });
       samples.push(0);
       for (var j = 0; j < samples.length && !candidate; j++) {
-        if (sw * sh * 4 * (1 + samples[j]) > 96 * 1024 * 1024) {
+        if (sw * sh * (this.floatColour ? 8 : 4) * (1 + samples[j]) > 96 * 1024 * 1024) {
           this.msaaFallback = '96 MiB render-target budget';
           continue;
         }
         try {
-          candidate = this.allocate(sw, sh, samples[j]);
+          candidate = this.allocate(sw, sh, samples[j], this.floatColour ? this.gl.RGBA16F : this.gl.RGBA8);
         }
         catch (error) {
           this.msaaFallback = error.message;
@@ -494,7 +519,8 @@
       gl.blitFramebuffer(0, 0, t.width, t.height, 0, 0, t.width, t.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     }
     gl.disable(gl.BLEND);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.prepareScene(w, h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.scene.framebuffer);
     gl.viewport(0, 0, w, h);
     gl.useProgram(this.compositeProgram);
     gl.bindVertexArray(this.fullscreenVAO);
@@ -507,6 +533,7 @@
     gl.uniform1i(u.uScene, 0);
     gl.uniform1i(u.uMonthly, 1);
     gl.uniform1i(u.uMonthlyEnabled, monthly ? 1 : 0);
+    gl.uniform1f(u.uSceneScale, this.sceneScale);
     gl.uniform2f(u.uTexel, 1 / w, 1 / h);
     gl.uniform3fv(u.uTuning, this.filterTunings[this.settings.strength]);
     gl.uniform1i(u.uCoverage, this.settings.postprocess === 'wave' ? 1 : 0);
@@ -523,9 +550,10 @@
     }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     // Filtering belongs to the wave, never the launcher's text or tiny sparkles.
+    // Particles add light into the scene; alpha keeps the backdrop knee.
     gl.enable(gl.BLEND);
     gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
-    gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+    gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
     if (this.settings.particles) {
       this.lastCount = Math.min(p.count, this.settings.particleCount);
       if (this.particleRevision !== p.revision || !this.particlesUploaded) {
@@ -535,10 +563,19 @@
         this.particlesUploaded = true;
         this.uploadedBytes += p.count * 32;
       }
-      this.particlePass(this.particleProgram, this.uniforms.particle, w / h, brightness);
-      this.particlePass(this.glareProgram, this.uniforms.glare, w / h, brightness);
+      this.particlePass(this.particleProgram, this.uniforms.particle, w / h, brightness * this.sceneScale);
+      this.particlePass(this.glareProgram, this.uniforms.glare, w / h, brightness * this.sceneScale);
     }
     gl.disable(gl.BLEND);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, w, h);
+    gl.useProgram(this.presentProgram);
+    gl.bindVertexArray(this.fullscreenVAO);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.scene.texture);
+    gl.uniform1i(this.uniforms.present.uScene, 0);
+    gl.uniform1f(this.uniforms.present.uSceneScale, this.sceneScale);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     this.drawCount++;
     var changed = this.changed;
@@ -556,7 +593,10 @@
       fidelity: { geometry: 'fixture-validated', particleUpdate: 'fixture-validated', opticalBindings: this.simulation.reference.optics ? 'retained material uniforms; inferred projection' : 'provisional', compositing: 'adapted', emitter: 'port policy' },
       draws: this.drawCount, allocations: this.allocations, uploadedBytes: this.uploadedBytes, perFrameReadbacks: 0,
       waveTicks: this.simulation.wave.ticks, particleTicks: p.ticks, recycledParticles: p.recycled,
-      renderTargetBytes: this.target ? this.width * this.height * 4 * (1 + this.msaaSamples) : 0 };
+      sceneFormat: this.floatColour ? 'RGBA16F' : 'RGBA8 scaled RGB', sceneFallback: this.sceneFallback,
+      toneMapping: 'backdrop-anchored hue-preserving shoulder plus fixed dither; not the original PS3 curve',
+      renderTargetBytes: (this.target ? this.width * this.height * (this.floatColour ? 8 : 4) * (1 + this.msaaSamples) : 0) +
+        (this.scene ? this.scene.width * this.scene.height * (this.floatColour ? 8 : 4) : 0) };
   };
   Renderer.prototype.destroy = function (lost) {
     if (this.dead)
@@ -564,10 +604,12 @@
     this.dead = true;
     if (!lost) {
       this.releaseTarget(this.target);
+      this.releaseTarget(this.scene);
       var gl = this.gl;
       this.objects.reverse().forEach(function (o) { gl['delete' + o[0]](o[1]); });
     }
     this.target = null;
+    this.scene = null;
     this.objects = [];
     this.programs = [];
   };
