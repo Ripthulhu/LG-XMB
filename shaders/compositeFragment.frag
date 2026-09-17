@@ -18,7 +18,6 @@ uniform vec2 uColorDir;
 uniform vec2 uColorRange;
 uniform sampler2D uMonthly;
 uniform bool uMonthlyEnabled;
-uniform float uSceneScale;
 in vec2 vUV;
 layout(location=0) out vec4 outColor;
 // Cubic B-spline upsample of the 64x32 monthly pass through four bilinear
@@ -113,7 +112,19 @@ void main() {
     float t=clamp((dot(vec2(vUV.x,1.0-vUV.y),uColorDir)-uColorRange.x)/max(uColorRange.y,0.000001),0.0,1.0);
     background=mix(uColorStart,uColorEnd,t*t*(3.0-2.0*t));
   }
-  // RGB goes to the scene target (scaled into range when it's RGBA8); alpha
-  // carries the backdrop's peak for the presentation shoulder's knee.
-  outColor=vec4((background+scene)*uSceneScale,max(background.r,max(background.g,background.b)));
+  // Hue-preserving roll-off above a knee at the backdrop's own peak, so the
+  // backdrop passes through untouched and only the wave light stacked on it
+  // compresses instead of clipping to white. Done here in RGBA8 on purpose:
+  // half-float targets took the C5's Mali from 55% to 94% busy on their own.
+  // Particles add on top afterwards and may still clip; they're small.
+  vec3 c=background+scene;
+  float knee=min(0.9999,max(0.75,max(background.r,max(background.g,background.b))));
+  float peak=max(c.r,max(c.g,c.b));
+  if(peak>knee) {
+    float room=1.0-knee;
+    c*=(knee+room*(1.0-exp(-(peak-knee)/room)))/max(peak,0.000001);
+  }
+  // Fixed-pattern zero-mean dither against banding; no clock, frozen frames stay stable.
+  float d=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))))-0.5;
+  outColor=vec4(clamp(c+d/255.0,0.0,1.0),1.0);
 }
