@@ -7,14 +7,15 @@
   'use strict';
   var Core = root.LGXMBPS3Core, Shaders = root.LGXMBPS3Shaders;
   var DEFAULT = { sampling: 1, detail: 'high', softness: 1.5, postprocess: 'off', strength: 'normal',
-    particles: false, particleCount: 2000, msaa: 0 };
+    particles: false, particleCount: 2000, msaa: 0, frameRate: 60 };
   function quality(options, previous) {
     var p = previous || DEFAULT, o = options || {};
     function select(name, allowed) { return allowed.indexOf(o[name]) >= 0 ? o[name] : p[name]; }
     return { sampling: select('sampling', [1, 1.25, 1.5, 2]), detail: select('detail', ['low', 'standard', 'high', 'fine']),
       softness: select('softness', [0, .5, .75, 1, 1.5, 2, 3]), postprocess: select('postprocess', ['off', 'fxaa', 'wave']),
       strength: select('strength', ['gentle', 'normal', 'strong']), particles: typeof o.particles === 'boolean' ? o.particles : p.particles,
-      particleCount: select('particleCount', [500, 1000, 2000, 4000]), msaa: select('msaa', [0, 2, 4]) };
+      particleCount: select('particleCount', [500, 1000, 2000, 4000]), msaa: select('msaa', [0, 2, 4]),
+      frameRate: select('frameRate', [30, 60]) };
   }
   function same(a, b) { return Object.keys(DEFAULT).every(function (k) { return a[k] === b[k]; }); }
   function color(value, fallback) {
@@ -593,7 +594,6 @@
     this.paused = false;
     this.time = 0;
     this.lastFrame = 0;
-    this.nextFrame = 0;
     this.raf = 0;
     this.initRaf = 0;
     this.compileRaf = 0;
@@ -736,7 +736,7 @@
     if (this.compileRaf)
       root.cancelAnimationFrame(this.compileRaf);
     this.raf = this.initRaf = this.compileRaf = 0;
-    this.lastFrame = this.nextFrame = 0;
+    this.lastFrame = 0;
   };
   C5Wave.prototype.resume = function () {
     if (!this.allowed())
@@ -761,13 +761,15 @@
     this.raf = 0;
     if (!this.allowed() || this.reducedMotion)
       return;
-    if (!this.lastFrame) {
-      this.lastFrame = now;
-      this.nextFrame = now + 1000 / 30;
-    }
-    if (now >= this.nextFrame - .5) {
-      // Keep the reference's 60-Hz simulation independent of the 30-Hz draw cap.
-      // Hidden time is discarded; a stall never causes unbounded catch-up work.
+    var interval = 1000 / this.ps3Quality.frameRate;
+    if (!this.lastFrame)
+      this.lastFrame = now - interval;
+    // Draw once at least an interval minus half a vsync has gone by. The old
+    // 33.3 ms grid with a 0.5 ms tolerance slipped about once a second on the
+    // C5, whose rAF timestamps jitter more than that: one frame held for
+    // three vsyncs, the next shown for one. A late frame is not chased with
+    // an early one. The simulation keeps its own 60 Hz fixed step either way.
+    if (now - this.lastFrame >= interval - 8) {
       var seconds = Math.min(.1, Math.max(0, (now - this.lastFrame) / 1000)) * this.speed / 1.5;
       try {
         this.simulation.advance(seconds, this.ps3Quality.particles);
@@ -778,7 +780,6 @@
       }
       this.time += seconds;
       this.lastFrame = now;
-      this.nextFrame += (Math.floor((now - this.nextFrame + .5) / (1000 / 30)) + 1) * (1000 / 30);
       this.draw();
     }
     if (this.mode === 'webgl' && !this.raf)
@@ -824,7 +825,7 @@
     return { mode: this.mode, pattern: 'ps3', contextVersion: this.contextVersion, capabilities: this.capabilities,
       renderQuality: Object.assign({}, this.ps3Quality), surface: this.renderer ? this.renderer.diagnostics() : null,
       parallelShaderCompile: !!(this.renderer && this.renderer.parallel), compileMs: this.compileMs, quality: ['1080p', '720p', '540p'][this.qualityIndex],
-      backingWidth: this.canvas.width, backingHeight: this.canvas.height, targetFps: 30, simulationHz: 60, adaptive: false,
+      backingWidth: this.canvas.width, backingHeight: this.canvas.height, targetFps: this.ps3Quality.frameRate, simulationHz: 60, adaptive: false,
       reducedMotion: this.reducedMotion, paused: this.paused, error: this.error, speed: this.speed, brightness: this.brightness, time: this.time };
   };
   C5Wave.prototype.destroy = function () {

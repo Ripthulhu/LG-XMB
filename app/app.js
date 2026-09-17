@@ -1,7 +1,7 @@
 /* lg-xmb web application, 2026. SPDX-License-Identifier: GPL-3.0-or-later */
 (function(){'use strict';
 var categories=window.C5Catalog, selectedCategory=1, selections=categories.map(function(){return 0;}), busy=false, modalOpen=false, lastDirection=0, toastTimer, announceTimer;
-var preferences={theme:'midnight',motion:'full',sound:false,previewMode:'cached',waveSpeed:'normal',waveBrightness:'normal',backBehavior:'stay',waveMSAA:0,waveSampling:1.5,waveDetail:'high',waveSoftness:0.75,wavePostprocess:'wave',waveSmoothing:'strong',musicEnabled:false,musicVolume:0.25,waveParticles:true,waveParticleCount:2000};
+var preferences={theme:'midnight',motion:'full',sound:false,previewMode:'cached',waveSpeed:'normal',waveBrightness:'normal',backBehavior:'stay',waveMSAA:0,waveSampling:1.5,waveDetail:'high',waveSoftness:0.75,wavePostprocess:'wave',waveSmoothing:'strong',musicEnabled:false,musicVolume:0.25,waveParticles:true,waveParticleCount:2000,waveFrameRate:60};
 var themes={midnight:{name:'Midnight',background:'#050911',wave:'#738acf',accent:'#a7baf3'},ocean:{name:'Ocean',background:'#030e13',wave:'#4da6ab',accent:'#98dfdf'},ember:{name:'Ember',background:'#130906',wave:'#ac6c45',accent:'#eebd96'},forest:{name:'Forest',background:'#040f0b',wave:'#579b7a',accent:'#b0d6bb'},amber:{name:'Amber',background:'#130f05',wave:'#c49a4a',accent:'#e0c998'},rose:{name:'Rose',background:'#13080d',wave:'#b86e8c',accent:'#e6b2c7'},violet:{name:'Violet',background:'#0d0816',wave:'#9678ca',accent:'#c8b5ec'},graphite:{name:'Graphite',background:'#090b0d',wave:'#83939d',accent:'#ccd4d9'},seasonal:{name:'Seasonal',background:'#080813',wave:'#2e2e73',accent:'#b3b3ea'}};
 // Monthly colours are adapted from OpenXMB config.json, shell.theme-month-colours.
 var monthColours=['#f2e6a6','#9e4540','#4da640','#f299cc','#99cc59','#b399e6','#80d9f2','#3373f2','#2e2e73','#994db3','#cc8040','#e64040'];
@@ -10,6 +10,7 @@ try{var saved=JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')||localSto
 // New quality preferences are independent of existing appearance and TV settings.
 if(saved && typeof saved === 'object') {
   if([0,2,4].indexOf(saved.waveMSAA)!==-1)preferences.waveMSAA=saved.waveMSAA;
+  if([30,60].indexOf(saved.waveFrameRate)!==-1)preferences.waveFrameRate=saved.waveFrameRate;
   if(typeof saved.waveParticles==='boolean')preferences.waveParticles=saved.waveParticles;
   if([500,2000,4000].indexOf(saved.waveParticleCount)!==-1)preferences.waveParticleCount=saved.waveParticleCount;
   preferences.musicEnabled=saved.musicEnabled===true;
@@ -34,7 +35,7 @@ var audioContext, inputLabelRead=null;
 function tick(){if(!preferences.sound||document.hidden)return;try{if(!audioContext)audioContext=new(window.AudioContext||window.webkitAudioContext)();if(audioContext.state==='suspended')audioContext.resume();var oscillator=audioContext.createOscillator(),gain=audioContext.createGain(),now=audioContext.currentTime;oscillator.type='sine';oscillator.frequency.setValueAtTime(660,now);oscillator.frequency.exponentialRampToValueAtTime(440,now+.065);gain.gain.setValueAtTime(.018,now);gain.gain.exponentialRampToValueAtTime(.0001,now+.065);oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start(now);oscillator.stop(now+.07);}catch(ignore){}}
 function save(){try{localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(preferences));}catch(ignore){toast('This device could not save your preference.');}}
 function seasonal(){var colour=monthColours[new Date().getMonth()],rgb=colour.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);});themes.seasonal.wave=colour;themes.seasonal.background='#'+rgb.map(function(v){return Math.max(3,Math.round(v*.07)).toString(16).padStart(2,'0');}).join('');themes.seasonal.accent='#'+rgb.map(function(v){return Math.round(v*.45+255*.55).toString(16).padStart(2,'0');}).join('');}
-function applyPreferences(){if(preferences.motion==='reduced')categoryTransition.cancel();seasonal();var theme=themes[preferences.theme];document.documentElement.style.setProperty('--accent','#ffffff');document.documentElement.style.setProperty('--accent-rgb','255,255,255');document.documentElement.style.setProperty('--background',theme.background);document.documentElement.style.setProperty('--background-rgb',theme.background.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);}).join(','));document.body.classList.toggle('reduced-motion',preferences.motion==='reduced');wave.setTheme(Object.assign({},theme,{colors:preferences.waveColors}));wave.setStyle({speed:{slow:0.5,normal:1.5,fast:2.25}[preferences.waveSpeed],brightness:{low:0.6,normal:1,high:1.5}[preferences.waveBrightness]});wave.setQuality({msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});wave.setReducedMotion(preferences.motion==='reduced');}
+function applyPreferences(){if(preferences.motion==='reduced')categoryTransition.cancel();seasonal();var theme=themes[preferences.theme];document.documentElement.style.setProperty('--accent','#ffffff');document.documentElement.style.setProperty('--accent-rgb','255,255,255');document.documentElement.style.setProperty('--background',theme.background);document.documentElement.style.setProperty('--background-rgb',theme.background.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);}).join(','));document.body.classList.toggle('reduced-motion',preferences.motion==='reduced');wave.setTheme(Object.assign({},theme,{colors:preferences.waveColors}));wave.setStyle({speed:{slow:0.5,normal:1.5,fast:2.25}[preferences.waveSpeed],brightness:{low:0.6,normal:1,high:1.5}[preferences.waveBrightness]});wave.setQuality({frameRate:preferences.waveFrameRate,msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});wave.setReducedMotion(preferences.motion==='reduced');}
 function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){$('toast').classList.remove('show');},4200);}
 function clearToast(){clearTimeout(toastTimer);$('toast').classList.remove('show');if($('toast').textContent)$('toast').textContent='';}
 function invalidateLaunch(){launchGeneration++;busy=false;$('items').removeAttribute('aria-busy');}
@@ -166,7 +167,7 @@ function openWaveSettings(){
   function qualityChoice(label,choices,key){
     choiceGroup(label,choices,preferences[key],function(value){
       preferences[key]=value;
-      wave.setQuality({msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});
+      wave.setQuality({frameRate:preferences.waveFrameRate,msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});
       save();updateWaveStatus();
     });
   }
@@ -183,6 +184,7 @@ function openWaveSettings(){
     }
     return choices;
   }
+  qualityChoice('Frame rate',[[60,'60 fps'],[30,'30 fps']],'waveFrameRate');
   qualityChoice('MSAA',msaaChoices(),'waveMSAA');
   qualityChoice('Supersampling',[[1,'Off'],[1.25,'1.25×'],[1.5,'1.5×'],[2,'2×']],'waveSampling');
   qualityChoice('Mesh detail',[['standard','Reduced'],['high','Original'],['fine','Original (legacy)']],'waveDetail');
@@ -192,7 +194,7 @@ function openWaveSettings(){
   qualityChoice('Post-process antialiasing',[['off','Off'],['fxaa','FXAA'],['wave','Wave FXAA']],'wavePostprocess');
   qualityChoice('Smoothing strength',[['gentle','Gentle'],['normal','Normal'],['strong','Strong']],'waveSmoothing');
   var note=document.createElement('p');note.className='wave-quality-note';
-  note.textContent='Native WebGL 2 renderer. Original detail uses the captured 128 × 128 grid; Reduced uses 64 × 64. Fine is retained as an alias for Original. Supersampling and MSAA affect the wave surface; particles are drawn afterward at output resolution. FXAA never filters launcher text or particles. The captured seed pack limits the live population to about 2,000 particles, including when High density is selected. TV performance and final PS3 compositing have not been verified.';
+  note.textContent='Native WebGL 2 renderer. 60 fps draws every vsync and is smoothest; 30 fps halves the graphics work if a heavier setting stutters. Original detail uses the captured 128 × 128 grid; Reduced uses 64 × 64. Fine is retained as an alias for Original. Supersampling and MSAA affect the wave surface; particles are drawn afterward at output resolution. FXAA never filters launcher text or particles. The captured seed pack limits the live population to about 2,000 particles, including when High density is selected. TV performance and final PS3 compositing have not been verified.';
   $('modalContent').appendChild(note);
   var status=document.createElement('p');status.id='waveRenderStatus';status.className='wave-quality-note';status.setAttribute('role','status');
   $('modalContent').appendChild(status);updateWaveStatus();
