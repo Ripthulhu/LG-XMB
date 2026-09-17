@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
+const menu = require('./support/menu-navigation.cjs');
 
 module.exports = async function checkInputLabels(browser, checks, errors) {
   const page = await browser.newPage({viewport: {width: 1920, height: 1080},
@@ -89,8 +90,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     assert.equal(setupCommands.length, 1, 'one independent bundled-helper setup');
     assert.match(setupCommands[0], /helper-startup\.py ensure/);
     assert.equal((await state()).busy, false);
-    await page.keyboard.press('ArrowLeft');
-    await page.keyboard.press('ArrowDown');
+    await menu.item(page, 'tv', 'com.webos.app.hdmi2');
     assert.equal(await title(), 'HDMI 2');
     await reply(0, null, true);
     assert.equal(await title(), 'HDMI 2');
@@ -102,15 +102,21 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     const first = (await count()) - 1;
     await home();
     assert.equal(await count(), first + 1, 'duplicate Home events share one pending read');
-    await page.evaluate(() => { labelTest.row = document.getElementById('item-1'); labelTest.focus = document.activeElement; });
+    await page.evaluate(() => { labelTest.row = document.querySelector('#items > .rows:not(.parked) > [data-item="com.webos.app.hdmi2"]'); labelTest.focus = document.activeElement; });
     await reply(first, 'PS3 Konsola do gier');
     assert.equal(await title(), 'PS3 Konsola do gier');
     assert.equal(await page.locator('#detailType').textContent(), 'HDMI 2');
     assert.equal(await page.locator('#detailDescription').textContent(), 'Switch to HDMI 2.');
     assert.equal(await page.locator('#previewButton').getAttribute('aria-label'), 'Open PS3 Konsola do gier full-screen');
     assert.equal((await state()).item, 'com.webos.app.hdmi2');
-    assert.equal(await page.locator('#items>.rows:not(.parked) > button').count(), 4);
-    assert.equal(await page.evaluate(() => labelTest.row === document.getElementById('item-1') &&
+    assert.equal(await menu.activeRows(page).count(), await page.evaluate(() =>
+      C5Catalog.find(category => category.id === 'tv').items.length));
+    const ports = await menu.activeRows(page).evaluateAll(rows => rows.filter(row =>
+      /^com\.webos\.app\.hdmi[1-4]$/.test(row.dataset.item)).map(row => row.dataset.item));
+    assert.deepEqual(ports, [1, 2, 3, 4].map(port => 'com.webos.app.hdmi' + port));
+    assert.equal(await menu.activeItem(page, 'com.webos.app.livetv').getAttribute('aria-label'), 'Live TV');
+    assert.equal(await menu.activeItem(page, 'com.webos.app.lgchannels').getAttribute('aria-label'), 'LG Channels');
+    assert.equal(await page.evaluate(() => labelTest.row === document.querySelector('#items > .rows:not(.parked) > [data-item="com.webos.app.hdmi2"]') &&
       labelTest.focus === document.activeElement), true);
     await page.waitForFunction(() => document.getElementById('selectionLive').textContent.includes('PS3 Konsola do gier'));
     assert.equal(await page.evaluate(() => JSON.stringify(localStorage)), storage);
@@ -143,7 +149,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => !C5App.getState().busy && labelTest.launches.length === 1);
     assert.deepEqual(await page.evaluate(() => labelTest.launches), ['com.webos.app.hdmi2']);
-    await page.getByRole('button', {name: 'Settings', exact: true}).click();
+    await menu.category(page, 'settings');
     await page.keyboard.press('Enter');
     assert.equal((await state()).modal, 'appearance');
     await page.evaluate(() => { labelTest.dialogFocus = document.activeElement; });
@@ -151,7 +157,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     assert.equal((await state()).modal, 'appearance');
     assert.equal(await page.evaluate(() => labelTest.dialogFocus === document.activeElement), true);
     await page.keyboard.press('Escape');
-    for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
+    await menu.category(page, 'tv');
     assert.equal((await state()).item, 'com.webos.app.hdmi2');
     assert.equal(await title(), 'New console');
     checks.push('A pending label read never blocks a launch or steals dialog focus, and category selection survives the update');
@@ -166,18 +172,12 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     assert.equal(await page.locator('#detailTitle img, .item-text img').count(), 0);
     checks.push('Cleared native names restore HDMI labels; markup is displayed literally and never loaded as an image');
 
-    await page.getByRole('button', {name: 'Settings', exact: true}).click();
-    // Settings may gain rows; seek the actual item using the remote instead of
-    // assuming Input previews is still the fourth entry.
-    for (let i = 0; i < 12 && (await state()).item !== 'previews'; i++) {
-      await page.keyboard.press('ArrowDown');
-    }
-    assert.equal((await state()).item, 'previews');
+    await menu.item(page, 'settings', 'previews');
     await page.keyboard.press('Enter');
     assert.equal((await state()).modal, 'previews');
     await page.getByRole('button', {name: 'Live', exact: true}).click();
     await page.keyboard.press('Escape');
-    for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
+    await menu.category(page, 'tv');
     await page.waitForFunction(() => C5App.getState().inputPreview.status === 'playing');
     await home();
     const before = await page.evaluate(() => ({videos: labelTest.videos, releases: labelTest.releases,
@@ -219,7 +219,7 @@ if (require.main === module) {
   const fs = require('node:fs');
   const {chromium} = require('playwright');
   (async () => {
-    const browser = await chromium.launch({channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true});
+    const browser = await chromium.launch(menu.launchOptions());
     const checks = [], errors = [];
     try {
       await module.exports(browser, checks, errors);

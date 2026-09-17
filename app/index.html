@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' ext:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' ext:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Home</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -17,7 +17,7 @@
     <main aria-label="TV launcher">
       <nav id="categories" aria-label="Categories"></nav>
       <section class="cross-content">
-        <div id="items" role="listbox" aria-label="Watch" tabindex="0"></div>
+        <div id="items" role="listbox" aria-label="TV" tabindex="0"></div>
         <aside class="detail" aria-labelledby="detailTitle">
           <div class="detail-eyebrow" id="detailType">TV</div>
           <div class="detail-emblem" id="detailEmblem" aria-hidden="true"></div>
@@ -63,6 +63,7 @@
   <script src="input-preview.js"></script>
   <script src="thumbnail.js"></script>
   <script src="background-music.js"></script>
+  <script src="menu-sounds.js"></script>
   <script src="category-transition.js"></script>
   <script src="app.js"></script>
 </body>

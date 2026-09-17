@@ -1,12 +1,14 @@
 /* lg-xmb web application, 2026. SPDX-License-Identifier: GPL-3.0-or-later */
 (function(){'use strict';
-var categories=window.C5Catalog, selectedCategory=1, selections=categories.map(function(){return 0;}), busy=false, modalOpen=false, lastDirection=0, toastTimer, announceTimer;
+var categories=window.C5Catalog, selectedCategory=Math.max(0,categories.findIndex(function(category){return category.id==='tv';})), selections=categories.map(function(){return 0;}), busy=false, modalOpen=false, lastDirection=0, toastTimer, announceTimer;
 var preferences={theme:'midnight',motion:'full',sound:false,previewMode:'cached',waveSpeed:'normal',waveBrightness:'normal',backBehavior:'stay',waveMSAA:0,waveSampling:1.5,waveDetail:'high',waveSoftness:0.75,wavePostprocess:'wave',waveSmoothing:'strong',musicEnabled:false,musicVolume:0.25,waveParticles:true,waveParticleCount:2000,waveFrameRate:60};
 var themes={midnight:{name:'Midnight',background:'#050911',wave:'#738acf',accent:'#a7baf3'},ocean:{name:'Ocean',background:'#030e13',wave:'#4da6ab',accent:'#98dfdf'},ember:{name:'Ember',background:'#130906',wave:'#ac6c45',accent:'#eebd96'},forest:{name:'Forest',background:'#040f0b',wave:'#579b7a',accent:'#b0d6bb'},amber:{name:'Amber',background:'#130f05',wave:'#c49a4a',accent:'#e0c998'},rose:{name:'Rose',background:'#13080d',wave:'#b86e8c',accent:'#e6b2c7'},violet:{name:'Violet',background:'#0d0816',wave:'#9678ca',accent:'#c8b5ec'},graphite:{name:'Graphite',background:'#090b0d',wave:'#83939d',accent:'#ccd4d9'},seasonal:{name:'Seasonal',background:'#080813',wave:'#2e2e73',accent:'#b3b3ea'}};
 // Monthly colours are adapted from OpenXMB config.json, shell.theme-month-colours.
 var monthColours=['#f2e6a6','#9e4540','#4da640','#f299cc','#99cc59','#b399e6','#80d9f2','#3373f2','#2e2e73','#994db3','#cc8040','#e64040'];
 var $=function(id){return document.getElementById(id);};
-try{var saved=JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')||localStorage.getItem('openxmb-c5-preferences-v1')||'{}');if(Object.prototype.hasOwnProperty.call(themes,saved.theme))preferences.theme=saved.theme;if(saved.motion==='reduced'||saved.motion==='full')preferences.motion=saved.motion;else if(matchMedia('(prefers-reduced-motion: reduce)').matches)preferences.motion='reduced';preferences.sound=saved.sound===true;preferences.previewMode=saved.previewMode==='live'?'live':'cached';if(['slow','normal','fast'].indexOf(saved.waveSpeed)!==-1)preferences.waveSpeed=saved.waveSpeed;if(['low','normal','high'].indexOf(saved.waveBrightness)!==-1)preferences.waveBrightness=saved.waveBrightness;if(saved.backBehavior==='lg')preferences.backBehavior='lg';}catch(ignore){}
+// Retain saved gains: low=0.6 (Medium), normal=1 (High). New dim=0.3
+// is Low; a saved high=1.5 is capped at the new maximum.
+try{var saved=JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')||localStorage.getItem('openxmb-c5-preferences-v1')||'{}');if(Object.prototype.hasOwnProperty.call(themes,saved.theme))preferences.theme=saved.theme;if(saved.motion==='reduced'||saved.motion==='full')preferences.motion=saved.motion;else if(matchMedia('(prefers-reduced-motion: reduce)').matches)preferences.motion='reduced';preferences.sound=saved.sound===true;preferences.previewMode=saved.previewMode==='live'?'live':'cached';if(['slow','normal','fast'].indexOf(saved.waveSpeed)!==-1)preferences.waveSpeed=saved.waveSpeed;if(['dim','low','normal'].indexOf(saved.waveBrightness)!==-1)preferences.waveBrightness=saved.waveBrightness;else if(saved.waveBrightness==='high')preferences.waveBrightness='normal';if(saved.backBehavior==='lg')preferences.backBehavior='lg';}catch(ignore){}
 // New quality preferences are independent of existing appearance and TV settings.
 if(saved && typeof saved === 'object') {
   if([0,2,4].indexOf(saved.waveMSAA)!==-1)preferences.waveMSAA=saved.waveMSAA;
@@ -33,16 +35,17 @@ var music=new LGXMBBackgroundMusic({enabled:preferences.musicEnabled,volume:pref
 var detailItemId=null,detailIcon=null,renderedCategory=-1,launchGeneration=0,pageActive=!document.hidden,musicAway=false,lastReturnAt=-Infinity;
 document.querySelector('.input-preview-symbol').innerHTML=C5Icon('hdmi');
 document.querySelector('.thumbnail-symbol').innerHTML=C5Icon('hdmi');
-var audioContext, inputLabelRead=null;
-function tick(){if(!preferences.sound||document.hidden)return;try{if(!audioContext)audioContext=new(window.AudioContext||window.webkitAudioContext)();if(audioContext.state==='suspended')audioContext.resume();var oscillator=audioContext.createOscillator(),gain=audioContext.createGain(),now=audioContext.currentTime;oscillator.type='sine';oscillator.frequency.setValueAtTime(660,now);oscillator.frequency.exponentialRampToValueAtTime(440,now+.065);gain.gain.setValueAtTime(.018,now);gain.gain.exponentialRampToValueAtTime(.0001,now+.065);oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start(now);oscillator.stop(now+.07);}catch(ignore){}}
+var inputLabelRead=null;
+var sounds=new LGXMBMenuSounds({enabled:preferences.sound,onChange:updateSoundStatus});
+function tick(kind){sounds.play(kind||'cursor');}
 function save(){try{localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(preferences));}catch(ignore){toast('This device could not save your preference.');}}
 function seasonal(){var colour=monthColours[new Date().getMonth()],rgb=colour.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);});themes.seasonal.wave=colour;themes.seasonal.background='#'+rgb.map(function(v){return Math.max(3,Math.round(v*.07)).toString(16).padStart(2,'0');}).join('');themes.seasonal.accent='#'+rgb.map(function(v){return Math.round(v*.45+255*.55).toString(16).padStart(2,'0');}).join('');}
-function applyPreferences(){if(preferences.motion==='reduced')categoryTransition.cancel();seasonal();var theme=themes[preferences.theme];document.documentElement.style.setProperty('--accent','#ffffff');document.documentElement.style.setProperty('--accent-rgb','255,255,255');document.documentElement.style.setProperty('--background',theme.background);document.documentElement.style.setProperty('--background-rgb',theme.background.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);}).join(','));document.body.classList.toggle('reduced-motion',preferences.motion==='reduced');wave.setTheme(Object.assign({},theme,{colors:preferences.waveColors}));wave.setStyle({speed:{slow:0.5,normal:1.5,fast:2.25}[preferences.waveSpeed],brightness:{low:0.6,normal:1,high:1.5}[preferences.waveBrightness]});wave.setQuality({frameRate:preferences.waveFrameRate,msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});wave.setReducedMotion(preferences.motion==='reduced');}
+function applyPreferences(){sounds.setEnabled(preferences.sound);if(preferences.motion==='reduced')categoryTransition.cancel();seasonal();var theme=themes[preferences.theme];document.documentElement.style.setProperty('--accent','#ffffff');document.documentElement.style.setProperty('--accent-rgb','255,255,255');document.documentElement.style.setProperty('--background',theme.background);document.documentElement.style.setProperty('--background-rgb',theme.background.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);}).join(','));document.body.classList.toggle('reduced-motion',preferences.motion==='reduced');wave.setTheme(Object.assign({},theme,{colors:preferences.waveColors}));wave.setStyle({speed:{slow:0.5,normal:1.5,fast:2.25}[preferences.waveSpeed],brightness:{dim:0.3,low:0.6,normal:1}[preferences.waveBrightness]});wave.setQuality({frameRate:preferences.waveFrameRate,msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});wave.setReducedMotion(preferences.motion==='reduced');}
 function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){$('toast').classList.remove('show');},4200);}
 function clearToast(){clearTimeout(toastTimer);$('toast').classList.remove('show');if($('toast').textContent)$('toast').textContent='';}
 function invalidateLaunch(){launchGeneration++;busy=false;$('items').removeAttribute('aria-busy');}
 function currentItem(){return categories[selectedCategory].items[selections[selectedCategory]];}
-function currentPort(){var item=currentItem(),match=categories[selectedCategory].id==='inputs'&&item.action==='input'&&/^com\.webos\.app\.hdmi([1-4])$/.exec(item.id);return match?Number(match[1]):null;}
+function currentPort(){var item=currentItem(),match=item.action==='input'&&/^com\.webos\.app\.hdmi([1-4])$/.exec(item.id);return match?Number(match[1]):null;}
 function stopInputPreview(){inputPreview.stop();$('previewPanel').classList.remove('live-preview');}
 function syncInputPreview(){var port=currentPort(),shown=!!port&&!modalOpen,active=shown&&pageActive&&!document.hidden&&!busy,live=active&&preferences.previewMode==='live';document.querySelector('.detail').classList.toggle('has-input-preview',shown);$('previewPanel').hidden=!shown;$('previewPanel').classList.toggle('live-preview',live);$('previewButton').setAttribute('aria-label','Open '+currentItem().title+' full-screen');if(!active||live){thumbnail.setPaused(true);thumbnail.select(shown?port:null);}else{thumbnail.select(port);thumbnail.setPaused(false);}if(live){music.setContext(pageActive&&!busy&&!musicAway,C5TV.isTV());inputPreview.select(port);}else{inputPreview.stop();music.setContext(pageActive&&!busy&&!musicAway,false);}}
 function renderDetailText(){
@@ -65,7 +68,7 @@ function renderDetail(){clearTimeout(detailTimer);detailTimer=0;renderDetailText
 // Only the text waits. The preview has to hear about the new row at once, cause
 // leaving an HDMI row must stop a live preview immediately.
 function scheduleDetail(){clearTimeout(detailTimer);detailTimer=setTimeout(function(){detailTimer=0;renderDetailText();},140);syncInputPreview();}
-function buildCategories(){var nav=$('categories');categories.forEach(function(cat,index){var b=document.createElement('button');b.className='category';b.style.transform='translateX(calc(-50% + '+(index*LGXMBCategoryTransition.DISTANCE)+'vw))';b.setAttribute('aria-label',cat.title);var face='<span class="category-icon">'+C5Icon(cat.icon)+'</span><span class="category-label"></span>';b.innerHTML='<span class="face dim">'+face+'</span><span class="face lit" aria-hidden="true">'+face+'<i class="category-dot"></i></span>';[].forEach.call(b.querySelectorAll('.category-label'),function(label){label.textContent=cat.title;});b.addEventListener('click',function(){if(!busy)selectCategory(index);});nav.appendChild(b);});}
+function buildCategories(){var nav=$('categories');categories.forEach(function(cat,index){var b=document.createElement('button');b.className='category';b.style.transform='translateX(calc(-50% + '+(index*LGXMBCategoryTransition.DISTANCE)+'vw))';b.setAttribute('aria-label',cat.title);b.setAttribute('data-category',cat.id);var face='<span class="category-icon">'+C5Icon(cat.icon)+'</span><span class="category-label"></span>';b.innerHTML='<span class="face dim">'+face+'</span><span class="face lit" aria-hidden="true">'+face+'<i class="category-dot"></i></span>';[].forEach.call(b.querySelectorAll('.category-label'),function(label){label.textContent=cat.title;});b.addEventListener('click',function(){if(!busy)selectCategory(index);});nav.appendChild(b);});}
 // Every category keeps its rows in the page, each category in its own wrapper
 // that is its own GPU layer. The inactive ones sit parked off the right edge,
 // already painted, so a category change moves layers and rasters no text. On
@@ -76,18 +79,18 @@ function buildItems(){
   var list=$('items');list.setAttribute('aria-label',categories[selectedCategory].title);
   categories.forEach(function(cat,ci){
     var wrap=itemLists[ci],key=cat.items.map(function(item){return item.id;}).join('|');
-    if(!wrap){wrap=document.createElement('div');wrap.className='rows';wrap.setAttribute('role','none');list.appendChild(wrap);itemLists[ci]=wrap;}
+    if(!wrap){wrap=document.createElement('div');wrap.className='rows';wrap.setAttribute('role','none');wrap.setAttribute('data-category',cat.id);list.appendChild(wrap);itemLists[ci]=wrap;}
     if(itemListKeys[ci]!==key){
       wrap.textContent='';
       cat.items.forEach(function(item){
         var b=itemButtons.get(item);
         if(!b){
-          b=document.createElement('button');b.className='item';b.setAttribute('role','option');b.tabIndex=-1;
+          b=document.createElement('button');b.className='item';b.setAttribute('role','option');b.setAttribute('data-item',item.id);b.tabIndex=-1;
           b.innerHTML='<span class="item-icon">'+C5Icon(item.icon)+'</span><span class="item-text"></span>';
           b.addEventListener('click',function(){
             if(busy)return;
             var current=categories[selectedCategory].items.indexOf(item);if(current<0)return;
-            selections[selectedCategory]=current;render();tick();activate();
+            selections[selectedCategory]=current;render();activate();
           });
           itemButtons.set(item,b);
         }
@@ -183,7 +186,7 @@ function selectCategory(index){
     selectedCategory=index;buildItems();render(true);
   },preferences.motion==='full');
   wave.navigated(direction>0?'right':'left');
-  tick();
+  tick('category');
 }
 function navigate(direction){
   if(busy||!pageActive||document.hidden)return;
@@ -196,7 +199,7 @@ function navigate(direction){
   if(next===selections[selectedCategory]){renderDetail();return;}
   selections[selectedCategory]=next;render(true);wave.navigated(direction);tick();
 }
-function row(label,colour,isSelected,handler,parent){var button=document.createElement('button');button.className='option';button.setAttribute('aria-pressed',String(isSelected));var labelSpan=document.createElement('span');if(colour){var swatch=document.createElement('i');swatch.className='swatch';swatch.style.background=colour;labelSpan.appendChild(swatch);}labelSpan.appendChild(document.createTextNode(label));button.appendChild(labelSpan);var mark=document.createElement('span');mark.className='option-check';mark.setAttribute('aria-hidden','true');mark.textContent=isSelected?'✓':'';button.appendChild(mark);button.addEventListener('click',handler);(parent||$('modalContent')).appendChild(button);return button;}
+function row(label,colour,isSelected,handler,parent){var button=document.createElement('button');button.className='option';button.setAttribute('aria-pressed',String(isSelected));var labelSpan=document.createElement('span');if(colour){var swatch=document.createElement('i');swatch.className='swatch';swatch.style.background=colour;labelSpan.appendChild(swatch);}labelSpan.appendChild(document.createTextNode(label));button.appendChild(labelSpan);var mark=document.createElement('span');mark.className='option-check';mark.setAttribute('aria-hidden','true');mark.textContent=isSelected?'✓':'';button.appendChild(mark);button.addEventListener('click',function(){var previousModal=modalType;handler();tick(previousModal!==modalType?'option':'decide');});(parent||$('modalContent')).appendChild(button);return button;}
 function selectChoice(parent,value){[].forEach.call(parent.querySelectorAll('[data-choice]'),function(button){var chosen=button.getAttribute('data-choice')===String(value);button.setAttribute('aria-pressed',String(chosen));button.querySelector('.option-check').textContent=chosen?'✓':'';});}
 function choiceGroup(label,choices,value,handler){var group=document.createElement('section');group.className='choice-group';group.setAttribute('role','group');group.setAttribute('aria-label',label);var title=document.createElement('h3');title.textContent=label;group.appendChild(title);var options=document.createElement('div');options.className='choice-options';group.appendChild(options);choices.forEach(function(choice){var button=row(choice[1],null,value===choice[0],function(){handler(choice[0]);selectChoice(options,choice[0]);},options);button.setAttribute('data-choice',choice[0]);});$('modalContent').appendChild(group);return group;}
 var modalType='';
@@ -205,7 +208,7 @@ if(type==='appearance'){$('modalContent').classList.add('theme-options');Object.
 else if(type==='motion'){openWaveSettings();}
 else if(type==='wave-colors'){LGXMBWaveColorSettings.open($('modalContent'),preferences.waveColors,function(value){preferences.waveColors=value;wave.setTheme(Object.assign({},themes[preferences.theme],{colors:value}));save();});}
 else if(type==='music'){openMusicSettings();}
-else if(type==='sound'){row('Off',null,!preferences.sound,function(){preferences.sound=false;save();openModal(type);});row('On',null,preferences.sound,function(){preferences.sound=true;save();tick();openModal(type);});}
+else if(type==='sound'){openSoundSettings();}
 else if(type==='previews'){row('Cached',null,preferences.previewMode==='cached',function(){preferences.previewMode='cached';save();openModal(type);});row('Live',null,preferences.previewMode==='live',function(){preferences.previewMode='live';save();openModal(type);});helperStatusPanel();}
 else if(type==='remote'){C5RemoteSettings.open({getBack:function(){return preferences.backBehavior;},setBack:function(value){if(['stay','lg'].indexOf(value)===-1)throw new Error('Choose a valid Back button setting.');var next=Object.assign({},preferences,{backBehavior:value});try{localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(next));}catch(ignore){throw new Error('This device could not save the Back button setting.');}preferences.backBehavior=value;}});}
 else{$('modalContent').innerHTML='<div class="about-copy"><p>A webOS adaptation of phenom64/OpenXMB. Original waves and seasonal colours come from Syndromatic and contributors. The native WebGL 2 background uses reconstructed PS3 3.01 simulation. Its original material and emitter behavior remain under validation; historical renderer credits are preserved in the accompanying notices.</p><p>This launcher adds no advertising or usage logging. Your TV and the apps you open retain their own privacy settings.</p><p>GPL version 3. Full source and licence notices accompany this app.</p></div>';}
@@ -216,16 +219,36 @@ var chosen=$('modalContent').querySelector('[aria-pressed="true"]')||$('modalCon
 var waveOnly=false;
 function setWaveOnly(on){
   on=on===true;if(waveOnly===on)return;
-  if(on&&modalOpen)closeModal();
+  if(on&&modalOpen)closeModal(true);
   waveOnly=on;document.body.classList.toggle('wave-only',on);
   if(on)toast('Press Back to return.');else{clearToast();$('items').focus();}
+}
+function updateSoundStatus(){
+  var status=$('soundStatus');if(!status||!sounds)return;
+  var state=sounds.getState();
+  status.textContent=!state.enabled?'Sound is off.':state.phase==='loading'?'Loading local sounds…':
+    state.phase==='unsupported'?'Web Audio is unavailable on this device.':
+    state.loaded===state.total?'Original PS3 menu sounds are ready.':
+    state.loaded+' of '+state.total+' menu sounds loaded. Missing navigation clips use the built-in click; other missing clips stay silent.';
+}
+function openSoundSettings(){
+  choiceGroup('Navigation sound',[[false,'Off'],[true,'On']],preferences.sound,function(value){
+    preferences.sound=value;sounds.setEnabled(value);save();updateSoundStatus();
+  });
+  var note=document.createElement('p');note.className='wave-quality-note';
+  note.textContent='Optional: copy your extracted Sounds folder here. Names and capitalisation must match. No PS3 audio is bundled.';
+  $('modalContent').appendChild(note);
+  var path=document.createElement('p');path.className='wave-quality-note music-file-path';path.textContent='/media/internal/lg-xmb/Sounds/';$('modalContent').appendChild(path);
+  var status=document.createElement('p');status.id='soundStatus';status.className='wave-quality-note';status.setAttribute('role','status');$('modalContent').appendChild(status);
+  row('Reload sounds',null,false,function(){sounds.retry();updateSoundStatus();}).id='reloadSounds';
+  updateSoundStatus();
 }
 function openWaveSettings(){
   var colorButton=row('Wave colours',null,false,function(){openModal('wave-colors');});colorButton.id='openWaveColors';
   row('Show waves full screen',null,false,function(){setWaveOnly(true);}).id='showWavesOnly';
   choiceGroup('Animation',[['full','On'],['reduced','Off']],preferences.motion,function(value){preferences.motion=value;applyPreferences();save();});
   choiceGroup('Speed',[['slow','Slow'],['normal','Normal'],['fast','Fast']],preferences.waveSpeed,function(value){preferences.waveSpeed=value;applyPreferences();save();});
-  choiceGroup('Brightness',[['low','Low'],['normal','Normal'],['high','High']],preferences.waveBrightness,function(value){preferences.waveBrightness=value;applyPreferences();save();});
+  choiceGroup('Brightness',[['dim','Low'],['low','Medium'],['normal','High']],preferences.waveBrightness,function(value){preferences.waveBrightness=value;applyPreferences();save();});
   function qualityChoice(label,choices,key){
     choiceGroup(label,choices,preferences[key],function(value){
       preferences[key]=value;
@@ -340,14 +363,16 @@ function startHelper(){
   if(!C5TV.isTV()||!window.LGXMBHelper)return;
   var generation=launchGeneration;
   LGXMBHelper.ensure().then(function(){
+    // The aliases may have appeared after the first attempted preload.
+    if(preferences.sound)sounds.retry();
     if(pageActive&&!document.hidden&&!busy&&generation===launchGeneration&&currentPort()&&preferences.previewMode==='cached')thumbnail.refresh();
   },function(){/* Settings show the specific setup error; navigation stays usable. */});
 }
 document.addEventListener('lg-xmb-helper-status',updateHelperStatus);
-function closeModal(){if(modalType==='wave-colors'){openModal('motion');$('openWaveColors').focus();return;}if(modalType==='remote')C5RemoteSettings.close();modalOpen=false;$('modalBackdrop').hidden=true;document.querySelector('.screen').removeAttribute('aria-hidden');$('items').focus();renderDetail();}
-function modalKey(event){if(event.key==='Escape'||event.key==='Backspace'||event.keyCode===461){event.preventDefault();closeModal();return;}if(modalType==='wave-colors'){LGXMBWaveColorSettings.key(event,$('modal'));return;}var group=document.activeElement.closest&&document.activeElement.closest('.choice-group');if(group&&/^Arrow/.test(event.key)){event.preventDefault();var horizontal=event.key==='ArrowLeft'||event.key==='ArrowRight',choices=Array.from(group.querySelectorAll('button')),groups=Array.from($('modalContent').querySelectorAll('.choice-group'));if(horizontal){var offset=event.key==='ArrowRight'?1:-1;choices[(choices.indexOf(document.activeElement)+offset+choices.length)%choices.length].focus();}else{var target=groups[groups.indexOf(group)+(event.key==='ArrowDown'?1:-1)];if(target)(target.querySelector('[aria-pressed="true"]')||target.querySelector('button')).focus();else{var retry=modalType==='music'&&$('retryMusic');(retry&&!retry.hidden&&event.key==='ArrowDown'?retry:modalType==='motion'&&event.key==='ArrowUp'?$('openWaveColors'):$('closeModal')).focus();}}tick();return;}var controls=Array.from($('modal').querySelectorAll('button')).filter(function(button){return !button.hidden;}),index=controls.indexOf(document.activeElement),delta=event.key==='ArrowDown'||event.key==='ArrowRight'?1:event.key==='ArrowUp'||event.key==='ArrowLeft'?-1:0;if(event.key==='Tab')delta=event.shiftKey?-1:1;if(delta){event.preventDefault();controls[(Math.max(index,0)+delta+controls.length)%controls.length].focus();tick();}}
-async function activate(){if(busy||!pageActive||document.hidden)return;categoryTransition.cancel();var item=currentItem();if(['appearance','motion','sound','music','previews','remote','about'].indexOf(item.action)!==-1){openModal(item.action);return;}var generation=++launchGeneration;clearToast();busy=true;musicAway=true;syncInputPreview();var launched=false;$('items').setAttribute('aria-busy','true');try{var result=item.action==='input'?await C5TV.openInput(item.id):await C5TV.launch(item.id);if(generation!==launchGeneration||!pageActive||document.hidden)return;launched=!result.preview;if(result.preview)toast('Preview · '+item.title+' opens on your TV.');}catch(error){if(generation===launchGeneration&&pageActive&&!document.hidden)toast('Could not open '+item.title+'. '+(error.message||'Please try again.'));}finally{if(generation===launchGeneration){busy=false;$('items').removeAttribute('aria-busy');if(!launched&&pageActive&&!document.hidden){musicAway=false;renderDetail();$('items').focus();}}}}
-function back(){if(modalOpen){closeModal();return;}if(preferences.backBehavior!=='lg'||busy||!pageActive||document.hidden)return;var generation=++launchGeneration;C5TV.platformBack().catch(function(error){if(generation===launchGeneration&&pageActive&&!document.hidden)toast(error.message||'Could not open the TV exit prompt.');});}
+function closeModal(quiet){if(quiet!==true)tick('cancel');if(modalType==='wave-colors'){openModal('motion');$('openWaveColors').focus();return;}if(modalType==='remote')C5RemoteSettings.close();modalOpen=false;$('modalBackdrop').hidden=true;document.querySelector('.screen').removeAttribute('aria-hidden');$('items').focus();renderDetail();}
+function modalKey(event){if(event.key==='Escape'||event.key==='Backspace'||event.keyCode===461){event.preventDefault();closeModal();return;}if(modalType==='wave-colors'){LGXMBWaveColorSettings.key(event,$('modal'));return;}var group=document.activeElement.closest&&document.activeElement.closest('.choice-group');if(group&&/^Arrow/.test(event.key)){event.preventDefault();var horizontal=event.key==='ArrowLeft'||event.key==='ArrowRight',choices=Array.from(group.querySelectorAll('button')),groups=Array.from($('modalContent').querySelectorAll('.choice-group'));if(horizontal){var offset=event.key==='ArrowRight'?1:-1;choices[(choices.indexOf(document.activeElement)+offset+choices.length)%choices.length].focus();}else{var target=groups[groups.indexOf(group)+(event.key==='ArrowDown'?1:-1)];if(target)(target.querySelector('[aria-pressed="true"]')||target.querySelector('button')).focus();else{var retry=modalType==='sound'?$('reloadSounds'):modalType==='music'&&$('retryMusic');(retry&&!retry.hidden&&event.key==='ArrowDown'?retry:modalType==='motion'&&event.key==='ArrowUp'?$('openWaveColors'):$('closeModal')).focus();}}tick();return;}var controls=Array.from($('modal').querySelectorAll('button')).filter(function(button){return !button.hidden;}),index=controls.indexOf(document.activeElement),delta=event.key==='ArrowDown'||event.key==='ArrowRight'?1:event.key==='ArrowUp'||event.key==='ArrowLeft'?-1:0;if(event.key==='Tab')delta=event.shiftKey?-1:1;if(delta){event.preventDefault();controls[(Math.max(index,0)+delta+controls.length)%controls.length].focus();tick();}}
+async function activate(){if(busy||!pageActive||document.hidden)return;categoryTransition.cancel();var item=currentItem();if(['appearance','motion','sound','music','previews','remote','about'].indexOf(item.action)!==-1){tick('option');openModal(item.action);return;}tick('decide');var generation=++launchGeneration;clearToast();busy=true;musicAway=true;syncInputPreview();var launched=false;$('items').setAttribute('aria-busy','true');try{var result=item.action==='input'?await C5TV.openInput(item.id):await C5TV.launch(item.id);if(generation!==launchGeneration||!pageActive||document.hidden)return;launched=!result.preview;if(result.preview)toast('Preview · '+item.title+' opens on your TV.');}catch(error){if(generation===launchGeneration&&pageActive&&!document.hidden){tick('error');toast('Could not open '+item.title+'. '+(error.message||'Please try again.'));}}finally{if(generation===launchGeneration){busy=false;$('items').removeAttribute('aria-busy');if(!launched&&pageActive&&!document.hidden){musicAway=false;renderDetail();$('items').focus();}}}}
+function back(){if(modalOpen){closeModal();return;}if(preferences.backBehavior!=='lg'||busy||!pageActive||document.hidden)return;tick('cancel');var generation=++launchGeneration;C5TV.platformBack().catch(function(error){if(generation===launchGeneration&&pageActive&&!document.hidden)toast(error.message||'Could not open the TV exit prompt.');});}
 document.addEventListener('keydown',function(event){var isActivate=event.key==='Enter'||event.keyCode===13,isBack=event.key==='Escape'||event.key==='Backspace'||event.keyCode===461;if(waveOnly){event.preventDefault();if(isBack&&!event.repeat)setWaveOnly(false);return;}if(event.repeat&&(isActivate||isBack)){event.preventDefault();return;}if(modalOpen){modalKey(event);return;}var direction={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down'}[event.key];if(direction){event.preventDefault();var now=performance.now();if(event.repeat&&now-lastDirection<100)return;lastDirection=now;navigate(direction);if(document.activeElement!==$('items'))$('items').focus();}else if(isActivate){event.preventDefault();activate();}else if(isBack){event.preventDefault();back();}});
 document.addEventListener('click',function(event){if(waveOnly){event.preventDefault();event.stopPropagation();setWaveOnly(false);}},true);
 document.addEventListener('wheel',function(event){if(waveOnly){event.preventDefault();return;}if(modalOpen){if($('modal').contains(event.target))return;event.preventDefault();return;}event.preventDefault();if(busy||Math.abs(event.deltaY)<2)return;var now=performance.now();if(now-lastDirection<130)return;lastDirection=now;navigate(event.deltaY>0?'down':'up');},{passive:false});
@@ -363,9 +388,11 @@ async function refreshInputLabels(){
     inputLabelRead=read;
     var result=await read;
     if(inputLabelRead!==read||!pageActive||document.hidden||result.preview)return;
-    var inputCategory=categories.find(function(category){return category.id==='inputs';});
+    var inputCategory=categories.find(function(category){return category.id==='tv';});
+    if(!inputCategory)return;
     var visible=categories[selectedCategory]===inputCategory, changed=false;
     inputCategory.items.forEach(function(item,index){
+      if(item.action!=='input')return;
       var input=result.inputs.find(function(entry){return entry.id===item.id;});
       if(!input)return;
       var type=input.label==='HDMI '+input.port?'INPUT':'HDMI '+input.port;
@@ -394,16 +421,16 @@ function cancelInputLabels(){
     try{read.cancel();}catch(ignore){}
   }
 }
-function restorePage(refreshStill){if(document.hidden)return;var now=performance.now(),wasActive=pageActive,before=thumbnail.getState();pageActive=true;musicAway=false;wave.setPaused(false);renderDetail();if(refreshStill&&wasActive&&now-lastReturnAt>=250&&preferences.previewMode==='cached'&&before.port===currentPort()&&before.port!==null&&before.status!=='loading')thumbnail.refresh();lastReturnAt=now;updateClock();restoreFocus();if(!wasActive||refreshStill)refreshInputLabels();}
-function suspendPage(){categoryTransition.cancel();var wasActive=pageActive;pageActive=false;music.setContext(false,false);cancelInputLabels();invalidateLaunch();clearToast();clearTimeout(announceTimer);if(wasActive){stopInputPreview();thumbnail.setPaused(true);wave.setPaused(true);}}
-function handleRelaunch(){setWaveOnly(false);categoryTransition.cancel();invalidateLaunch();clearToast();if(modalOpen)closeModal();restorePage(true);}
+function restorePage(refreshStill){if(document.hidden)return;var now=performance.now(),wasActive=pageActive,before=thumbnail.getState();pageActive=true;sounds.setActive(true);musicAway=false;wave.setPaused(false);renderDetail();if(refreshStill&&wasActive&&now-lastReturnAt>=250&&preferences.previewMode==='cached'&&before.port===currentPort()&&before.port!==null&&before.status!=='loading')thumbnail.refresh();lastReturnAt=now;updateClock();restoreFocus();if(!wasActive||refreshStill)refreshInputLabels();}
+function suspendPage(){categoryTransition.cancel();var wasActive=pageActive;pageActive=false;sounds.setActive(false);music.setContext(false,false);cancelInputLabels();invalidateLaunch();clearToast();clearTimeout(announceTimer);if(wasActive){stopInputPreview();thumbnail.setPaused(true);wave.setPaused(true);}}
+function handleRelaunch(){setWaveOnly(false);categoryTransition.cancel();invalidateLaunch();clearToast();if(modalOpen)closeModal(true);restorePage(true);}
 // handlesRelaunch stays false: webOS brings the app forward automatically.
 // A Home press while already visible still needs to leave any open dialog.
 document.addEventListener('webOSRelaunch',handleRelaunch,true);
 async function discoverApps(){try{var result=await C5TV.listApps();if(result.preview)return;var appCategory=categories.find(function(c){return c.id==='apps';}),known=new Set(categories.reduce(function(all,c){return all.concat(c.items.map(function(i){return i.id;}));},[]));result.apps.forEach(function(app){if(known.has(app.id)||app.id==='org.local.openxmb.c5')return;appCategory.items.push({id:app.id,title:app.title,icon:'apps',type:'ON YOUR TV',description:'Open '+app.title+'.',note:'Your app, with its existing settings.'});known.add(app.id);});if(categories[selectedCategory].id==='apps'){categoryTransition.cancel();buildItems();render();}}catch(error){/* Curated, verified shortcuts remain usable if enumeration is not permitted. */}}
-buildCategories();buildItems();applyPreferences();render();updateClock();var clockTimer=setInterval(updateClock,10000);$('items').focus();discoverApps();refreshInputLabels();startHelper();
-document.addEventListener('visibilitychange',function(){if(document.hidden){suspendPage();if(audioContext&&audioContext.state==='running')audioContext.suspend();}else restorePage(false);});
+buildCategories();buildItems();applyPreferences();render();sounds.prepare();updateClock();var clockTimer=setInterval(updateClock,10000);$('items').focus();discoverApps();refreshInputLabels();startHelper();
+document.addEventListener('visibilitychange',function(){if(document.hidden){suspendPage();}else restorePage(false);});
 window.addEventListener('resize',function(){categoryTransition.cancel();});
-window.addEventListener('pagehide',suspendPage);window.addEventListener('pageshow',function(){restorePage(false);});window.addEventListener('beforeunload',function(){clearInterval(clockTimer);suspendPage();categoryTransition.destroy();music.destroy();thumbnail.destroy();inputPreview.destroy();wave.destroy();});
-window.C5App={getState:function(){return{category:categories[selectedCategory].id,item:currentItem().id,modal:modalOpen?modalType:null,remote:modalOpen&&modalType==='remote'?C5RemoteSettings.getState():null,preferences:Object.assign({},preferences),busy:busy,detailPending:detailTimer!==0,detailItem:detailItemId,music:music.getState(),thumbnail:thumbnail.getState(),inputPreview:inputPreview.getState(),waveOnly:waveOnly,waveMode:wave.mode,waveError:wave.error||null,waveDiagnostics:wave.getDiagnostics()};}};
+window.addEventListener('pagehide',suspendPage);window.addEventListener('pageshow',function(){restorePage(false);});window.addEventListener('beforeunload',function(){clearInterval(clockTimer);suspendPage();categoryTransition.destroy();sounds.destroy();music.destroy();thumbnail.destroy();inputPreview.destroy();wave.destroy();});
+window.C5App={getState:function(){return{category:categories[selectedCategory].id,item:currentItem().id,modal:modalOpen?modalType:null,remote:modalOpen&&modalType==='remote'?C5RemoteSettings.getState():null,preferences:Object.assign({},preferences),busy:busy,detailPending:detailTimer!==0,detailItem:detailItemId,music:music.getState(),sounds:sounds.getState(),thumbnail:thumbnail.getState(),inputPreview:inputPreview.getState(),waveOnly:waveOnly,waveMode:wave.mode,waveError:wave.error||null,waveDiagnostics:wave.getDiagnostics()};}};
 })();

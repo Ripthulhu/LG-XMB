@@ -115,7 +115,10 @@ test('preference types and volume choices are bounded; no root, network URL or W
 });
 test('local audio is allowed by CSP without allowing remote media or connection requests',()=>{
   const src=fs.readFileSync('app/index.html','utf8');
-  assert.match(src,/media-src 'self' ext:;/);assert.match(src,/connect-src 'none';/);
+  assert.match(src,/media-src 'self' ext:;/);
+  // 'self' since the menu sounds read their own WAVs. Still nothing remote.
+  assert.match(src,/connect-src 'self';/);
+  assert.doesNotMatch(src.match(/Content-Security-Policy[^>]*/)[0],/https?:|\*/);
   assert.ok(src.indexOf('background-music.js')<src.indexOf('src="app.js"'));
 });
 

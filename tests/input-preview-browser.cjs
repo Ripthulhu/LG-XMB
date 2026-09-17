@@ -1,5 +1,6 @@
 // Browser checks synthesize native-media events; no HDMI source or capture is opened.
 const assert = require('node:assert/strict');
+const menu = require('./support/menu-navigation.cjs');
 module.exports = async function checkInputPreview(browser, checks, errors) {
   const page = await browser.newPage({viewport: {width: 1920, height: 1080}});
   const requests = [];
@@ -65,29 +66,8 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
       assert.equal((await state()).inputPreview.status, 'idle');
       assert.equal(await page.locator('video').count(), 0);
     };
-    const selectCategory = async title => {
-      for (let i = 0; i < 8; i++) {
-        const position = await page.evaluate(target => ({
-          current: C5Catalog.findIndex(c => c.id === C5App.getState().category),
-          target: C5Catalog.findIndex(c => c.title === target)
-        }), title);
-        assert.ok(position.target >= 0);
-        if (position.current === position.target) return;
-        await page.keyboard.press(position.current < position.target ? 'ArrowRight' : 'ArrowLeft');
-      }
-      assert.fail('Could not navigate to category ' + title);
-    };
     const openPreviewSetting = async () => {
-      await selectCategory('Settings');
-      for (let i = 0; i < 12; i++) {
-        const position = await page.evaluate(() => {
-          const items = C5Catalog.find(c => c.id === 'settings').items;
-          return {current: items.findIndex(i => i.id === C5App.getState().item), target: items.findIndex(i => i.title === 'Input previews')};
-        });
-        assert.ok(position.target >= 0, 'Settings must provide Input previews');
-        if (position.current === position.target) break;
-        await page.keyboard.press(position.current < position.target ? 'ArrowDown' : 'ArrowUp');
-      }
+      await menu.item(page, 'settings', 'previews');
       await page.keyboard.press('Enter');
       assert.equal(await page.locator('#modalTitle').innerText(), 'Input previews');
     };
@@ -106,7 +86,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
       await page.reload(); await page.waitForFunction(() => window.C5App); await installBridge();
     };
 
-    await selectCategory('Inputs');
+    await menu.item(page, 'tv', 'com.webos.app.hdmi1');
     await page.waitForTimeout(450);
     assert.equal((await state()).preferences.previewMode, 'cached');
     await assertIdle();
@@ -152,7 +132,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
         document.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
         document.dispatchEvent(new KeyboardEvent('keyup', {key, bubbles: true, cancelable: true}));
       };
-      const target = C5Catalog.findIndex(category => category.id === 'inputs');
+      const target = C5Catalog.findIndex(category => category.id === 'tv');
       for (let i = 0; i < C5Catalog.length; i++) {
         const current = C5Catalog.findIndex(category => category.id === C5App.getState().category);
         if (current === target) break;
@@ -164,7 +144,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
       press('ArrowRight');
       return {entered, moved, left: C5App.getState()};
     });
-    assert.equal(burst.entered.category, 'inputs');
+    assert.equal(burst.entered.category, 'tv');
     assert.equal(burst.entered.inputPreview.status, 'waiting');
     assert.equal(burst.moved.inputPreview.status, 'waiting');
     assert.equal(burst.moved.inputPreview.port, 3);
@@ -172,7 +152,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     await page.waitForTimeout(450);
     assert.equal(await page.evaluate(() => inputTest.created), createdBeforeNavigation);
     await assertIdle();
-    await page.keyboard.press('ArrowLeft'); await loading();
+    await menu.category(page, 'tv'); await loading();
     assert.equal((await state()).inputPreview.port, 3);
     assert.deepEqual(await page.locator('video').evaluate(v => [v.defaultMuted, v.muted, v.volume]), [true, true, 0]);
     await ready();
@@ -212,7 +192,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     await visibility(false); await loading();
     await page.evaluate(() => window.dispatchEvent(new Event('pagehide'))); await assertIdle();
     await page.evaluate(() => window.dispatchEvent(new Event('pageshow'))); await loading();
-    await page.getByRole('button', {name: 'Settings', exact: true}).click();
+    await menu.category(page, 'settings');
     await page.waitForTimeout(450); await assertIdle();
     checks.push('Live playback releases on hidden/pagehide and returns only with the selected mode; category departure removes the native source');
 
@@ -220,7 +200,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     // Cached must add no requests, rather than erase earlier Live requests.
     const statusBeforeCached = await page.evaluate(() => inputTest.statusRequests);
     await setMode('cached');
-    await selectCategory('Inputs'); await page.waitForTimeout(450); await assertIdle();
+    await menu.item(page, 'tv', 'com.webos.app.hdmi1'); await page.waitForTimeout(450); await assertIdle();
     const createdBeforeCached = await page.evaluate(() => inputTest.created);
     await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowDown'); await home();
     await page.waitForTimeout(450); await assertIdle();
@@ -230,14 +210,14 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     assert.ok(await page.evaluate(() => inputTest.releases.every(r => r.paused && r.children === 0 && r.src === null)));
     await reload();
     assert.equal((await state()).preferences.previewMode, 'cached');
-    await selectCategory('Inputs'); await page.waitForTimeout(450); await assertIdle();
+    await menu.item(page, 'tv', 'com.webos.app.hdmi1'); await page.waitForTimeout(450); await assertIdle();
     assert.equal(await page.evaluate(() => inputTest.created), 0);
     assert.equal(await page.evaluate(() => inputTest.statusRequests), 0);
     checks.push('Choosing Cached stops Live, saves the mode, and keeps navigation, Home return and reload free of media or status requests');
 
     await setMode('live'); await reload();
     assert.equal((await state()).preferences.previewMode, 'live');
-    await selectCategory('Inputs'); await loading();
+    await menu.item(page, 'tv', 'com.webos.app.hdmi1'); await loading();
     await page.locator('video').evaluate(v => v.firstChild.dispatchEvent(new Event('error')));
     assert.equal((await state()).inputPreview.status, 'unavailable');
     assert.equal(await page.locator('video').count(), 0);
@@ -252,7 +232,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
       await page.evaluate(value => localStorage.setItem('lg-xmb-preferences-v1', JSON.stringify(value)), saved);
       await reload();
       assert.equal((await state()).preferences.previewMode, 'cached');
-      await selectCategory('Inputs'); await page.waitForTimeout(450); await assertIdle();
+      await menu.item(page, 'tv', 'com.webos.app.hdmi1'); await page.waitForTimeout(450); await assertIdle();
       assert.equal('inputPreviews' in (await state()).preferences, false);
       assert.equal(await page.evaluate(() => inputTest.created), 0);
     }

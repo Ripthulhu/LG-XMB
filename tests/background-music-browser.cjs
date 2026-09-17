@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Synthetic audio playback, loop and UI checks. TV media/launch calls are inert fixtures.
 'use strict';
+const menu=require('./support/menu-navigation.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -88,7 +89,7 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
       assert.equal((await state(page)).music.phase, 'playing');
       await page.evaluate(() => {musicTest.originalAudio=document.querySelector('audio');});
       await page.keyboard.press('Escape');
-      await category(page,'Watch');
+      await menu.item(page,'tv','com.webos.app.livetv');
       assert.equal(await page.evaluate(()=>document.querySelector('audio')===musicTest.originalAudio), true);
       await settings(page, 'Waves'); await page.keyboard.press('Escape');
       assert.equal(await page.evaluate(()=>document.querySelector('audio')===musicTest.originalAudio), true);
@@ -125,11 +126,11 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
       });
     });
     await settings(page,'Input previews');await page.getByRole('button',{name:'Live',exact:true}).click();await page.keyboard.press('Escape');
-    await category(page,'Inputs');
+    await menu.item(page,'tv','com.webos.app.hdmi1');
     await page.waitForFunction(()=>C5App.getState().inputPreview.status==='loading');
     assert.equal((await state(page)).music.phase,'preview');assert.equal(await page.locator('audio').count(),0);
     assert.equal(await page.evaluate(()=>musicTest.overlaps),0);
-    await category(page,'Watch');await playing(page);
+    await menu.item(page,'tv','com.webos.app.livetv');await playing(page);
     await page.keyboard.press('Enter');assert.equal((await state(page)).music.phase,'suspended');
     assert.equal(await page.locator('audio').count(),0);
     await page.waitForFunction(()=>musicTest.launches.length===1);

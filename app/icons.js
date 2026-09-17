@@ -1,6 +1,7 @@
 /* Original vector icons for the OpenXMB C5 adaptation. SPDX-License-Identifier: GPL-3.0-or-later */
 (function(){'use strict';
 var paths={
+ network:'<circle cx="24" cy="10" r="5"/><circle cx="10" cy="35" r="5"/><circle cx="38" cy="35" r="5"/><path d="M21 14 13 31M27 14l8 17M15 35h18"/>',
  inputs:'<rect x="8" y="10" width="32" height="25" rx="4"/><path d="M17 40h14M24 35v5M3 23h17m-5-5 5 5-5 5"/>',
  watch:'<rect x="5" y="10" width="38" height="28" rx="5"/><path d="M18 43h12M18 4l6 6 6-6"/><path d="m21 18 10 6-10 6z"/>',
  library:'<path d="M10 12v28M6 8h8v32H6zM20 8h8v32h-8zM32 11l7-2 8 29-8 2z"/>',

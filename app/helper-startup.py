@@ -17,6 +17,12 @@ import traceback
 APP_DIR = "/media/developer/apps/usr/palm/applications/org.local.openxmb.c5"
 BASE = "/var/lib/lg-xmb"
 MUSIC_DIR = "/media/internal/lg-xmb"
+# This is the writable source of the Home bind mount, never the stock Home
+# target. APP_DIR remains the trust anchor for privileged helper verification.
+HOME_PAYLOAD_DIR = "/var/lib/lg-xmb-home"
+SOUND_FILES = ("snd_cancel.wav", "snd_category_decide.wav", "snd_cursor.wav",
+               "snd_decide.wav", "snd_error.wav", "snd_option.wav",
+               "snd_system_ng.wav", "snd_system_ok.wav", "snd_trophy.wav")
 CACHE = "/tmp/lg-xmb-thumbnails"
 LEGACY_CACHE = "/tmp/openxmb-c5-thumbnails"
 LOG_DIR = "/var/lib/webosbrew"
@@ -452,6 +458,115 @@ def prepare_user_music():
         return False
 
 
+def read_sound_identity(directory, name, limit=131072):
+    """Read a small root-owned identity file, without repair or symlink traversal."""
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    try:
+        regular_file(os.fstat(fd))
+        raw = bytearray()
+        while len(raw) <= limit:
+            block = os.read(fd, min(8192, limit + 1 - len(raw)))
+            if not block:
+                break
+            raw.extend(block)
+        require(len(raw) <= limit, "sound_payload_identity_oversized")
+        return bytes(raw)
+    finally:
+        os.close(fd)
+
+
+def checked_sound_home_payload():
+    """Return an open, validated payload, or None when takeover is not installed.
+
+    A bind mount does not preserve the developer path. Validate the copied
+    payload directly so preparation also works BEFORE the mount at boot. Never
+    change APP_DIR or write through /usr/palm/applications/com.webos.app.home.
+    """
+    try:
+        payload = open_directory(HOME_PAYLOAD_DIR)
+    except FileNotFoundError:
+        return None
+    try:
+        source = open_directory(APP_DIR, app_path=True)
+        try:
+            original = json.loads(read_sound_identity(source, "appinfo.json", 65536))
+            home = json.loads(read_sound_identity(payload, "appinfo.json", 65536))
+            require(isinstance(original, dict) and isinstance(home, dict) and
+                    original.get("id") == "org.local.openxmb.c5" and
+                    home.get("id") == "com.webos.app.home" and
+                    home.get("type") == original.get("type") == "web" and
+                    home.get("main") == original.get("main") == "index.html" and
+                    home.get("version") == original.get("version"),
+                    "sound_payload_identity_mismatch")
+            # The takeover manifest intentionally differs from the developer
+            # manifest. Compare the unchanged code instead of trusting its ID.
+            for name in ("helper-startup.py", "index.html", "menu-sounds.js"):
+                require(read_sound_identity(payload, name) == read_sound_identity(source, name),
+                        "sound_payload_identity_mismatch")
+        finally:
+            os.close(source)
+        # Keep and use this descriptor; a pathname replacement cannot redirect
+        # subsequent writes into another tree.
+        return payload
+    except BaseException:
+        os.close(payload)
+        raise
+
+
+def prepare_sound_aliases(app):
+    """Idempotent fixed-name aliases in an already validated application root."""
+    require(not os.fstat(app).st_mode & 0o022)
+    directory = make_directory(app, "user-sounds")
+    try:
+        require(set(os.listdir(directory)).issubset(set(SOUND_FILES)), "sound_path_conflict")
+        missing = []
+        for name in SOUND_FILES:
+            target = MUSIC_DIR + "/Sounds/" + name
+            try:
+                info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            except FileNotFoundError:
+                missing.append((name, target))
+                continue
+            require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1
+                    and os.readlink(name, dir_fd=directory) == target, "sound_path_conflict")
+        for name, target in missing:
+            # Exclusive creation: a raced-in entry is not overwritten. Validate
+            # an identical concurrent creation, but never replace a foreign one.
+            try:
+                os.symlink(target, name, dir_fd=directory)
+            except FileExistsError:
+                info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1
+                        and os.readlink(name, dir_fd=directory) == target, "sound_path_conflict")
+    finally:
+        os.close(directory)
+
+
+def prepare_user_sounds():
+    """Recreate optional aliases after every ensure, including after payload sync.
+
+    Links may be dangling. Never read, copy, modify or chmod a user's WAVs. Each
+    destination fails independently, and an absent Home payload is not created.
+    """
+    ready = True
+    for destination in ("developer", "home"):
+        app = None
+        try:
+            app = (open_directory(APP_DIR, app_path=True) if destination == "developer"
+                   else checked_sound_home_payload())
+            if app is None:
+                continue
+            prepare_sound_aliases(app)
+            record_startup("sound_paths_ready", destination=destination)
+        except (OSError, SetupError, ValueError, TypeError) as error:
+            ready = False
+            record_startup("sound_path_unavailable", error, destination=destination)
+        finally:
+            if app is not None:
+                os.close(app)
+    return ready
+
+
 def start():
     require(os.geteuid() == 0, "root_required")
     require(sys.version_info >= (3, 7), "python_too_old")
@@ -472,6 +587,7 @@ def start():
         # or installed record read before waiting for another upgrade to finish.
         capture, recovery, bundle = load_bundle()
         prepare_user_music()
+        prepare_user_sounds()
         raw = read_file(base, "installed.json", 4096, optional=True)
         previous = json.loads(raw) if raw is not None else None
         require(previous is None or (isinstance(previous, dict)

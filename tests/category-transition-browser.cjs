@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const menu=require('./support/menu-navigation.cjs');
 module.exports=async function checkCategoryTransitions(browser,checks,errors,loader){
   const load=loader||(page=>page.goto('http://127.0.0.1:8765/'));
   const dir=path.resolve(__dirname,'../qa');fs.mkdirSync(dir,{recursive:true});
@@ -39,8 +40,8 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
   for(const [width,dpr] of [[1280,1],[1920,1],[1366,1.25]]){
     const page=await create(width,null,dpr);
     try{
+      await menu.item(page,'tv','com.webos.app.hdmi4');
       await page.evaluate(()=>{
-        menuPress('ArrowLeft');menuPress('ArrowDown');menuPress('ArrowDown');menuPress('ArrowDown');
         window.inputRows=[...document.querySelectorAll('#items>.rows:not(.parked)>.item')];
       });
       await page.waitForTimeout(450);
@@ -54,7 +55,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       await page.evaluate(()=>menuPress('ArrowDown'));await page.waitForTimeout(450);
       await page.evaluate(()=>menuPress('ArrowRight'));
       const frame=await page.evaluate(seekBar,0);assert.deepEqual(frame.travel,vertical);
-      assert.equal(await page.evaluate(()=>C5App.getState().category),'watch');
+      assert.equal(await page.evaluate(()=>C5App.getState().category),'apps');
       const initial=await page.evaluate(column);
       assert.equal(initial.transform,'none');assert.equal(initial.opacity,'1');assert.equal(initial.effects,0);
       for(const time of [100,200,399,400]){
@@ -98,7 +99,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       await page.waitForTimeout(30);
       await page.evaluate(()=>menuPress('ArrowLeft'));await page.waitForTimeout(450);
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#items>.rows:not(.parked)>.item')].every((n,i)=>n===inputRows[i])),true);
-      assert.equal(await page.locator('#items>.rows:not(.parked) .above-bar').count(),3);
+      assert.equal(await page.locator('#items>.rows:not(.parked) .above-bar[aria-hidden="false"]').count(),3);
       assert.equal(await page.evaluate(()=>C5App.getState().item),'com.webos.app.hdmi4');
       const verticalWork=await page.evaluate(()=>{
         const bar=document.getElementById('categories'),emblem=document.getElementById('detailEmblem');
@@ -107,12 +108,12 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
         menuPress('ArrowUp');menuPress('ArrowDown');
         const writes=observer.takeRecords().length;observer.disconnect();
         return {writes,sameIcon:emblem.firstChild===icon,
-          selected:document.querySelector('#items>.rows:not(.parked) [aria-selected="true"]').id,
+          selected:document.querySelector('#items>.rows:not(.parked) [aria-selected="true"]').dataset.item,
           detail:C5App.getState().detailItem};
       });
       assert.equal(verticalWork.writes,0,'vertical navigation must not rewrite the horizontal bar');
       assert.equal(verticalWork.sameIcon,true,'HDMI rows share the existing detail SVG');
-      assert.equal(verticalWork.selected,'item-3');
+      assert.equal(verticalWork.selected,'com.webos.app.hdmi4');
       assert.equal(verticalWork.detail,'com.webos.app.hdmi4');
       const burst=await page.evaluate(()=>{
         for(let i=0;i<40;i++)menuPress(i%2?'ArrowLeft':'ArrowRight');
@@ -134,10 +135,10 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       await page.evaluate(()=>menuPress('Enter'));assert.equal(await page.evaluate(()=>C5App.getState().modal),'appearance');
       assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().filter(a=>a.transitionProperty==='transform').length),0);
       await page.keyboard.press('Escape');
-      await page.evaluate(()=>{menuPress('ArrowLeft');window.dispatchEvent(new Event('pagehide'));});
+      await page.evaluate(()=>{menuPress('ArrowRight');window.dispatchEvent(new Event('pagehide'));});
       const hiddenCategory=await page.evaluate(()=>C5App.getState().category);
-      await page.evaluate(()=>menuPress('ArrowLeft'));assert.equal(await page.evaluate(()=>C5App.getState().category),hiddenCategory);
-      await page.evaluate(()=>{window.dispatchEvent(new Event('pageshow'));menuWave.setPaused(true);menuPress('ArrowLeft');window.dispatchEvent(new Event('resize'));});
+      await page.evaluate(()=>menuPress('ArrowRight'));assert.equal(await page.evaluate(()=>C5App.getState().category),hiddenCategory);
+      await page.evaluate(()=>{window.dispatchEvent(new Event('pageshow'));menuWave.setPaused(true);menuPress('ArrowRight');window.dispatchEvent(new Event('resize'));});
       assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().filter(a=>a.transitionProperty==='transform').length),0);
       await page.evaluate(()=>menuPress('ArrowRight'));await page.waitForTimeout(220);
       assert.equal(await page.locator('#items').evaluate(n=>getComputedStyle(n).willChange),'auto');
@@ -155,7 +156,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
     const page=await create(1280,init);
     try{
       if(mode==='system-reduced')await page.emulateMedia({reducedMotion:'reduce'});
-      await page.keyboard.press('ArrowRight');assert.equal(await page.evaluate(()=>C5App.getState().category),'library');
+      await page.keyboard.press('ArrowRight');assert.equal(await page.evaluate(()=>C5App.getState().category),'apps');
       assert.equal(await page.locator('#items').evaluate(n=>n.getAnimations().length),0);
       assert.equal(await page.locator('#items').evaluate(n=>getComputedStyle(n).opacity),'1');
       if(mode==='reduced'||mode==='system-reduced')assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().length),0);

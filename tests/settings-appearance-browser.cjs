@@ -1,17 +1,13 @@
 // Local rendering and preference checks. No native TV operations.
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const menu = require('./support/menu-navigation.cjs');
 module.exports = async function checkSettingsAppearance(browser, checks, errors) {
   const page = await browser.newPage({viewport:{width:1920,height:1080}});
   page.on('pageerror', error => errors.push(error.message));
   async function open(id) {
     if (await page.evaluate(() => C5App.getState().modal)) await page.keyboard.press('Escape');
-    await page.getByRole('button',{name:'Settings',exact:true}).click();
-    const delta = await page.evaluate(target => {
-      const ids = C5Catalog.find(category => category.id === 'settings').items.map(item => item.id);
-      return ids.indexOf(target) - ids.indexOf(C5App.getState().item);
-    },id);
-    for (let i=0;i<Math.abs(delta);i++) await page.keyboard.press(delta>0?'ArrowDown':'ArrowUp');
+    await menu.item(page, 'settings', id);
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => !!C5App.getState().modal);
   }
@@ -70,11 +66,13 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
     assert.equal(await page.evaluate(() => C5App.getState().preferences.waveSpeed),'fast');
     assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()),'Fast✓');
-    await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
-    assert.equal(await page.evaluate(() => C5App.getState().preferences.waveBrightness),'high');
+    await page.keyboard.press('ArrowDown');
+    await page.getByRole('group',{name:'Brightness',exact:true}).getByRole('button',{name:'Medium',exact:true}).focus();
+    await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => C5App.getState().preferences.waveBrightness),'normal');
     await page.getByRole('group',{name:'Animation',exact:true}).getByRole('button',{name:'Off',exact:true}).click();
     const custom = await page.evaluate(() => C5App.getState().waveDiagnostics);
-    assert.equal(custom.speed,2.25); assert.equal(custom.brightness,1.5); assert.equal(custom.reducedMotion,true);
+    assert.equal(custom.speed,2.25); assert.equal(custom.brightness,1); assert.equal(custom.reducedMotion,true);
     assert.equal(custom.targetFps,defaultWave.targetFps);
     assert.equal(custom.adaptive,defaultWave.adaptive);
     const transitions = await page.evaluate(() => window.styleTransitions);
@@ -86,7 +84,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     await page.reload(); await page.waitForFunction(() => window.C5App && C5App.getState().waveMode === 'webgl');
     const restored = await page.evaluate(() => C5App.getState());
     assert.equal(restored.preferences.theme,'rose'); assert.equal(restored.preferences.waveSpeed,'fast');
-    assert.equal(restored.preferences.waveBrightness,'high'); assert.equal(restored.waveDiagnostics.reducedMotion,true);
+    assert.equal(restored.preferences.waveBrightness,'normal'); assert.equal(restored.waveDiagnostics.reducedMotion,true);
     checks.push('Wave animation, speed and brightness use remote-friendly grouped controls, persist validated values and preserve the renderer quality/frame cap');
 
     for (const id of ['sound','previews','about']) {
@@ -160,7 +158,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
         styleWave.gl.readPixels(0,0,canvas.width,canvas.height,styleWave.gl.RGBA,styleWave.gl.UNSIGNED_BYTE,pixels);
         let total=0;for(let i=0;i<pixels.length;i+=4)total+=pixels[i]+pixels[i+1]+pixels[i+2];return total;
       }
-      const result=[sum(.6),sum(1),sum(1.5)];styleWave.destroy();styleWave.canvas.remove();delete window.styleWave;return result;
+      const result=[sum(.3),sum(.6),sum(1)];styleWave.destroy();styleWave.canvas.remove();delete window.styleWave;return result;
     });
     assert.ok(sums[0]<sums[1]&&sums[1]<sums[2],'brightness changes actual rendered pixels');
     checks.push('Wave brightness changes actual pixels while reduced motion remains still');

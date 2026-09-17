@@ -1,5 +1,6 @@
 // Synthetic launch/media checks: no TV calls, native HDMI or thumbnail file reads.
 const assert = require('node:assert/strict');
+const menu = require('./support/menu-navigation.cjs');
 
 module.exports = async function checkLaunchReturn(browser, checks, errors) {
   async function createPage(mode = 'cached') {
@@ -163,7 +164,7 @@ module.exports = async function checkLaunchReturn(browser, checks, errors) {
       if (failRefresh) await route.abort();
       else await route.fulfill({contentType: 'image/png', body: Buffer.from(picture, 'base64')});
     });
-    await stillPage.getByRole('button', {name: 'Inputs', exact: true}).click();
+    await menu.item(stillPage, 'tv', 'com.webos.app.hdmi1');
     await stillPage.waitForFunction(() => C5App.getState().thumbnail.status === 'ready' && document.getElementById('inputThumbnail').naturalWidth === 16);
     const src = await stillPage.locator('#inputThumbnail').getAttribute('src');
     failRefresh = true;
@@ -195,8 +196,7 @@ module.exports = async function checkLaunchReturn(browser, checks, errors) {
   for (const mode of ['cached', 'live']) {
     const page = await createPage(mode);
     try {
-      for (let i = 0; i < 8 && (await state(page)).category !== 'inputs'; i++) await page.keyboard.press('ArrowLeft');
-      assert.equal((await state(page)).category, 'inputs');
+      await menu.item(page, 'tv', 'com.webos.app.hdmi1');
       if (mode === 'live') {
         await page.waitForFunction(() => C5App.getState().inputPreview.status === 'loading');
         await page.evaluate(() => document.querySelector('video').dispatchEvent(new Event('playing')));

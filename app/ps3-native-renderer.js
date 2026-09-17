@@ -898,7 +898,7 @@
     o = o || {};
     if ([.5, 1, 1.5, 2.25].indexOf(o.speed) >= 0)
       this.speed = o.speed;
-    if ([.6, 1, 1.5].indexOf(o.brightness) >= 0 && this.brightness !== o.brightness) {
+    if ([.3, .6, 1].indexOf(o.brightness) >= 0 && this.brightness !== o.brightness) {
       this.brightness = o.brightness;
       this.draw();
     }
