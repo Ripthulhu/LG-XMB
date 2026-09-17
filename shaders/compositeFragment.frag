@@ -97,7 +97,8 @@ void main() {
   vec2 uv=uFilter?fxaaUV():vUV;
   vec4 center=texture(uScene,uv);
   vec3 scene=center.rgb;
-  if(uSoftness>0.0) {
+  // Softness taps only where there is wave to soften; that's under half the screen.
+  if(uSoftness>0.0&&center.a>0.0) {
     vec2 stepUV=uTexel*uSoftness;
     vec3 neighbors=texture(uScene,uv+vec2(stepUV.x,0)).rgb+
       texture(uScene,uv-vec2(stepUV.x,0)).rgb+texture(uScene,uv+vec2(0,stepUV.y)).rgb+
@@ -124,7 +125,8 @@ void main() {
     float room=1.0-knee;
     c*=(knee+room*(1.0-exp(-(peak-knee)/room)))/max(peak,0.000001);
   }
-  // Fixed-pattern zero-mean dither against banding; no clock, frozen frames stay stable.
-  float d=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))))-0.5;
+  // Fixed-pattern zero-mean dither against banding (R2 sequence, one dot and
+  // one fract, this GPU counts every op at 1080p); no clock, frozen frames stay stable.
+  float d=fract(dot(gl_FragCoord.xy,vec2(0.7548776662,0.5698402909)))-0.5;
   outColor=vec4(clamp(c+d/255.0,0.0,1.0),1.0);
 }
