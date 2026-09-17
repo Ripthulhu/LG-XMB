@@ -128,6 +128,9 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
       wave:getComputedStyle(document.getElementById('wave')).visibility,toast:document.getElementById('toast').textContent}));
     assert.equal(only.state.waveOnly,true); assert.equal(only.state.modal,null); assert.equal(only.screen,'hidden'); assert.equal(only.wave,'visible');
     assert.match(only.toast,/Back/);
+    // Every piece of the menu, not just its container: rows set their own visibility.
+    const showing = await page.evaluate(() => [...document.querySelectorAll('#screen *')].filter(n => getComputedStyle(n).visibility !== 'hidden' && n.getClientRects().length).map(n => n.className || n.id || n.tagName).slice(0,5));
+    assert.deepEqual(showing,[]);
     const hiddenItem = only.state.item;
     await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
     only = await page.evaluate(() => C5App.getState());
