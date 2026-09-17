@@ -1,6 +1,8 @@
 /* Curated TV shortcuts in XMB order. SPDX-License-Identifier: GPL-3.0-or-later */
 // Media Player is shared intentionally: no undocumented photo/music/video
 // launch parameters. Other discovered apps remain in Apps.
+// Note that `cdp-30` is Plex. That's an LG store slot id, not a Plex one, cause
+// the app declares no `appCategory` we could sort it by.
 window.C5Catalog=[
   {
     "id": "settings",
@@ -111,6 +113,13 @@ window.C5Catalog=[
         "icon": "media",
         "type": "MUSIC",
         "description": "Open the TV media browser for photos, music, and videos."
+      },
+      {
+        "id": "cdp-30",
+        "title": "Plex",
+        "icon": "media",
+        "type": "MUSIC",
+        "description": "Open Plex."
       }
     ]
   },
@@ -125,6 +134,13 @@ window.C5Catalog=[
         "icon": "media",
         "type": "VIDEO",
         "description": "Open the TV media browser for photos, music, and videos."
+      },
+      {
+        "id": "cdp-30",
+        "title": "Plex",
+        "icon": "media",
+        "type": "VIDEO",
+        "description": "Open Plex."
       }
     ]
   },
