@@ -69,7 +69,8 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     // Flush both bridge normalization and the app's awaiting continuation.
     await page.evaluate(() => Promise.resolve());
   };
-  const title = () => page.locator('#detailTitle').textContent();
+  // Navigation lets the detail panel follow a moment later; read it once it has.
+  const title = async () => { await page.waitForFunction(() => !C5App.getState().detailPending); return page.locator('#detailTitle').textContent(); };
   const state = () => page.evaluate(() => C5App.getState());
   const hide = () => page.evaluate(() => {
     Object.defineProperty(document, 'hidden', {configurable: true, value: true});

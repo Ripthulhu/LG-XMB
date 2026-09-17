@@ -53,7 +53,16 @@ function renderDetailText(){
   detailItemId=item.id;
   $('previewButton').setAttribute('aria-label','Open '+item.title+' full-screen');
 }
-function renderDetail(){renderDetailText();syncInputPreview();}
+// A key press already moves every row and recolours two of them. Rewriting the
+// detail panel in that same frame is what tipped the C5 over a vsync: measured
+// on the TV, 55 of 100 vertical presses dropped a frame, 17 with the panel held
+// back and the flat row brightness below. The panel repaints fine on its own,
+// so navigation lets it follow 140 ms later, and a burst repaints it once.
+var detailTimer=0;
+function renderDetail(){clearTimeout(detailTimer);detailTimer=0;renderDetailText();syncInputPreview();}
+// Only the text waits. The preview has to hear about the new row at once, cause
+// leaving an HDMI row must stop a live preview immediately.
+function scheduleDetail(){clearTimeout(detailTimer);detailTimer=setTimeout(function(){detailTimer=0;renderDetailText();},140);syncInputPreview();}
 function buildCategories(){var nav=$('categories');categories.forEach(function(cat,index){var b=document.createElement('button');b.className='category';b.style.transform='translateX(calc(-50% + '+(index*LGXMBCategoryTransition.DISTANCE)+'vw))';b.setAttribute('aria-label',cat.title);b.innerHTML='<span class="category-icon">'+C5Icon(cat.icon)+'</span><span class="category-label"></span>';b.querySelector('.category-label').textContent=cat.title;b.addEventListener('click',function(){if(!busy)selectCategory(index);});nav.appendChild(b);});}
 // Detached category rows are reused, not cloned or kept as hidden live layers.
 var itemButtons = new WeakMap(), itemOffsets = new WeakMap();
@@ -82,7 +91,7 @@ function buildItems(){
   });
   list.appendChild(fragment);
 }
-function render(){
+function render(deferDetail){
   var index=selections[selectedCategory];
   // Up/down does not change the horizontal bar. Leave its styles, accessibility
   // attributes and any in-flight CSS transition alone.
@@ -94,7 +103,10 @@ function render(){
       // Dim through colour alpha, not element opacity: on the C5 a change to
       // a text element's opacity cost a dropped frame per key press, colour
       // is a plain repaint. Never transition it, that repaints every frame.
-      button.style.setProperty('--category-alpha',offset===0?'1':Math.abs(offset)>2?'.36':'.5');
+      // One brightness for every unselected entry, like the console. A falloff
+      // by distance repaints every label on every step, this repaints two.
+      var categoryAlpha=offset===0?'1':'.5';
+      if(button.style.getPropertyValue('--category-alpha')!==categoryAlpha)button.style.setProperty('--category-alpha',categoryAlpha);
       button.setAttribute('aria-current',offset===0?'true':'false');
       button.tabIndex=offset===0?0:-1;
     });
@@ -114,12 +126,14 @@ function render(){
       button.style.visibility=visible?'visible':'hidden';
       button.setAttribute('aria-hidden',visible?'false':'true');
     }
-    button.style.setProperty('--item-alpha',!visible?'0':offset===0?'1':offset<0?String(.48+offset*.10):String(.64-offset*.09));
+    var itemAlpha=!visible?'0':offset===0?'1':'.5';
+    if(button.style.getPropertyValue('--item-alpha')!==itemAlpha)button.style.setProperty('--item-alpha',itemAlpha);
     itemOffsets.set(button,offset);
   });
   var active='item-'+index;
   if($('items').getAttribute('aria-activedescendant')!==active)$('items').setAttribute('aria-activedescendant',active);
-  renderDetail();announceSelection();
+  if(deferDetail===true)scheduleDetail();else renderDetail();
+  announceSelection();
 }
 function announceSelection(){
   var cat=categories[selectedCategory],index=selections[selectedCategory],item=cat.items[index];
@@ -133,7 +147,7 @@ function selectCategory(index){
   if(index===selectedCategory){renderDetail();return;}
   var direction=index-selectedCategory;
   categoryTransition.change(direction,function(){
-    selectedCategory=index;buildItems();render();
+    selectedCategory=index;buildItems();render(true);
   },preferences.motion==='full');
   tick();
 }
@@ -146,7 +160,7 @@ function navigate(direction){
   }
   next=Math.max(0,Math.min(categories[selectedCategory].items.length-1,selections[selectedCategory]+(direction==='down'?1:-1)));
   if(next===selections[selectedCategory]){renderDetail();return;}
-  selections[selectedCategory]=next;render();tick();
+  selections[selectedCategory]=next;render(true);tick();
 }
 function row(label,colour,isSelected,handler,parent){var button=document.createElement('button');button.className='option';button.setAttribute('aria-pressed',String(isSelected));var labelSpan=document.createElement('span');if(colour){var swatch=document.createElement('i');swatch.className='swatch';swatch.style.background=colour;labelSpan.appendChild(swatch);}labelSpan.appendChild(document.createTextNode(label));button.appendChild(labelSpan);var mark=document.createElement('span');mark.className='option-check';mark.setAttribute('aria-hidden','true');mark.textContent=isSelected?'✓':'';button.appendChild(mark);button.addEventListener('click',handler);(parent||$('modalContent')).appendChild(button);return button;}
 function selectChoice(parent,value){[].forEach.call(parent.querySelectorAll('[data-choice]'),function(button){var chosen=button.getAttribute('data-choice')===String(value);button.setAttribute('aria-pressed',String(chosen));button.querySelector('.option-check').textContent=chosen?'✓':'';});}
@@ -344,5 +358,5 @@ buildCategories();buildItems();applyPreferences();render();updateClock();var clo
 document.addEventListener('visibilitychange',function(){if(document.hidden){suspendPage();if(audioContext&&audioContext.state==='running')audioContext.suspend();}else restorePage(false);});
 window.addEventListener('resize',function(){categoryTransition.cancel();});
 window.addEventListener('pagehide',suspendPage);window.addEventListener('pageshow',function(){restorePage(false);});window.addEventListener('beforeunload',function(){clearInterval(clockTimer);suspendPage();categoryTransition.destroy();music.destroy();thumbnail.destroy();inputPreview.destroy();wave.destroy();});
-window.C5App={getState:function(){return{category:categories[selectedCategory].id,item:currentItem().id,modal:modalOpen?modalType:null,remote:modalOpen&&modalType==='remote'?C5RemoteSettings.getState():null,preferences:Object.assign({},preferences),busy:busy,detailPending:false,detailItem:detailItemId,music:music.getState(),thumbnail:thumbnail.getState(),inputPreview:inputPreview.getState(),waveMode:wave.mode,waveError:wave.error||null,waveDiagnostics:wave.getDiagnostics()};}};
+window.C5App={getState:function(){return{category:categories[selectedCategory].id,item:currentItem().id,modal:modalOpen?modalType:null,remote:modalOpen&&modalType==='remote'?C5RemoteSettings.getState():null,preferences:Object.assign({},preferences),busy:busy,detailPending:detailTimer!==0,detailItem:detailItemId,music:music.getState(),thumbnail:thumbnail.getState(),inputPreview:inputPreview.getState(),waveMode:wave.mode,waveError:wave.error||null,waveDiagnostics:wave.getDiagnostics()};}};
 })();
