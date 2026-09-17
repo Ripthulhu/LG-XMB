@@ -27,6 +27,8 @@
   function transpose(m) { var out = new Float32Array(16); for (var i = 0; i < 4; i++)
     for (var j = 0; j < 4; j++)
       out[i * 4 + j] = m[j * 4 + i]; return out; }
+  var RETAINED_DAY_NIGHT = Object.freeze({ nightBlend: 0.4999470114707947, nightBrightness: 0.4860590100288391,
+    dawnBegin: 0, dawnEnd: 5.16611, duskBegin: 18.498, duskEnd: 20.3312, daySpread: 2.68038010597229 });
   function Simulation(reference) {
     if (!Core || !reference || reference.format !== 1)
       throw new Error('Local PS3 reference pack missing. Run tools/import-ps3-reference.py.');
@@ -259,8 +261,8 @@
     var n = (this.settings.detail === 'low' || this.settings.detail === 'standard') ? 64 : 128;
     if (this.grid === n)
       return;
-    var gl = this.gl, indices = new Uint16Array((n - 1) * (n - 1) * 6), j = 0;
-    for (var y = 0; y < n - 1; y++)
+    var gl = this.gl, indices = new Uint16Array((n - 1) * (n - 1) * 6 + (n - 1) * 12), j = 0, g = n * n;
+    for (var y = 0; y < n - 1; y++) {
       for (var x = 0; x < n - 1; x++) {
         var a = y * n + x, b = a + n;
         indices[j++] = a;
@@ -270,6 +272,12 @@
         indices[j++] = b;
         indices[j++] = b + 1;
       }
+      // Guard quads: vertex g+2y is the right-end copy of row y, g+2y+1 the left.
+      indices[j++] = g + y * 2; indices[j++] = g + (y + 1) * 2; indices[j++] = y * n;
+      indices[j++] = y * n; indices[j++] = g + (y + 1) * 2; indices[j++] = (y + 1) * n;
+      indices[j++] = y * n + n - 1; indices[j++] = (y + 1) * n + n - 1; indices[j++] = g + y * 2 + 1;
+      indices[j++] = g + y * 2 + 1; indices[j++] = (y + 1) * n + n - 1; indices[j++] = g + (y + 1) * 2 + 1;
+    }
     gl.bindVertexArray(this.waveVAO);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
@@ -403,6 +411,7 @@
     gl.uniform4fv(u.uDerivative, this.derivative);
     gl.uniform1i(u.uGrid, this.grid);
     gl.uniform1f(u.uAspectCorrection, (16 / 9) / aspect);
+    gl.uniform1f(u.uGuardClip, 1 + 8 / Math.max(1, this.target.width));
     gl.uniform3fv(u.uWave, wave);
     gl.uniform1f(u.uBrightness, brightness);
     gl.uniform3fv(u.uMaterial, this.waveMaterial);
@@ -434,7 +443,10 @@
     if (!clock || !this.monthlyTexture)
       return false;
     var coordinates = monthly.auto ? clock.fromLocalDate(new Date()) : clock.calendar(monthly.month, 1, monthly.period === 'night' ? 0 : 12);
-    var u = clock.uniforms(coordinates, null, 1), key = JSON.stringify(u);
+    // Day/night controls as retained in the RPCS3 dump's background object,
+    // not the menu constructor defaults: night blend 0.5, dawn to 05:10,
+    // dusk 18:30 to 20:20, day spread 2.68. The defaults left dawn black.
+    var u = clock.uniforms(coordinates, RETAINED_DAY_NIGHT, 1), key = JSON.stringify(u);
     if (key === this.monthlyKey)
       return true;
     this.monthlyKey = key;

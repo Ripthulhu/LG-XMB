@@ -6,11 +6,18 @@ uniform vec4 uBasis[8];
 uniform vec4 uDerivative[8];
 uniform int uGrid;
 uniform float uAspectCorrection;
+uniform float uGuardClip;
 out vec4 tfPosition;
 out vec4 tfNormal;
 out vec2 vUV;
 void main() {
-  ivec2 sampleIndex=ivec2(gl_VertexID%uGrid,gl_VertexID/uGrid);
+  // Vertices past the grid are guards: copies of the end columns that get
+  // pushed beyond the viewport, so the sheet's finite end never shows as a
+  // hole. The sampled geometry itself is unchanged.
+  bool guard=gl_VertexID>=uGrid*uGrid;
+  int guardID=gl_VertexID-uGrid*uGrid;
+  int gx=(guardID&1)==0?0:uGrid-1;
+  ivec2 sampleIndex=guard?ivec2(gx,guardID/2):ivec2(gl_VertexID%uGrid,gl_VertexID/uGrid);
   // Lower detail selects a subset of the verified 128x128 grid; endpoints stay put.
   sampleIndex=ivec2(round(vec2(sampleIndex)*127.0/float(uGrid-1)));
   ivec2 patchIndex=sampleIndex/8;
@@ -28,5 +35,10 @@ void main() {
   }
   tfPosition=p;tfNormal=vec4(cross(dv.xyz,du.xyz),0.0);
   gl_Position=vec4(p.x*uAspectCorrection,p.yzw);
+  if(guard&&p.w>0.00001){
+    float plane=uGuardClip*p.w;
+    // In the captured transform column zero is the RIGHT end of the sheet.
+    gl_Position.x=gx==0?max(gl_Position.x,plane):min(gl_Position.x,-plane);
+  }
   vUV=vec2(sampleIndex)/127.0;
 }
