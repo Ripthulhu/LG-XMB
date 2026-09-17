@@ -84,3 +84,5 @@ body{transition:background 1s ease}button{font:inherit;color:inherit;border:0;cu
 .category .lit .category-label{color:#fff}
 .category-dot{display:block;width:3px;height:3px;border-radius:50%;margin:1.7vh auto 0;background:#fff}
 .category.active:after{content:none}
+/* Waves full screen: visibility, never opacity. */
+body.wave-only .screen,body.wave-only #modalBackdrop{visibility:hidden}

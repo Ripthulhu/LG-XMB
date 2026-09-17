@@ -35,6 +35,9 @@ makes them jitter for a moment. The sparkle layer follows Wave speed, brightness
 and animation settings; it stops with the renderer when Home is hidden. Without WebGL 2 there's no wave
 and no particles, only the static backdrop.
 
+**Settings → Waves → Show waves full screen** hides the menu and leaves only the
+waves. Back or Home brings the menu back.
+
 ## Background music
 
 No recording is included in the repository or IPK. Open Home once to prepare

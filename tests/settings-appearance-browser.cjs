@@ -122,6 +122,29 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     assert.equal(invalid.theme,'midnight'); assert.equal(invalid.waveSpeed,'normal'); assert.equal(invalid.waveBrightness,'normal');
     checks.push('Invalid stored theme and wave values fall back to the existing default appearance');
 
+    await open('motion');
+    await page.getByRole('button',{name:'Show waves full screen',exact:true}).click();
+    let only = await page.evaluate(() => ({state:C5App.getState(),screen:getComputedStyle(document.getElementById('screen')).visibility,
+      wave:getComputedStyle(document.getElementById('wave')).visibility,toast:document.getElementById('toast').textContent}));
+    assert.equal(only.state.waveOnly,true); assert.equal(only.state.modal,null); assert.equal(only.screen,'hidden'); assert.equal(only.wave,'visible');
+    assert.match(only.toast,/Back/);
+    const hiddenItem = only.state.item;
+    await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
+    only = await page.evaluate(() => C5App.getState());
+    assert.equal(only.waveOnly,true); assert.equal(only.item,hiddenItem,'the hidden menu ignores the remote'); assert.equal(only.busy,false);
+    await page.keyboard.press('Escape');
+    only = await page.evaluate(() => ({state:C5App.getState(),screen:getComputedStyle(document.getElementById('screen')).visibility,focus:document.activeElement.id}));
+    assert.equal(only.state.waveOnly,false); assert.equal(only.screen,'visible'); assert.equal(only.focus,'items'); assert.equal(only.state.item,hiddenItem);
+    await open('motion');
+    await page.getByRole('button',{name:'Show waves full screen',exact:true}).click();
+    await page.evaluate(() => document.dispatchEvent(new Event('webOSRelaunch')));
+    assert.equal(await page.evaluate(() => C5App.getState().waveOnly),false);
+    await open('motion');
+    await page.getByRole('button',{name:'Show waves full screen',exact:true}).click();
+    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown',{key:'Unidentified',keyCode:461,bubbles:true,cancelable:true})));
+    assert.equal(await page.evaluate(() => C5App.getState().waveOnly),false);
+    checks.push('Waves full screen hides the menu, ignores the remote, and Back, TV keycode 461 or Home brings the menu back where it was');
+
     await page.evaluate(() => {
       const canvas=document.createElement('canvas');canvas.style.cssText='position:fixed;left:0;top:0;width:320px;height:180px;';document.body.appendChild(canvas);
       window.styleWave=new C5Wave(canvas,{adaptive:false});styleWave.setReducedMotion(true);
