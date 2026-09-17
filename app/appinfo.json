@@ -1,6 +1,6 @@
 {
   "id": "org.local.openxmb.c5",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "vendor": "lg-xmb contributors",
   "type": "web",
   "main": "index.html",
