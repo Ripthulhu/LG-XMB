@@ -91,7 +91,10 @@ function render(){
     [].forEach.call($('categories').children,function(button,i){
       var offset=i-selectedCategory;
       button.classList.toggle('active',offset===0);
-      button.style.opacity=offset===0?'1':Math.abs(offset)>2?'.36':'.5';
+      // Dim through colour alpha, not element opacity: on the C5 a change to
+      // a text element's opacity cost a dropped frame per key press, colour
+      // is a plain repaint. Never transition it, that repaints every frame.
+      button.style.setProperty('--category-alpha',offset===0?'1':Math.abs(offset)>2?'.36':'.5');
       button.setAttribute('aria-current',offset===0?'true':'false');
       button.tabIndex=offset===0?0:-1;
     });
@@ -111,7 +114,7 @@ function render(){
       button.style.visibility=visible?'visible':'hidden';
       button.setAttribute('aria-hidden',visible?'false':'true');
     }
-    button.style.opacity=!visible?'0':offset===0?'1':offset<0?String(.48+offset*.10):String(.64-offset*.09);
+    button.style.setProperty('--item-alpha',!visible?'0':offset===0?'1':offset<0?String(.48+offset*.10):String(.64-offset*.09));
     itemOffsets.set(button,offset);
   });
   var active='item-'+index;
