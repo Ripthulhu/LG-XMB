@@ -36,7 +36,6 @@ module.exports = async function checkLaunchReturn(browser, checks, errors) {
       const launch = id => new Promise((resolve, reject) => returnTest.launches.push({id, resolve, reject}));
       window.C5TV = Object.assign({}, C5TV, {
         isTV: () => true, launch, openInput: launch,
-        exitToStockHome: () => launch('com.webos.app.home'),
         getInputPreviewStatus: port => {
           const request = Promise.resolve({port, signal: null});
           request.cancel = () => {};

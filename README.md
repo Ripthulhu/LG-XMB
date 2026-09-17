@@ -5,8 +5,8 @@ The installed app is called **Home**.
 
 ![Home screen](docs/images/home.png)
 
-Navigate apps and inputs with the remote or pointer. Choose a background theme,
-adjust the animated waves, and open LG Home from Settings whenever needed.
+Navigate apps and inputs with the remote or pointer. Choose a background theme
+and adjust the animated waves.
 HDMI pictures are cached by an optional root helper; live previews are opt-in
 because they can change HDR mode. Optional background music loops your own MP3 while Home is open. There is no general-purpose media player or emulator.
 

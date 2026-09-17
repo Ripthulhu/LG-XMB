@@ -18,7 +18,7 @@ assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
  await page.goto('http://127.0.0.1:8765');await page.waitForFunction(()=>window.C5App&&!['pending','compiling'].includes(C5App.getState().waveMode));
  let state=await page.evaluate(()=>C5App.getState());assert.equal(state.category,'watch');assert.equal(state.waveMode,'webgl');assert.equal(state.waveError,null);checks.push('Rich WebGL shader initializes after menu startup');
  const homeLocations=await page.evaluate(()=>C5Catalog.flatMap(category=>category.items.filter(item=>['com.webos.app.homeconnect','com.webos.app.home'].includes(item.id)).map(item=>({id:item.id,category:category.id}))).sort((a,b)=>a.id.localeCompare(b.id)));
- assert.deepEqual(homeLocations,[{id:'com.webos.app.home',category:'settings'},{id:'com.webos.app.homeconnect',category:'apps'}]);checks.push('Home Hub appears exactly once under Apps, and LG Home remains under Settings');
+ assert.deepEqual(homeLocations,[{id:'com.webos.app.homeconnect',category:'apps'}]);checks.push('Home Hub appears exactly once under Apps, and there is no LG Home shortcut');
  assert.doesNotMatch(await page.locator('body').innerText(),/OpenXMB|C5/);assert.equal(await page.title(),'Home');checks.push('Clean main screen has no visible project/device branding');
  await page.waitForTimeout(600);await page.screenshot({path:path.join(dir,'midnight-1080.png')});
  await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowDown');
@@ -49,11 +49,11 @@ assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
  assert.equal((await page.evaluate(()=>C5App.getState())).item,beforeRelaunch.item);assert.equal(await page.evaluate(()=>document.activeElement.id),'items');
  checks.push('Home relaunch closes a visible dialog, clears stale toast, refreshes clock/focus and preserves selection');
  await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'appearance');
- await page.evaluate(()=>{window.repeatTestBridge=C5TV;window.repeatStockLaunches=0;window.C5TV=Object.assign({},C5TV,{exitToStockHome:()=>{window.repeatStockLaunches++;return window.repeatTestBridge.exitToStockHome();}});});
+ await page.evaluate(()=>{window.repeatTestBridge=C5TV;window.repeatStockLaunches=0;window.C5TV=Object.assign({},C5TV,{launch:id=>{window.repeatStockLaunches++;return window.repeatTestBridge.launch(id);},platformBack:()=>{window.repeatStockLaunches++;return window.repeatTestBridge.platformBack();}});});
  await page.keyboard.down('Escape');assert.equal((await page.evaluate(()=>C5App.getState())).modal,null);await page.keyboard.down('Escape');
  await page.evaluate(()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Unidentified',keyCode:461,repeat:true,bubbles:true,cancelable:true})));
  assert.equal(await page.evaluate(()=>window.repeatStockLaunches),0);assert.equal(await page.locator('#toast').evaluate(el=>el.classList.contains('show')),false);await page.keyboard.up('Escape');
- await page.evaluate(()=>{window.C5TV=window.repeatTestBridge;delete window.repeatTestBridge;delete window.repeatStockLaunches;});checks.push('Holding Back closes one dialog without subsequently launching stock Home');
+ await page.evaluate(()=>{window.C5TV=window.repeatTestBridge;delete window.repeatTestBridge;delete window.repeatStockLaunches;});checks.push('Holding Back closes one dialog without launching anything or opening the exit prompt');
  await page.reload();await page.waitForFunction(()=>window.C5App);assert.equal((await page.evaluate(()=>C5App.getState())).preferences.theme,'ocean');checks.push('Theme persists locally; dialog focus stays contained; Back closes it');
  await page.waitForTimeout(500);await page.screenshot({path:path.join(dir,'ocean-1080.png')});
  await page.getByRole('button',{name:'Settings',exact:true}).click();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
@@ -63,7 +63,6 @@ assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
  assert.equal(await page.locator('footer,#appearanceButton,#categoryCaption').count(),0);const modal=page.locator('#modalBackdrop');assert.equal(await modal.isVisible(),false);checks.push('720p layout fits; captions and both bottom overlays are absent');
  await page.screenshot({path:path.join(dir,'settings-720.png')});
  await page.evaluate(()=>{window.mainBackBridge=C5TV;window.mainBackCalls=[];window.C5TV=Object.assign({},C5TV,{
-   exitToStockHome:()=>{window.mainBackCalls.push('stock');return window.mainBackBridge.exitToStockHome();},
    launch:id=>{window.mainBackCalls.push(id);return window.mainBackBridge.launch(id);},
    openInput:id=>{window.mainBackCalls.push(id);return window.mainBackBridge.openInput(id);}
  });});
@@ -73,10 +72,7 @@ assert.match(appVersion,/^[0-9]+\.[0-9]+\.[0-9]+$/);
  const afterMainBack=await page.evaluate(()=>({state:C5App.getState(),toast:document.getElementById('toast').textContent,toastVisible:document.getElementById('toast').classList.contains('show')}));
  assert.deepEqual(await page.evaluate(()=>window.mainBackCalls),[]);assert.equal(afterMainBack.state.category,beforeMainBack.state.category);assert.equal(afterMainBack.state.item,beforeMainBack.state.item);assert.equal(afterMainBack.state.busy,false);
  assert.equal(afterMainBack.toast,beforeMainBack.toast);assert.equal(afterMainBack.toastVisible,beforeMainBack.toastVisible);checks.push('Back on the main menu stays in place without launching an app or showing a toast, including TV keycode 461');
- for(let i=0;i<8&&(await page.evaluate(()=>C5App.getState())).item!=='com.webos.app.home';i++)await page.keyboard.press('ArrowDown');
- assert.equal((await page.evaluate(()=>C5App.getState())).item,'com.webos.app.home');await page.keyboard.press('Enter');await page.waitForFunction(()=>!C5App.getState().busy);
- assert.deepEqual(await page.evaluate(()=>window.mainBackCalls),['stock']);assert.match(await page.locator('#toast').innerText(),/LG Home/);
- await page.evaluate(()=>{window.C5TV=window.mainBackBridge;delete window.mainBackBridge;delete window.mainBackCalls;});checks.push('The Settings LG Home shortcut explicitly opens the original launcher');
+ await page.evaluate(()=>{window.C5TV=window.mainBackBridge;delete window.mainBackBridge;delete window.mainBackCalls;});
  for(let i=0;i<8&&(await page.evaluate(()=>C5App.getState())).item!=='about';i++)await page.keyboard.press('ArrowDown');
  assert.equal((await page.evaluate(()=>C5App.getState())).item,'about');await page.keyboard.press('Enter');assert.equal((await page.evaluate(()=>C5App.getState())).modal,'about');assert.equal(await page.locator('#modalIntro').innerText(),'Version '+appVersion);await page.keyboard.press('Escape');checks.push('About identifies manifest version '+appVersion);
  const prefs=await page.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')));assert.deepEqual(Object.keys(prefs).sort(),['backBehavior','motion','musicEnabled','musicVolume','previewMode','sound','theme','waveBrightness','waveColors','waveDetail','waveFrameRate','waveMSAA','waveParticleCount','waveParticles','wavePostprocess','waveSampling','waveSmoothing','waveSoftness','waveSpeed']);checks.push('Only appearance, wave, sound, preview and Back preferences stored; no usage history');

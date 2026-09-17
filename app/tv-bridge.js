@@ -11,7 +11,10 @@
   var METHODS = Object.freeze({
     listApps: SERVICE + 'listApps', getAppLoadStatus: SERVICE + 'getAppLoadStatus',
     launch: SERVICE + 'launch', previewStatus: 'luna://com.webos.service.videooutput/getStatus',
-    inputStatus: 'luna://com.webos.service.eim/getAllInputStatus'
+    inputStatus: 'luna://com.webos.service.eim/getAllInputStatus',
+    mediaPipelines: 'luna://com.webos.media/getActivePipelines',
+    audioStatus: 'luna://com.webos.service.audio/UMI/getStatus',
+    audioConnect: 'luna://com.webos.service.audio/UMI/connect'
   });
   var INPUTS = Object.freeze({
     HDMI_1: 'com.webos.app.hdmi1', HDMI_2: 'com.webos.app.hdmi2',
@@ -92,6 +95,8 @@
           try {
             if (typeof raw === 'string' && raw.length > 2 * 1024 * 1024) throw new Error('size');
             response = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            // The media server answers this one with a bare array.
+            if (method === 'mediaPipelines' && Array.isArray(response)) response = { returnValue: true, pipelines: response };
             if (!response || typeof response !== 'object' || Array.isArray(response)) throw new Error('shape');
           } catch (ignored) {
             finish(error('INVALID_RESPONSE', 'The TV returned an unreadable response.'));
@@ -230,6 +235,44 @@
     return launch(target);
   }
 
+  // Under the Home takeover the app runs as com.webos.app.home. The TV's media
+  // pipeline registers that identity's audio with the audio service and then
+  // never connects it, cause LG's own Home isn't meant to own the speakers. The
+  // track decodes, the player says it's playing, and nothing comes out. So the
+  // app connects its own stream to the main sink. Any other identity is wired
+  // up by the TV already and is left alone.
+  function connectMusicAudio() {
+    if (!isTV()) return Promise.resolve(previewResult('connectMusicAudio'));
+    var system = root.PalmSystem || root.webOSSystem;
+    var appId = String(system.identifier).split(' ')[0];
+    if (appId !== 'com.webos.app.home') return Promise.resolve({ ok: true, preview: false, connected: false, reason: 'not-needed' });
+    return request('mediaPipelines', {}).then(function (response) {
+      var found = null;
+      (response.pipelines || []).forEach(function (entry) {
+        if (!entry || entry.type !== 'media' || entry.appId !== appId) return;
+        if (typeof entry.uri !== 'string' || !/\/user-music\.mp3$/.test(entry.uri)) return;
+        if (typeof entry.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(entry.id)) return;
+        (Array.isArray(entry.resource) ? entry.resource : []).forEach(function (item) {
+          if (item && item.resource === 'ADEC' && Number.isInteger(item.index) && item.index >= 0 && item.index <= 7)
+            found = { id: entry.id, port: item.index };
+        });
+      });
+      if (!found) return { ok: true, preview: false, connected: false, reason: 'no-pipeline' };
+      return request('audioStatus', {}).then(function (status) {
+        var wired = (Array.isArray(status.audio) ? status.audio : []).some(function (stream) {
+          return (Array.isArray(stream.pipelineInfo) ? stream.pipelineInfo : []).some(function (info) {
+            return info.pipelineId === found.id && Array.isArray(info.sourceSinkInfo) && info.sourceSinkInfo.length > 0;
+          });
+        });
+        if (wired) return { ok: true, preview: false, connected: true, reason: 'already' };
+        return request('audioConnect', { streamType: 'umimedia', source: 'ADEC', sourcePort: found.port,
+          sink: 'MAIN', pipelineId: found.id, activate: true }).then(function () {
+          return { ok: true, preview: false, connected: true, reason: 'connected' };
+        });
+      });
+    });
+  }
+
   function platformBack() {
     if (!isTV()) return Promise.resolve(previewResult('platformBack'));
     // LG webOSTV.js 1.2.13 forwards platformBack directly to this platform API.
@@ -252,6 +295,6 @@
     openInput: openInput,
     getInputPreviewStatus: getInputPreviewStatus,
     platformBack: platformBack,
-    exitToStockHome: function () { return launch('com.webos.app.home'); }
+    connectMusicAudio: connectMusicAudio
   });
 }(typeof window !== 'undefined' ? window : globalThis));

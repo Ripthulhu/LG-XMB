@@ -40,7 +40,6 @@ test('desktop and hosted previews never construct a native bridge', async () => 
     assert.equal((await h.tv.listApps()).apps.length, 0);
     assert.equal((await h.tv.launch('youtube.leanback.v4')).preview, true);
     assert.equal((await h.tv.openInput('HDMI_2')).id, 'com.webos.app.hdmi2');
-    assert.match((await h.tv.exitToStockHome()).message, /Preview only/);
     assert.equal(h.bridges.length, 0);
   }
 });
@@ -146,11 +145,10 @@ test('invalid IDs and inputs cause no native requests', async () => {
   assert.equal(h.calls.length, 0);
 });
 
-test('HDMI and stock Home helpers use ordinary app launch with no settings', async () => {
+test('The HDMI helper uses ordinary app launch with no settings', async () => {
   const h = setup();
   for (const [operation, expected] of [
-    [() => h.tv.openInput('HDMI_4'), 'com.webos.app.hdmi4'],
-    [() => h.tv.exitToStockHome(), 'com.webos.app.home']
+    [() => h.tv.openInput('HDMI_4'), 'com.webos.app.hdmi4']
   ]) {
     const start = h.calls.length;
     const result = operation();
@@ -160,7 +158,7 @@ test('HDMI and stock Home helpers use ordinary app launch with no settings', asy
     assert.equal((await result).id, expected);
   }
   assert.ok(h.calls.every(call => /\/(getAppLoadStatus|launch)$/.test(call.uri)));
-  assert.equal(Object.keys(h.tv).sort().join(','), 'exitToStockHome,getInputPreviewStatus,isTV,launch,listApps,listInputLabels,openInput,platformBack');
+  assert.equal(Object.keys(h.tv).sort().join(','), 'connectMusicAudio,getInputPreviewStatus,isTV,launch,listApps,listInputLabels,openInput,platformBack');
 });
 
 function previewEntry(overrides = {}) {
@@ -256,4 +254,39 @@ test('LG Back uses only the platform exit API on TV, remains preview-only on des
   // webOS 6 renamed PalmSystem to webOSSystem and isTV already accepts either.
   const renamed=setup({PalmSystem:undefined,webOSSystem:{identifier:'org.local.openxmb.c5 1234',platformBack(){backs++;}}});
   assert.equal((await renamed.tv.platformBack()).preview,false);assert.equal(backs,2);
+});
+
+test('music audio is connected to the main sink only under the Home identity', async () => {
+  const dev = setup();
+  assert.equal((await dev.tv.connectMusicAudio()).reason, 'not-needed');
+  assert.equal(dev.calls.length, 0);
+
+  const pipelines = [
+    { type: 'avconnector', id: '_av' },
+    { type: 'media', id: '_other', appId: 'youtube.leanback.v4', uri: 'file:///x/user-music.mp3', resource: [{ index: 0, resource: 'ADEC' }] },
+    { type: 'media', id: '_music1', appId: 'com.webos.app.home', uri: 'file:///usr/palm/applications/com.webos.app.home/user-music.mp3',
+      resource: [{ index: 1, resource: 'ADEC' }, { index: 5, resource: 'ADEC_BANDWIDTH' }] }
+  ];
+  const settle = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+  const home = setup({ PalmSystem: { identifier: 'com.webos.app.home 77' } });
+  let result = home.tv.connectMusicAudio();
+  home.respond(0, pipelines); await settle();
+  home.respond(1, { returnValue: true, audio: [{ streamType: 'umimedia', pipelineInfo: [{ pipelineId: '_music1', sourceSinkInfo: [] }] }] }); await settle();
+  assert.equal(home.calls[2].uri, 'luna://com.webos.service.audio/UMI/connect');
+  assert.deepEqual(home.calls[2].payload, { streamType: 'umimedia', source: 'ADEC', sourcePort: 1, sink: 'MAIN', pipelineId: '_music1', activate: true });
+  home.respond(2, { returnValue: true });
+  assert.equal((await result).reason, 'connected');
+
+  const wired = setup({ PalmSystem: { identifier: 'com.webos.app.home 77' } });
+  result = wired.tv.connectMusicAudio();
+  wired.respond(0, pipelines); await settle();
+  wired.respond(1, { returnValue: true, audio: [{ streamType: 'umimedia', pipelineInfo: [{ pipelineId: '_music1', sourceSinkInfo: [{ sink: 'MAIN' }] }] }] });
+  assert.equal((await result).reason, 'already');
+  assert.equal(wired.calls.length, 2);
+
+  const none = setup({ PalmSystem: { identifier: 'com.webos.app.home 77' } });
+  result = none.tv.connectMusicAudio();
+  none.respond(0, [pipelines[0], pipelines[1]]);
+  assert.equal((await result).reason, 'no-pipeline');
+  assert.equal(none.calls.length, 1);
 });

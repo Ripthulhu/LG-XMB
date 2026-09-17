@@ -191,14 +191,6 @@ window.C5Catalog=[
         "description": "Open picture, sound, and TV settings."
       },
       {
-        "id": "com.webos.app.home",
-        "title": "LG Home",
-        "icon": "home",
-        "type": "SETTING",
-        "description": "Open the original LG Home screen.",
-        "action": "stock"
-      },
-      {
         "id": "about",
         "title": "About this menu",
         "icon": "info",

@@ -146,6 +146,15 @@ with it.
 - The real LG Home becomes unreachable while the mount is up. Anything that
   launches `com.webos.app.home` gets your app, including your own "open LG Home"
   menu entry if you have one.
+- Media your app plays is silent unless you connect it yourself. The TV's media
+  pipeline registers a `com.webos.app.home` stream with the audio service and
+  never connects it, cause LG's own Home isn't meant to own the speakers. The
+  element reports `playing`, `getActivePipelines` shows `mediaState: play`, and
+  `luna://com.webos.service.audio/UMI/getStatus` lists the pipeline with an empty
+  `sourceSinkInfo`. Connect it with `UMI/connect` (`streamType` `umimedia`,
+  `source` `ADEC`, `sourcePort` from the pipeline's ADEC resource index, `sink`
+  `MAIN`, the `pipelineId`). The home identity's `private` group covers the call.
+  `connectMusicAudio` in `app/tv-bridge.js` does this when playback starts.
 - Your app runs under the built-in's LS2 identity from
   `/usr/share/luna-service2/`, not a developer policy. You inherit the stock
   home's permissions rather than your own.
