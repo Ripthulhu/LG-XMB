@@ -709,7 +709,12 @@
       return;
     this.initialized = true;
     try {
-      this.gl = this.canvas.getContext('webgl2', { alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+      // No preserveDrawingBuffer: on the C5's tiler it forced every tile to
+      // load last frame's canvas before drawing and the compositor to copy
+      // the canvas instead of swapping it, half of all fragment work. The
+      // compositor keeps showing the last presented frame while we're
+      // paused, the buffer is only cleared by the next draw.
+      this.gl = this.canvas.getContext('webgl2', { alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
       if (!this.gl)
         throw new Error('WebGL 2 unavailable; using static backdrop');
       var gl = this.gl;

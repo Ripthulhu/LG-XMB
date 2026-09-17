@@ -180,9 +180,11 @@ paused frame is not erased by changing canvas dimensions. Reduced-motion setting
 retain a still frame. Destroy is idempotent and removes observers/listeners and
 pending animation callbacks.
 
-A retained `preserveDrawingBuffer` canvas is requested for launcher pause behavior.
-That does not prove what the webOS compositor will retain during a native app or
-HDMI handoff; those transitions still need a TV test.
+The canvas is requested without `preserveDrawingBuffer`. On the C5's Mali the
+preserved buffer made every tile load the previous frame and the compositor copy
+the canvas each frame, half of all fragment work. A paused launcher keeps showing
+the last presented frame because nothing draws over it; what the webOS compositor
+retains across a native app or HDMI handoff still needs a TV test.
 
 ## Reference data is separate from source
 
