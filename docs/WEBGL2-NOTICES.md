@@ -68,3 +68,23 @@ research pack, checked there against the decoded instructions to float32.
 RGBA8) out of `lines.qrc`. It is local data, gitignored, and not relicensed as
 project source. The bicubic upsample in `compositeFragment.frag` is a stand-in
 for `bg_copy.fpo`, whose lookup table is not recovered.
+
+## Particle births and navigation response
+
+`app/ps3-particle-birth.js` is the reference module from the PS3 3.01
+particle-motion recovery, unchanged: the host emitter's candidate generators,
+the velocity-dependent birth, slot reuse, the icon wind write, the byte-quantised
+field decay and the d-pad response. It was written from the `custom_render_plugin`
+and `qglbase` load images and checked against executions of the original
+instructions. Copyright (c) 2026 Contributors to the PS3 particle-motion
+reconstruction. MIT, reproduced in `app/licenses/PARTICLE-BIRTH-MIT.txt`. That
+licence covers the new code only, not Sony's firmware. The recovery's
+instruction-derived test vectors and disassembly aren't in this repository.
+
+What's ours, in `app/ps3-native-core.js`: sampling the completed mesh on the CPU
+from the deformed controls, the mesh-to-world matrix (the inverse of the particle
+view-projection, which the captured descriptor matrix matches), one emitter
+invocation per particle update, and menu positions animated numerically with the
+console's position curve instead of read from the page. The console's real
+scheduling and the set of objects it registers for wind aren't recovered.
+

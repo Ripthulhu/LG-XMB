@@ -130,6 +130,20 @@ function render(deferDetail){
   if($('items').getAttribute('aria-activedescendant')!==active)$('items').setAttribute('aria-activedescendant',active);
   if(deferDetail===true)scheduleDetail();else renderDetail();
   announceSelection();
+  wave.setMenuObjects(menuObjects());
+}
+// Where the moving menu objects are headed, in Y-up NDC, for the particles'
+// icon wind. These are layout constants, not measurements: reading the page's
+// geometry every frame is exactly the work the C5 can't spare. The renderer
+// animates towards them with the console's own position curve.
+function menuObjects(){
+  var out=[],index=selections[selectedCategory],rows=categories[selectedCategory].items.length;
+  categories.forEach(function(cat,i){out.push({id:'c'+i,x:(31+(i-selectedCategory)*LGXMBCategoryTransition.DISTANCE)/50-1,y:1-32.6/50});});
+  for(var i=Math.max(0,index-3);i<=Math.min(rows-1,index+3);i++){
+    var offset=i-index;
+    out.push({id:'r'+selectedCategory+':'+i,x:31/50-1,y:1-(52+offset*8.4-(offset<0?25:0)+3.25)/50});
+  }
+  return out;
 }
 function renderRows(ci){
   var index=selections[ci];
@@ -166,6 +180,7 @@ function selectCategory(index){
   categoryTransition.change(direction,function(){
     selectedCategory=index;buildItems();render(true);
   },preferences.motion==='full');
+  wave.navigated(direction>0?'right':'left');
   tick();
 }
 function navigate(direction){
@@ -177,7 +192,7 @@ function navigate(direction){
   }
   next=Math.max(0,Math.min(categories[selectedCategory].items.length-1,selections[selectedCategory]+(direction==='down'?1:-1)));
   if(next===selections[selectedCategory]){renderDetail();return;}
-  selections[selectedCategory]=next;render(true);tick();
+  selections[selectedCategory]=next;render(true);wave.navigated(direction);tick();
 }
 function row(label,colour,isSelected,handler,parent){var button=document.createElement('button');button.className='option';button.setAttribute('aria-pressed',String(isSelected));var labelSpan=document.createElement('span');if(colour){var swatch=document.createElement('i');swatch.className='swatch';swatch.style.background=colour;labelSpan.appendChild(swatch);}labelSpan.appendChild(document.createTextNode(label));button.appendChild(labelSpan);var mark=document.createElement('span');mark.className='option-check';mark.setAttribute('aria-hidden','true');mark.textContent=isSelected?'✓':'';button.appendChild(mark);button.addEventListener('click',handler);(parent||$('modalContent')).appendChild(button);return button;}
 function selectChoice(parent,value){[].forEach.call(parent.querySelectorAll('[data-choice]'),function(button){var chosen=button.getAttribute('data-choice')===String(value);button.setAttribute('aria-pressed',String(chosen));button.querySelector('.option-check').textContent=chosen?'✓':'';});}

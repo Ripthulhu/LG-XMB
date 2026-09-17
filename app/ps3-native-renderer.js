@@ -36,6 +36,12 @@
     this.reference = reference;
     this.wave = new Core.Wave(reference.wave, reference.settings);
     this.particles = new Core.Particles(reference.particles, new Core.Parameters(reference.particleParams));
+    // Births come from the moving sheet when the recovered host equations are
+    // loaded. Without them the captured particles are recycled, as before.
+    if (root.LGXMBRecoveredParticleBirth) {
+      this.particles.emitter = new Core.Emitter(this.wave, this.particles, reference.basis, reference.viewProjection, root.LGXMBRecoveredParticleBirth);
+      this.particles.interaction = new Core.Interaction(this.particles, root.LGXMBRecoveredParticleBirth);
+    }
     this.elapsed = 0;
     this.steps = 0;
     this.respawn = true;
@@ -603,7 +609,9 @@
       samplingFallback: this.samplingFallback, msaaSupported: this.msaaSupported.slice(), msaaSamples: this.msaaSamples, msaaFallback: this.msaaFallback,
       detail: this.settings.detail, detailAlias: this.settings.detail === 'fine' ? 'Original 128 x 128 grid' : null, grid: this.grid, vertices: this.grid * this.grid, postprocess: this.settings.postprocess,
       postprocessImplementation: 'GLSL ES 3.00 FXAA; particles excluded', postWidth: this.outputWidth, postHeight: this.outputHeight, postprocessFallback: null,
-      particleCount: this.lastCount, particleCapacity: p.capacity, particlesFallback: null, particleRespawnPolicy: 'captured-distribution recycling',
+      particleCount: this.lastCount, particleCapacity: p.capacity, particlesFallback: null,
+      particleRespawnPolicy: p.emitter ? 'recovered host emitter: births on the moving sheet' : 'captured-distribution recycling',
+      particleBirths: p.emitter ? p.emitter.births : 0, particleBirthsRefused: p.emitter ? p.emitter.refused : 0,
       fidelity: { geometry: 'fixture-validated', particleUpdate: 'fixture-validated', opticalBindings: this.simulation.reference.optics ? 'retained material uniforms; inferred projection' : 'provisional', compositing: 'adapted', emitter: 'port policy' },
       draws: this.drawCount, allocations: this.allocations, uploadedBytes: this.uploadedBytes, perFrameReadbacks: 0,
       waveTicks: this.simulation.wave.ticks, particleTicks: p.ticks, recycledParticles: p.recycled,
@@ -879,6 +887,16 @@
       this.brightness = o.brightness;
       this.draw();
     }
+  };
+  // Menu hooks for the particles. Both are cheap and do nothing until the
+  // simulation exists or when the recovered module isn't loaded.
+  C5Wave.prototype.navigated = function (direction) {
+    var i = this.simulation && this.simulation.particles.interaction, code = { left: 0, right: 1, up: 2, down: 3 }[direction];
+    if (i && code !== undefined) i.direction(code);
+  };
+  C5Wave.prototype.setMenuObjects = function (targets) {
+    var i = this.simulation && this.simulation.particles.interaction;
+    if (i && Array.isArray(targets)) i.setObjects(targets);
   };
   C5Wave.prototype.getDiagnostics = function () {
     return { mode: this.mode, pattern: 'ps3', contextVersion: this.contextVersion, capabilities: this.capabilities,

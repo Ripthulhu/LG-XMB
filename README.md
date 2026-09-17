@@ -28,8 +28,11 @@ or resetting the final position. Reduced motion disables menu transitions.
 
 Settings → Waves includes **Particles: On / Off** and **Particle density:
 Low / Medium / Normal** (500 / 1,000 / 2,000). Normal is the count the console ran.
-The sparkle layer follows Wave speed, brightness, and animation settings; it
-stops with the renderer when Home is hidden. Without WebGL 2 there's no wave
+Particles are born on the moving wave and leave along its local motion, the way
+the console's emitter does it, so they gather around the sheet. Moving up and
+down the menu blows a short local wind through them and a left or right press
+makes them jitter for a moment. The sparkle layer follows Wave speed, brightness,
+and animation settings; it stops with the renderer when Home is hidden. Without WebGL 2 there's no wave
 and no particles, only the static backdrop.
 
 ## Background music

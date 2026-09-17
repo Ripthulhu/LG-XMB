@@ -231,6 +231,160 @@
     this.deform();
     return this.ticks - before;
   };
+  // The completed 128x128 mesh at integer coordinates, from the same deformed
+  // controls and basis table the vertex shader uses. Coordinates wrap.
+  Wave.prototype.meshPoint = function (x, y, basis, out) {
+    x = ((x % 128) + 128) % 128; y = ((y % 128) + 128) % 128;
+    var px = x >> 3, lx = (x & 7) * 64, py = y >> 3, ly = (y & 7) * 64, c = this.controls;
+    var a = 0, b = 0, d = 0, e = 0;
+    for (var v = 0; v < 4; v++) {
+      var wy = basis[ly + v], row = ((py + v) * 19 + px) * 4;
+      for (var u = 0; u < 4; u++) {
+        var w = basis[lx + u] * wy, j = row + u * 4;
+        a += c[j] * w; b += c[j + 1] * w; d += c[j + 2] * w; e += c[j + 3] * w;
+      }
+    }
+    out[0] = a; out[1] = b; out[2] = d; out[3] = e;
+    return out;
+  };
+  function invert4(m) {
+    var a = new Float64Array(32), i, j, k;
+    for (i = 0; i < 4; i++) { for (j = 0; j < 4; j++) a[i * 8 + j] = m[i * 4 + j]; a[i * 8 + 4 + i] = 1; }
+    for (i = 0; i < 4; i++) {
+      var pivot = i;
+      for (j = i + 1; j < 4; j++) if (Math.abs(a[j * 8 + i]) > Math.abs(a[pivot * 8 + i])) pivot = j;
+      if (Math.abs(a[pivot * 8 + i]) < 1e-12) throw new RangeError('Singular view-projection');
+      for (k = 0; k < 8; k++) { var t = a[i * 8 + k]; a[i * 8 + k] = a[pivot * 8 + k]; a[pivot * 8 + k] = t; }
+      var scale = 1 / a[i * 8 + i];
+      for (k = 0; k < 8; k++) a[i * 8 + k] *= scale;
+      for (j = 0; j < 4; j++) if (j !== i) { var factor = a[j * 8 + i]; for (k = 0; k < 8; k++) a[j * 8 + k] -= factor * a[i * 8 + k]; }
+    }
+    var out = new Float32Array(16);
+    for (i = 0; i < 4; i++) for (j = 0; j < 4; j++) out[i * 4 + j] = a[i * 8 + 4 + j];
+    return out;
+  }
+  // Sony's host emitter, from the 3.01 particle-motion recovery. Candidates are
+  // points on the moving sheet. One invocation later each is sampled again at
+  // the same mesh coordinate, and the sheet's local movement decides whether a
+  // particle is born there and which way it leaves. `birth` is the recovered
+  // equation module (ps3-particle-birth.js), which is tested against the
+  // original instructions. What's ours is the scheduling: one invocation per
+  // particle update, which is the console's cadence only by assumption.
+  function Emitter(wave, particles, basis, viewProjection, birth) {
+    if (!birth || typeof birth.createBirth !== 'function') throw new TypeError('Particle birth module required');
+    this.wave = wave; this.particles = particles; this.basis = basis; this.birth = birth;
+    // The mesh is in clip space. The captured descriptor matrix that takes it to
+    // world space is the inverse of the particle view-projection, no divide.
+    var transposed = new Float32Array(16);
+    for (var r = 0; r < 4; r++) for (var q = 0; q < 4; q++) transposed[r * 4 + q] = viewProjection[q * 4 + r];
+    this.toWorld = invert4(transposed);
+    var random = new birth.HostRandom(0);
+    this.signed = function () { return random.signed(); };
+    this.random = random;
+    this.previous = [];
+    this.trail = { remaining: 112, x: 72, y: 0 }; // retained in the capture
+    this.tick = 0;
+    this.births = 0;
+    this.refused = 0;
+    this.revision = -1;
+    this.free = [];
+    for (var i = 0; i < particles.capacity; i++) if (particles.state[i * 12 + 3] === DEAD) this.free.push(i);
+    var clip = new Float32Array(4), m = this.toWorld, self = this;
+    this.sample = function (x, y) {
+      self.wave.meshPoint(x, y, self.basis, clip);
+      return [clip[0] * m[0] + clip[1] * m[1] + clip[2] * m[2] + clip[3] * m[3],
+        clip[0] * m[4] + clip[1] * m[5] + clip[2] * m[6] + clip[3] * m[7],
+        clip[0] * m[8] + clip[1] * m[9] + clip[2] * m[10] + clip[3] * m[11]];
+    };
+  }
+  Emitter.prototype.retire = function (slots, count) { for (var n = 0; n < count; n++) this.free.push(slots[n]); };
+  // `updates` is how many particle updates this frame ran. At 60 fps that's one
+  // and this is the recovered routine as is. A slower frame saw the sheet move
+  // once for several updates, so the candidates of all of them are drawn now
+  // and the movement is divided over that many steps.
+  Emitter.prototype.emit = function (updates) {
+    if (!(updates > 0) || this.wave.revision === this.revision) return 0;
+    this.revision = this.wave.revision;
+    var B = this.birth, fresh = [], born = 0, n, i;
+    for (n = 0; n < updates; n++) {
+      Array.prototype.push.apply(fresh, B.batchCandidates(this.sample, 128, 128, null, this.signed));
+      Array.prototype.push.apply(fresh, B.trailCandidates(this.sample, 128, 128, this.trail, this.tick++, this.signed));
+    }
+    var settings = updates === 1 ? null : { dt: B.defaults.dt * updates };
+    for (i = 0; i < this.previous.length; i++) {
+      var c = this.previous[i], made = B.createBirth(c.position, this.sample(c.x, c.y), settings, this.signed, [0, 0, 1]);
+      if (!made) continue;
+      // A full pool refuses the birth, it never overwrites a live particle.
+      if (B.applyBirth(this.particles.state, this.free, made) >= 0) born++; else this.refused++;
+    }
+    this.previous = fresh;
+    this.births += born;
+    return born;
+  };
+  // Navigation response, from the same recovery. Two separate things:
+  //  - a direction press feeds a damped response that briefly raises the
+  //    Brownian gain and turns the cloud by a tiny angle about the pivot;
+  //  - moving menu objects write a local wind into the 32x16 signed-byte field
+  //    the worker already samples, and the field decays in byte steps.
+  // The console reads the objects' projected positions. Here the menu hands over
+  // target positions and they're animated with the console's own position curve
+  // (selector 5, 200 ms), so nothing reads the page's layout per frame.
+  var APPROACH = 0.22058835625648499, ICON_ASPECT = f(1.7777777910232544), UI_BROWNIAN = f(0.6000000238418579);
+  function Interaction(particles, birth) {
+    this.particles = particles; this.birth = birth;
+    this.response = new birth.DpadResponse();
+    this.pending = 4;
+    this.baseBrownian = particles.params.brownian;
+    this.objects = {};
+    this.moving = false;
+    this.fieldLive = false;
+    this.writes = 0;
+  }
+  // 0 left, 1 right, 2 up, 3 down. One accepted navigation step, never a held key.
+  Interaction.prototype.direction = function (code) { if (code >= 0 && code <= 3) this.pending = code; };
+  // targets: [{id, x, y}] in Y-up NDC. A first sighting only starts a history.
+  Interaction.prototype.setObjects = function (targets) {
+    var next = {}, moving = false;
+    for (var i = 0; i < targets.length; i++) {
+      var t = targets[i], o = this.objects[t.id];
+      if (!o) o = { x: t.x, y: t.y, tx: t.x, ty: t.y };
+      o.tx = t.x; o.ty = t.y;
+      if (o.tx !== o.x || o.ty !== o.y) moving = true;
+      next[t.id] = o;
+    }
+    this.objects = next;
+    this.moving = moving;
+  };
+  Interaction.prototype.step = function () {
+    var p = this.particles.params, B = this.birth, out = this.response.step(this.pending, 1, 0);
+    this.pending = 4;
+    p.brownian = f(this.baseBrownian + f(UI_BROWNIAN * out.brownian));
+    var r = out.rotation, angle = Math.sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]), m = p.rotation;
+    if (angle < 1e-5) { for (var n = 0; n < 16; n++) m[n] = (n % 5) === 0 ? 1 : 0; }
+    else {
+      var x = r[0] / angle, y = r[1] / angle, z = r[2] / angle, c = Math.cos(angle), s = Math.sin(angle), t = 1 - c;
+      m[0] = t * x * x + c; m[1] = t * x * y + s * z; m[2] = t * x * z - s * y; m[3] = 0;
+      m[4] = t * x * y - s * z; m[5] = t * y * y + c; m[6] = t * y * z + s * x; m[7] = 0;
+      m[8] = t * x * z + s * y; m[9] = t * y * z - s * x; m[10] = t * z * z + c; m[11] = 0;
+      m[12] = 0; m[13] = 0; m[14] = 0; m[15] = 1;
+    }
+    if (this.fieldLive) {
+      B.decayField(p.field);
+      this.fieldLive = this.moving || p.field.some(function (v) { return v !== 0; });
+    }
+    if (!this.moving) return;
+    var still = true;
+    for (var id in this.objects) {
+      var o = this.objects[id];
+      if (o.x === o.tx && o.y === o.ty) continue;
+      var nx = o.x + (o.tx - o.x) * APPROACH, ny = o.y + (o.ty - o.y) * APPROACH;
+      if (Math.abs(o.tx - nx) < 1e-4 && Math.abs(o.ty - ny) < 1e-4) { nx = o.tx; ny = o.ty; } else still = false;
+      // A zero-strength move still overwrites the cell it visits.
+      if (B.iconFieldWrite(p.field, [o.x, o.y], [nx, ny], ICON_ASPECT)) { this.writes++; this.fieldLive = true; }
+      o.x = nx; o.y = ny;
+    }
+    this.moving = !still;
+  };
   function transform4(x, y, z, w, m, out) {
     for (var k = 0; k < 4; k++) {
       var a = f(y * m[4 + k]);
@@ -366,8 +520,8 @@
     return this.retiredCount;
   };
   Particles.prototype.recycle = function () {
-    // Explicit LG-XMB policy until Sony's emitter is reconstructed. Keeps the
-    // captured distribution, velocity/age-increment and quaternion; age restarts.
+    // Only used when the recovered emitter isn't attached. Keeps the captured
+    // distribution, velocity/age-increment and quaternion; age restarts.
     if (!this.seedCount)
       return;
     for (var n = 0; n < this.retiredCount; n++) {
@@ -405,12 +559,20 @@
     if (!Number.isFinite(seconds) || seconds < 0 || seconds > 1)
       throw new RangeError('Particle interval outside 0..1');
     this.fraction += seconds * 60;
+    var updates = 0;
     while (this.fraction >= 1 - 1e-9) {
+      if (this.interaction)
+        this.interaction.step();
       this.update();
-      if (respawn)
+      updates++;
+      if (respawn && this.emitter)
+        this.emitter.retire(this.retired, this.retiredCount);
+      else if (respawn)
         this.recycle();
       this.fraction = Math.max(0, this.fraction - 1);
     }
+    if (respawn && this.emitter)
+      this.emitter.emit(updates);
     this.pack();
   };
   // FFD functions are generated from the independently tested scalar dataflow.
@@ -589,7 +751,7 @@
     out[at + 2] = s29;
     out[at + 3] = s30;
   };
-  var api = { Wave: Wave, Particles: Particles, Parameters: Parameters, reciprocal: reciprocal, noise: noise,
+  var api = { Wave: Wave, Particles: Particles, Parameters: Parameters, Emitter: Emitter, Interaction: Interaction, reciprocal: reciprocal, noise: noise,
     ffd: ffd, fade: fade, halfTruncate: halfTruncate, fromHalf: fromHalf, DEAD: DEAD };
   if (typeof module === 'object' && module.exports)
     module.exports = api;

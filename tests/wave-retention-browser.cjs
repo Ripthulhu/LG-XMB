@@ -15,7 +15,7 @@ const {chromium} = require('playwright');
     // data files are the local reference pack; without them C5Wave reports a
     // static backdrop and this check cannot run.
     for (const module of ['wave-colors.js', 'ps3-native-data.js', 'ps3-background-data.js', 'ps3-background-clock.js',
-      'ps3-native-core.js', 'ps3-native-shaders.js', 'ps3-native-renderer.js']) {
+      'ps3-particle-birth.js', 'ps3-native-core.js', 'ps3-native-shaders.js', 'ps3-native-renderer.js']) {
       await page.addScriptTag({path: path.resolve(__dirname, '../app/' + module)});
     }
     await page.evaluate(() => {
