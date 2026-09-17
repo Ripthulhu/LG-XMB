@@ -21,7 +21,7 @@ body{transition:background 1s ease}button{font:inherit;color:inherit;border:0;cu
    worse than opacity. Transforms are the only thing that animates here. */
 .category{position:absolute;top:0;left:var(--anchor);width:8vw;min-width:65px;padding:0;background:none;transform:translateX(-50%);text-align:center}
 .category .category-icon{display:block;width:3.5vw;height:3.5vw;min-width:30px;min-height:30px;margin:0 auto 1.55vh;transition:transform var(--navigation-duration) var(--ease);color:rgba(255,255,255,calc(var(--category-alpha,.32)*.78))}
-.category-label{font-size:clamp(13px,1vw,24px);letter-spacing:.04em;font-weight:400;color:rgba(255,255,255,var(--category-alpha,.32))}.category.active .category-icon{transform:scale(1.14);color:white}.category.active .category-label{color:white}.category.active:after{content:"";display:block;width:3px;height:3px;border-radius:50%;margin:1.7vh auto 0;background:#ffffff}
+.category-label{font-size:clamp(13px,1vw,24px);letter-spacing:.04em;font-weight:400;color:rgba(255,255,255,var(--category-alpha,.32))}.category.active .category-icon{color:white}.category.active .category-label{color:white}.category.active:after{content:"";display:block;width:3px;height:3px;border-radius:50%;margin:1.7vh auto 0;background:#ffffff}
 .cross-content{position:absolute;inset:52% 0 14%}#items{position:absolute;left:calc(var(--anchor) - 3vw);top:0;width:32vw;height:100%;outline:none;isolation:isolate}
 .item{display:flex;align-items:center;position:absolute;top:0;left:0;width:100%;height:6.5vh;text-align:left;padding:0;background:none;transform:translateY(var(--item-y,0vh));transition:transform var(--navigation-duration) var(--ease);pointer-events:auto;white-space:nowrap}
 .item-icon{display:block;flex:none;width:2.4vw;height:2.4vw;min-width:26px;min-height:26px;margin:0 2.15vw 0 1.8vw;color:rgba(255,255,255,calc(var(--item-alpha,.24)*.74));transition:transform var(--navigation-duration) var(--ease)}.item-text{font-size:clamp(19px,1.75vw,40px);font-weight:400;letter-spacing:.008em;line-height:1.2;max-width:21vw;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,var(--item-alpha,.24))}.item:hover .item-text{color:white}.item.selected .item-icon{color:white;transform:scale(1.13);font-weight:400}.item.selected:before{content:"";width:3px;height:2.9vh;border-radius:2px;background:var(--accent);position:absolute;left:0}
@@ -65,3 +65,22 @@ body{transition:background 1s ease}button{font:inherit;color:inherit;border:0;cu
 #categories.categories-instant,#categories.categories-instant .category,#categories.categories-instant .category-icon{transition:none!important}
 /* Colour controls use the existing dark settings panel, independent of day palettes. */
 .color-group{margin:0 0 2.6vh;padding:0 1vw}.color-group h3,.color-group label{font-size:clamp(16px,1.15vw,25px);font-weight:400;margin:0 0 1vh;display:block}.color-choices{display:grid;grid-template-columns:1fr;gap:.3vh .4vw}.color-choices[data-columns="4"]{grid-template-columns:repeat(4,minmax(0,1fr))}.color-choices[data-columns="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}.color-choices .option{font-size:clamp(16px,1.18vw,26px);padding:1.2vh .6vw;justify-content:center;border-bottom:1px solid rgba(255,255,255,.15);white-space:normal}.color-choices .option[aria-pressed=true]{border-bottom-color:#fff}.color-group label output{float:right;font-variant-numeric:tabular-nums}.color-group input[type=range]{display:block;width:100%;height:3.8vh;margin:0;accent-color:#fff;cursor:pointer}.color-group input:focus{outline:1px solid #fff;outline-offset:4px}.color-group input{scroll-margin:2vh}
+
+/* Category changes move layers, they don't repaint. Each category's rows live in
+   a wrapper that is its own GPU layer and parks off the right edge while it's
+   inactive. Each bar entry has a dim face and a lit face, painted once and
+   swapped by transform, cause recolouring two entries per step was most of what
+   a category change cost the C5. The 3D transforms are what make the layers.
+   The lit icon is drawn at its full size, so it no longer grows into place. */
+.rows{position:absolute;top:0;left:0;width:100%;height:100%;transform:translate3d(0,0,0)}
+.rows.parked{transform:translate3d(100vw,0,0)}
+.category .face{display:block;transform:translate3d(0,0,0)}
+.category .lit{position:absolute;top:0;left:0;width:100%;transform:translate3d(0,-100vh,0)}
+.category.active .lit{transform:translate3d(0,0,0)}
+.category.active .dim{transform:translate3d(0,-100vh,0)}
+.category .dim .category-icon{color:rgba(255,255,255,.39);transform:none;transition:none}
+.category .dim .category-label{color:rgba(255,255,255,.5)}
+.category .lit .category-icon{color:#fff;transform:scale(1.14);transition:none}
+.category .lit .category-label{color:#fff}
+.category-dot{display:block;width:3px;height:3px;border-radius:50%;margin:1.7vh auto 0;background:#fff}
+.category.active:after{content:none}

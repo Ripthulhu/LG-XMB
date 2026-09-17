@@ -34,19 +34,19 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
     const list=document.getElementById('items');
     return {transform:getComputedStyle(list).transform,opacity:getComputedStyle(list).opacity,
       willChange:getComputedStyle(list).willChange,effects:list.getAnimations().length,
-      x:[...list.querySelectorAll('.item-icon')].map(n=>n.getBoundingClientRect().left)};
+      x:[...list.querySelectorAll('.rows:not(.parked) .item-icon')].map(n=>n.getBoundingClientRect().left)};
   }
   for(const [width,dpr] of [[1280,1],[1920,1],[1366,1.25]]){
     const page=await create(width,null,dpr);
     try{
       await page.evaluate(()=>{
         menuPress('ArrowLeft');menuPress('ArrowDown');menuPress('ArrowDown');menuPress('ArrowDown');
-        window.inputRows=[...document.querySelectorAll('#items>.item')];
+        window.inputRows=[...document.querySelectorAll('#items>.rows:not(.parked)>.item')];
       });
       await page.waitForTimeout(450);
       // Up/down is the reference: measure its actual CSS transform timing.
       const vertical=await page.evaluate(()=>{
-        menuPress('ArrowUp');const row=document.querySelector('#items>.item');
+        menuPress('ArrowUp');const row=document.querySelector('#items>.rows:not(.parked)>.item');
         const animation=row.getAnimations().find(a=>a.transitionProperty==='transform');
         return animation&&{duration:animation.effect.getTiming().duration,easing:animation.effect.getTiming().easing};
       });
@@ -63,7 +63,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       }
       // The final sampled frame and normal rest must have the same icon pixels,
       // not just approximately equal CSS boxes (the reported one-pixel snap).
-      const clip=await page.locator('#items .selected .item-icon').boundingBox();
+      const clip=await page.locator('#items>.rows:not(.parked) .selected .item-icon').boundingBox();
       const before=await page.screenshot({clip});
       const transform=await page.locator('#categories').evaluate(n=>n.style.transform);
       await page.evaluate(()=>document.getElementById('categories').getAnimations({subtree:true}).forEach(a=>a.finish()));
@@ -97,8 +97,8 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       await page.evaluate(()=>document.getElementById('categories').getAnimations({subtree:true}).forEach(a=>a.finish()));
       await page.waitForTimeout(30);
       await page.evaluate(()=>menuPress('ArrowLeft'));await page.waitForTimeout(450);
-      assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#items>.item')].every((n,i)=>n===inputRows[i])),true);
-      assert.equal(await page.locator('#items .above-bar').count(),3);
+      assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#items>.rows:not(.parked)>.item')].every((n,i)=>n===inputRows[i])),true);
+      assert.equal(await page.locator('#items>.rows:not(.parked) .above-bar').count(),3);
       assert.equal(await page.evaluate(()=>C5App.getState().item),'com.webos.app.hdmi4');
       const verticalWork=await page.evaluate(()=>{
         const bar=document.getElementById('categories'),emblem=document.getElementById('detailEmblem');
@@ -107,7 +107,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
         menuPress('ArrowUp');menuPress('ArrowDown');
         const writes=observer.takeRecords().length;observer.disconnect();
         return {writes,sameIcon:emblem.firstChild===icon,
-          selected:document.querySelector('#items [aria-selected="true"]').id,
+          selected:document.querySelector('#items>.rows:not(.parked) [aria-selected="true"]').id,
           detail:C5App.getState().detailItem};
       });
       assert.equal(verticalWork.writes,0,'vertical navigation must not rewrite the horizontal bar');
@@ -142,7 +142,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       await page.evaluate(()=>menuPress('ArrowRight'));await page.waitForTimeout(220);
       assert.equal(await page.locator('#items').evaluate(n=>getComputedStyle(n).willChange),'auto');
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.item,.category')].every(n=>getComputedStyle(n).willChange==='auto')),true);
-      assert.ok(['none','normal'].includes(await page.locator('#items .selected').evaluate(n=>getComputedStyle(n,'::after').content)));
+      assert.ok(['none','normal'].includes(await page.locator('#items>.rows:not(.parked) .selected').evaluate(n=>getComputedStyle(n,'::after').content)));
       await page.screenshot({path:path.join(dir,`home-rest-${width}.png`)});
       checks.push(`${width}px DPR ${dpr}: matching up/down CSS timing, stationary unfaded column, identical settled icon pixels, native reversal, one bar-position transition, reused rows/upper labels, immediate activation and hidden/resize cleanup`);
     }finally{await page.close();}

@@ -19,10 +19,10 @@ const {pathToFileURL}=require('node:url');
       for(let i=0;i<3;i++)await page.keyboard.press('ArrowDown');
       assert.equal((await page.evaluate(()=>C5App.getState())).item,'com.webos.app.hdmi4');
       const geometry=await page.evaluate(()=>{
-        const bar=document.querySelector('.category.active .category-icon').getBoundingClientRect();
-        const selected=document.querySelector('.item.selected .item-icon').getBoundingClientRect();
+        const bar=document.querySelector('.category.active .lit .category-icon').getBoundingClientRect();
+        const selected=document.querySelector('.rows:not(.parked) .item.selected .item-icon').getBoundingClientRect();
         return {bar:{top:bar.top,bottom:bar.bottom},selected:{top:selected.top},
-          upper:Array.from(document.querySelectorAll('.item.above-bar')).filter(el=>el.getAttribute('aria-hidden')==='false').map(el=>{
+          upper:Array.from(document.querySelectorAll('.rows:not(.parked) .item.above-bar')).filter(el=>el.getAttribute('aria-hidden')==='false').map(el=>{
             const rect=el.querySelector('.item-icon').getBoundingClientRect();
             return {top:rect.top,bottom:rect.bottom,left:rect.left,name:el.getAttribute('aria-label'),
               labelVisible:getComputedStyle(el.querySelector('.item-text')).visibility,

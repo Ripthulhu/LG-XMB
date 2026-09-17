@@ -109,7 +109,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     assert.equal(await page.locator('#detailDescription').textContent(), 'Switch to HDMI 2.');
     assert.equal(await page.locator('#previewButton').getAttribute('aria-label'), 'Open PS3 Konsola do gier full-screen');
     assert.equal((await state()).item, 'com.webos.app.hdmi2');
-    assert.equal(await page.locator('#items > button').count(), 4);
+    assert.equal(await page.locator('#items>.rows:not(.parked) > button').count(), 4);
     assert.equal(await page.evaluate(() => labelTest.row === document.getElementById('item-1') &&
       labelTest.focus === document.activeElement), true);
     await page.waitForFunction(() => document.getElementById('selectionLive').textContent.includes('PS3 Konsola do gier'));
