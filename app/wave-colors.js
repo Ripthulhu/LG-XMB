@@ -27,7 +27,8 @@
   function normalize(value) {
     value = value && typeof value === 'object' ? value : {};
     return {
-      mode:['theme','monthly','rgb'].indexOf(value.mode) >= 0 ? value.mode : 'theme',
+      mode:['theme','monthly','rgb','ps3'].indexOf(value.mode) >= 0 ? value.mode : 'theme',
+      clock:value.clock === 'fixed' ? 'fixed' : 'auto',
       month:Number.isInteger(value.month) && value.month >= 1 && value.month <= 12 ? value.month : 1,
       period:value.period === 'night' ? 'night' : 'day',
       red:Math.round(bounded(value.red,0,255,37)), green:Math.round(bounded(value.green,0,255,89)),
@@ -38,6 +39,10 @@
   function resolve(value) {
     var s = normalize(value);
     if (s.mode === 'theme') return null;
+    // The PS3's own monthly background: the recovered back_colours0 program
+    // over the 24 month_bg textures, driven by the clock or pinned to a month.
+    // The wave over it is near white, like the console, rather than tinted.
+    if (s.mode === 'ps3') return {monthly:{auto:s.clock === 'auto',month:s.month,period:s.period},tint:[0.92,0.96,1]};
     var start,end,angle=90,tint;
     if (s.mode === 'monthly') {
       var p = (s.period === 'night' ? NIGHT : DAY)[s.month-1]; angle=p[0];

@@ -6,7 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ('fullscreenVertex', 'waveVertex', 'waveFragment', 'compositeFragment',
-         'particleVertex', 'particleFragment', 'glareVertex', 'glareFragment')
+         'particleVertex', 'particleFragment', 'glareVertex', 'glareFragment',
+         'monthlyBackground')
 
 def bundle():
     shaders = {}

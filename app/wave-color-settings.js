@@ -25,10 +25,13 @@
       s.querySelector('h3').hidden=true;
     }
     function visibility(){
-      ['month','period'].forEach(function(key){if(sections[key])sections[key].hidden=state.mode!=='monthly';});
+      var pinned=state.mode==='monthly'||(state.mode==='ps3'&&state.clock==='fixed');
+      ['month','period'].forEach(function(key){if(sections[key])sections[key].hidden=!pinned;});
+      if(sections.clock)sections.clock.hidden=state.mode!=='ps3';
       ['red','green','blue','top','bottom'].forEach(function(key){if(sections[key])sections[key].hidden=state.mode!=='rgb';});
     }
-    choices('Colour source','mode',[['theme','Current theme'],['monthly','Monthly presets'],['rgb','Original (RGB Sliders)']]);
+    choices('Colour source','mode',[['theme','Current theme'],['ps3','PS3 original'],['monthly','Monthly presets'],['rgb','Original (RGB Sliders)']]);
+    choices('Clock','clock',[['auto','Follow the clock'],['fixed','Fixed month']],2);
     choices('Month','month',root.LGXMBWaveColors.months.map(function(m,i){return[i+1,m];}),4);
     choices('Day / Night','period',[['day','Day'],['night','Night']],2);
     slider('Red','red',0,255,1);slider('Green','green',0,255,1);slider('Blue','blue',0,255,1);

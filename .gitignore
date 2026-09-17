@@ -18,5 +18,6 @@ app/audio/
 
 # Local PS3 reference inputs and generated validation output; never publish RAM.
 /app/ps3-native-data.js
+/app/ps3-background-data.js
 /private-data/
 /evidence/

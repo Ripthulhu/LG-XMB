@@ -16,8 +16,24 @@ uniform vec3 uColorStart;
 uniform vec3 uColorEnd;
 uniform vec2 uColorDir;
 uniform vec2 uColorRange;
+uniform sampler2D uMonthly;
+uniform bool uMonthlyEnabled;
 in vec2 vUV;
 layout(location=0) out vec4 outColor;
+// Cubic B-spline upsample of the 64x32 monthly pass through four bilinear
+// taps. The console does this with a lookup-table bicubic in bg_copy.fpo;
+// that table isn't recovered, so this is a stand-in kernel, not a copy.
+vec3 monthlyAt(vec2 uv) {
+  vec2 size=vec2(64.0,32.0), inv=1.0/size;
+  vec2 c=uv*size-0.5, f=fract(c); c-=f;
+  vec2 f2=f*f, f3=f2*f;
+  vec2 w0=(1.0-3.0*f+3.0*f2-f3)/6.0, w1=(4.0-6.0*f2+3.0*f3)/6.0;
+  vec2 w2=(1.0+3.0*f+3.0*f2-3.0*f3)/6.0, w3=f3/6.0;
+  vec2 g0=w0+w1, g1=w2+w3;
+  vec2 t0=(c-1.0+w1/g0+0.5)*inv, t1=(c+1.0+w3/g1+0.5)*inv;
+  return g0.y*(g0.x*texture(uMonthly,vec2(t0.x,t0.y)).rgb+g1.x*texture(uMonthly,vec2(t1.x,t0.y)).rgb)
+        +g1.y*(g0.x*texture(uMonthly,vec2(t0.x,t1.y)).rgb+g1.x*texture(uMonthly,vec2(t1.x,t1.y)).rgb);
+}
 float signalAt(vec2 uv) {
   vec4 c=texture(uScene,uv);
   return uCoverage ? c.a : dot(c.rgb,vec3(0.3,0.59,0.11));
@@ -90,7 +106,9 @@ void main() {
   }
   float vertical=smoothstep(0.0,1.0,1.0-vUV.y);
   vec3 background=mix(uBackground*0.78,uBackground*1.05,vertical);
-  if(uColorEnabled) {
+  if(uMonthlyEnabled) {
+    background=monthlyAt(vUV);
+  } else if(uColorEnabled) {
     float t=clamp((dot(vec2(vUV.x,1.0-vUV.y),uColorDir)-uColorRange.x)/max(uColorRange.y,0.000001),0.0,1.0);
     background=mix(uColorStart,uColorEnd,t*t*(3.0-2.0*t));
   }

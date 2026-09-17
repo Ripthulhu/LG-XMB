@@ -84,6 +84,7 @@
       this.particleProgram = this.program(Shaders.particleVertex, Shaders.particleFragment);
       this.glareProgram = this.program(Shaders.glareVertex, Shaders.glareFragment);
       this.compositeProgram = this.program(Shaders.fullscreenVertex, Shaders.compositeFragment);
+      this.monthlyProgram = this.program(Shaders.fullscreenVertex, Shaders.monthlyBackground);
     }
     catch (error) {
       this.destroy(false);
@@ -160,6 +161,7 @@
     this.uniforms.particle = this.locations(this.particleProgram);
     this.uniforms.glare = this.locations(this.glareProgram);
     this.uniforms.composite = this.locations(this.compositeProgram);
+    this.uniforms.monthly = this.locations(this.monthlyProgram);
     this.waveVAO = this.resource('VertexArray');
     this.indexBuffer = this.resource('Buffer');
     this.fullscreenVAO = this.resource('VertexArray');
@@ -193,6 +195,30 @@
         this.basis[j * 4 + k] = reference.basis[j * 64 + k];
         this.derivative[j * 4 + k] = reference.derivative[j * 64 + k];
       }
+    // The 24 PS3 month_bg textures as a 2D array, and the 64x32 target the
+    // recovered back_colours0 program renders into. Without the local data
+    // file the PS3 colour source silently falls back to the theme backdrop.
+    var months = root.LGXMBPS3MonthlyTextures;
+    this.monthlyTexture = null;
+    this.monthlyKey = '';
+    if (months && months.width === 64 && months.height === 32 && months.layers === 24 && months.rgba.length === 64 * 32 * 4 * 24) {
+      this.monthlyArray = this.resource('Texture');
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.monthlyArray);
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 64, 32, 24);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, 64, 32, 24, gl.RGBA, gl.UNSIGNED_BYTE, months.rgba);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+      this.monthlyTexture = this.texture(64, 32, null, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);
+      this.monthlyFbo = this.resource('Framebuffer');
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.monthlyFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.monthlyTexture, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
+        this.monthlyTexture = null;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
     this.material = this.materialUniforms(reference);
     this.materialRows = new Float32Array(16);
     this.colorVector = this.material.uColor || new Float32Array([1, 1, 1, 0]);
@@ -401,11 +427,39 @@
     gl.uniform1i(u.uIridescent, 1);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.lastCount);
   };
+  // Re-render the 64x32 monthly background when its clock uniforms change.
+  // In auto mode that's once a second, 2,048 fragments, nothing to schedule.
+  Renderer.prototype.monthlyPass = function (monthly) {
+    var clock = root.LGXMBPS3BackgroundClock, gl = this.gl;
+    if (!clock || !this.monthlyTexture)
+      return false;
+    var coordinates = monthly.auto ? clock.fromLocalDate(new Date()) : clock.calendar(monthly.month, 1, monthly.period === 'night' ? 0 : 12);
+    var u = clock.uniforms(coordinates, null, 1), key = JSON.stringify(u);
+    if (key === this.monthlyKey)
+      return true;
+    this.monthlyKey = key;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.monthlyFbo);
+    gl.viewport(0, 0, 64, 32);
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.monthlyProgram);
+    gl.bindVertexArray(this.fullscreenVAO);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.monthlyArray);
+    var m = this.uniforms.monthly;
+    gl.uniform1i(m.uTextures, 0);
+    gl.uniform1fv(m.uLayers, new Float32Array(u.layers));
+    Object.keys(u.values).forEach(function (name) { if (m[name]) gl.uniform1f(m[name], u.values[name]); });
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return true;
+  };
   Renderer.prototype.draw = function (w, h, wave, brightness, background, palette) {
     if (!this.ready || this.dead)
       return false;
     this.updateGrid();
     this.resize(w, h);
+    var monthly = !!(palette && palette.monthly && this.monthlyPass(palette.monthly));
     this.outputWidth = w; this.outputHeight = h;
     var gl = this.gl, t = this.target, p = this.simulation.particles;
     gl.bindFramebuffer(gl.FRAMEBUFFER, t.msaaFbo || t.framebuffer);
@@ -434,8 +488,13 @@
     gl.bindVertexArray(this.fullscreenVAO);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, t.texture);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, monthly ? this.monthlyTexture : t.texture);
+    gl.activeTexture(gl.TEXTURE0);
     var u = this.uniforms.composite;
     gl.uniform1i(u.uScene, 0);
+    gl.uniform1i(u.uMonthly, 1);
+    gl.uniform1i(u.uMonthlyEnabled, monthly ? 1 : 0);
     gl.uniform2f(u.uTexel, 1 / w, 1 / h);
     gl.uniform3fv(u.uTuning, this.filterTunings[this.settings.strength]);
     gl.uniform1i(u.uCoverage, this.settings.postprocess === 'wave' ? 1 : 0);
@@ -443,8 +502,8 @@
     gl.uniform1i(u.uFilter, this.settings.postprocess !== 'off' ? 1 : 0);
     gl.uniform3fv(u.uBackground, background);
     gl.uniform3fv(u.uWave, wave);
-    gl.uniform1i(u.uColorEnabled, palette ? 1 : 0);
-    if (palette) {
+    gl.uniform1i(u.uColorEnabled, palette && palette.start ? 1 : 0);
+    if (palette && palette.start) {
       gl.uniform3fv(u.uColorStart, palette.start);
       gl.uniform3fv(u.uColorEnd, palette.end);
       gl.uniform2fv(u.uColorDir, palette.dir);

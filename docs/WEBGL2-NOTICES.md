@@ -56,3 +56,14 @@ resources. These original inputs are **not** relicensed as new project source.
 They are excluded from the source-only archive and ignored by the installer.
 The private preview is for this user's local research and comparison; it is not a
 public asset release. Keep whole RAM dumps and account/session data out of Git.
+
+## Monthly background (ps3-gradient-backgrounds pack)
+
+`shaders/monthlyBackground.frag` is the constant-folded port of `back_colours0.fpo`
+and `app/ps3-background-clock.js` the recovered calendar and day/night arithmetic
+from `custom_render_plugin.sprx` 3.01, both from the ps3-gradient-backgrounds
+research pack, checked there against the decoded instructions to float32.
+`app/ps3-background-data.js` holds the 24 `textures/month_bg` top levels (64x32
+RGBA8) out of `lines.qrc`. It is local data, gitignored, and not relicensed as
+project source. The bicubic upsample in `compositeFragment.frag` is a stand-in
+for `bg_copy.fpo`, whose lookup table is not recovered.
