@@ -63,12 +63,19 @@ try {
       const sourcePath = path.join(projectDir, name);
       if (fs.existsSync(sourcePath)) fs.copyFileSync(sourcePath, path.join(licenseDir, name));
     }
+    fs.copyFileSync(path.join(projectDir, 'docs', 'WEBGL2-NOTICES.md'), path.join(licenseDir, 'WEBGL2-NOTICES.md'));
   }
-  for (const relativeName of [appinfo.main, appinfo.icon, 'wave-msaa.js', 'background-music.js', 'ps3-particles.js', 'category-transition.js', 'wave-colors.js', 'wave-color-settings.js', 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/UPSTREAM-original.frag', 'licenses/UPSTREAM-config.json', 'licenses/PS3-XMB-MIT.txt', 'licenses/THREE-FXAA-MIT.txt']) {
+  for (const relativeName of [appinfo.main, appinfo.icon, 'ps3-native-core.js', 'ps3-native-shaders.js', 'ps3-native-renderer.js', 'ps3-background-clock.js', 'background-music.js', 'category-transition.js', 'wave-colors.js', 'wave-color-settings.js', 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/WEBGL2-NOTICES.md', 'licenses/UPSTREAM-original.frag', 'licenses/UPSTREAM-config.json', 'licenses/PS3-XMB-MIT.txt', 'licenses/THREE-FXAA-MIT.txt']) {
     requireCondition(typeof relativeName === 'string' && relativeName.length > 0, 'App entry and icon paths are required.');
     const resolved = path.resolve(appDir, relativeName);
     requireCondition(resolved.startsWith(appDir + path.sep), `App file leaves package directory: ${relativeName}`);
     requireCondition(fs.statSync(resolved).isFile(), `Missing app file: ${relativeName}`);
+  }
+  // The reference pack is gitignored. A tree without it still packages, but the
+  // app draws the static backdrop instead of the wave, so say so.
+  for (const name of ['ps3-native-data.js', 'ps3-background-data.js']) {
+    if (!fs.existsSync(path.join(appDir, name)))
+      console.warn(`Note: app/${name} is missing, so this build shows the static backdrop instead of the wave.`);
   }
   fs.mkdirSync(outputDir, { recursive: true });
   fs.mkdirSync(cliStateDir, { recursive: true });

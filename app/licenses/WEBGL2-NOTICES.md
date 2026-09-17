@@ -33,8 +33,9 @@ Technical reference paths:
 
 ## FXAA
 
-The composite shader's FXAA edge search is adapted from the existing LG-XMB
-`wave-post.js`, itself derived from three.js `FXAAShader.js`, revision
+The composite shader's FXAA edge search is adapted from LG-XMB's earlier
+`wave-post.js` (removed in 0.1.31), itself derived from three.js `FXAAShader.js`,
+revision
 `caddbf4cd84b62d7edf6b9fc937ca709afdfe915`.
 
 Copyright 2010-2025 three.js authors. MIT license, reproduced in
@@ -56,3 +57,14 @@ resources. These original inputs are **not** relicensed as new project source.
 They are excluded from the source-only archive and ignored by the installer.
 The private preview is for this user's local research and comparison; it is not a
 public asset release. Keep whole RAM dumps and account/session data out of Git.
+
+## Monthly background (ps3-gradient-backgrounds pack)
+
+`shaders/monthlyBackground.frag` is the constant-folded port of `back_colours0.fpo`
+and `app/ps3-background-clock.js` the recovered calendar and day/night arithmetic
+from `custom_render_plugin.sprx` 3.01, both from the ps3-gradient-backgrounds
+research pack, checked there against the decoded instructions to float32.
+`app/ps3-background-data.js` holds the 24 `textures/month_bg` top levels (64x32
+RGBA8) out of `lines.qrc`. It is local data, gitignored, and not relicensed as
+project source. The bicubic upsample in `compositeFragment.frag` is a stand-in
+for `bg_copy.fpo`, whose lookup table is not recovered.

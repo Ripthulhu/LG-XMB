@@ -33,8 +33,9 @@ Technical reference paths:
 
 ## FXAA
 
-The composite shader's FXAA edge search is adapted from the existing LG-XMB
-`wave-post.js`, itself derived from three.js `FXAAShader.js`, revision
+The composite shader's FXAA edge search is adapted from LG-XMB's earlier
+`wave-post.js` (removed in 0.1.31), itself derived from three.js `FXAAShader.js`,
+revision
 `caddbf4cd84b62d7edf6b9fc937ca709afdfe915`.
 
 Copyright 2010-2025 three.js authors. MIT license, reproduced in

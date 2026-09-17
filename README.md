@@ -26,9 +26,10 @@ or resetting the final position. Reduced motion disables menu transitions.
 ## Wave particles
 
 Settings → Waves includes **Particles: On / Off** and **Particle density:
-Low / Normal / High** (500 / 2,000 / 4,000). Normal follows the reference's count.
+Low / Medium / Normal** (500 / 1,000 / 2,000). Normal is the count the console ran.
 The sparkle layer follows Wave speed, brightness, and animation settings; it
-stops with the renderer when Home is hidden. Classic/Canvas fallback omits it.
+stops with the renderer when Home is hidden. Without WebGL 2 there's no wave
+and no particles, only the static backdrop.
 
 ## Background music
 
@@ -64,8 +65,8 @@ the same guide.
 Releases include the installable IPK, SHA-256 checksums and matching source.
 Releases are C5 prereleases, not stable or broadly compatible ones. Read the notes
 for the version you download in [docs/releases/](docs/releases/), cause the known
-limitations differ between them. Unpublished development builds remain in
-GitHub Actions as `lg-xmb-candidate` after **Checks** succeeds.
+limitations differ between them. There's no CI build right now; development
+builds come from `npm run package` on a computer.
 
 ## Develop
 
@@ -99,18 +100,17 @@ copyright and license notices are retained in [LICENSE](LICENSE),
 [third-party notices](THIRD-PARTY-NOTICES.md), and [wave provenance](WAVE-PROVENANCE.md).
 This project is not affiliated with LG or Sony.
 
-The wave background uses a PS3-style spline surface. Without WebGL it falls back to a static gradient.
-See [renderer provenance](WAVE-PROVENANCE.md) for sources and limitations.
+The wave is a WebGL 2 reconstruction of the PS3's own renderer, see
+[docs/WEBGL2.md](docs/WEBGL2.md) and [its notices](docs/WEBGL2-NOTICES.md).
+Without WebGL 2 it falls back to a static gradient.
+[Wave provenance](WAVE-PROVENANCE.md) covers the renderer shipped up to 0.1.30.
 
 ## Wave colours
 
 Open **Settings → Waves → Wave colours**. **Current theme** keeps the existing
-Appearance palette. **Monthly presets** provides January–December and explicit
+Appearance palette. **PS3 original** draws the console's own monthly background,
+following the TV clock (the month, and day or night by the hour) or pinned to a
+month under **Clock**. **Monthly presets** provides January–December and explicit
 Day/Night variants from the reference project. **Original (RGB Sliders)** exposes
 red, green, blue, top intensity and bottom intensity. Choices apply immediately
-and are saved independently of quality settings. Day/Night is a manual choice,
-not an automatic schedule. Back returns to Waves.
-
-Particles now form a narrower field on the left that spreads towards the right.
-Depth-dependent movement, size and soft focus create a floating-space effect;
-this is a visual approximation, not an audio-reactive effect.
+and are saved independently of quality settings. Back returns to Waves.

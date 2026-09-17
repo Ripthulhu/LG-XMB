@@ -1,5 +1,10 @@
 # Wave renderer
 
+Note that this file describes the renderer shipped up to 0.1.30. It was removed
+in 0.1.31 for the native WebGL 2 reconstruction, which is documented in
+`docs/WEBGL2.md` and `docs/WEBGL2-NOTICES.md`. The notes stay because those
+versions were released with it.
+
 ## PS3-style surface
 
 `app/ps3-wave.js` adapts `ps3xmbwave/spline-reverse.js`, `spline.js` and

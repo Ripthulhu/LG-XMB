@@ -21,3 +21,6 @@ app/audio/
 /app/ps3-background-data.js
 /private-data/
 /evidence/
+
+# Console-derived wave fixtures and firmware tables for the WebGL 2 experiment; never publish.
+experiments/ps3-wave-webgl2/private/

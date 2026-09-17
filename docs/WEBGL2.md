@@ -35,8 +35,8 @@ rebase the small integration changes instead.
 The installer does not alter app identity, app version, helper-startup code,
 privileged helpers, input previews, remote-button code, or their pins. Existing
 preference keys remain intact. The product Content Security Policy stays unchanged.
-The old renderer files may remain on disk for history, but are not loaded by
-`app/index.html`; no old shader is used in the new render path.
+The old renderer was deleted in 0.1.31. Nothing from it is loaded by
+`app/index.html` and no old shader is used in the new render path.
 
 After installation, use the repository's existing preview and package commands.
 An IPK generated from this local tree includes the ignored local pack; do not

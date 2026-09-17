@@ -13,7 +13,6 @@
     "test:compat": "node tests/compat-layout-browser.cjs",
     "tools:download": "node tools/dev-tools.cjs",
     "test:music": "node tests/background-music-browser.cjs",
-    "test:effects": "node tests/effects-browser.cjs",
     "test:menu": "node tests/menu-browser.cjs"
   },
   "engines": {

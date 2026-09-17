@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Focused menu/wave checks; separate from the complete regression suite.
+// Focused menu checks; separate from the complete regression suite.
 'use strict';
 const {chromium} = require('playwright');
 const {spawn} = require('node:child_process');
@@ -23,7 +23,6 @@ const path = require('node:path');
       ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? {executablePath:process.env.PLAYWRIGHT_EXECUTABLE_PATH} : {}),
       args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
     await require('./category-transition-browser.cjs')(browser,checks,errors);
-    await require('./ps3-wave-browser.cjs')(browser,checks,errors);
     const result = {checks,errors,browser:await browser.version(),normalURL:true,testedOnTV:false};
     fs.writeFileSync(path.join(root,'qa/menu-check.json'),JSON.stringify(result,null,2));
     console.log(JSON.stringify(result,null,2));

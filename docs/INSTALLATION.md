@@ -118,8 +118,8 @@ npm run verify:package
 ```
 
 The IPK and checksum are in `dist/`. The packager stages the helper from its
-reviewed sources without putting generated files in `app/`. CI also checks the
-bytes, root ownership, and directory/file permissions inside the actual IPK.
+reviewed sources without putting generated files in `app/`. Packaging also checks
+the bytes, root ownership, and directory/file permissions inside the actual IPK.
 The pinned CLI creates 0777 directories, so packaging normalizes app-owned
 entries to 0755/0644 before checksums are generated. Shared TV ancestor entries
 and file contents are not changed:

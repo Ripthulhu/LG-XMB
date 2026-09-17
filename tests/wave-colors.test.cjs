@@ -39,8 +39,3 @@ test('changing colour uniforms requires no new GPU objects and theme mode clears
   const u=api.locations(gl,{});api.upload(gl,u,api.resolve({mode:'monthly',month:2}));api.upload(gl,u,null);
   assert.deepEqual(calls.at(-1),['uColorEnabled',0]);assert.ok(calls.some(c=>c[0]==='uColorStart'));
 });
-test('particle depth field stays static-buffer based, with fan-out and soft focus rather than audio analysis',()=>{
-  const source=fs.readFileSync(path.join(__dirname,'../app/ps3-particles.js'),'utf8');
-  assert.match(source,/perspective=2\.6/);assert.match(source,/mix\(0\.46,1\.65,across\)/);assert.match(source,/vDefocus/);
-  assert.doesNotMatch(source,/AudioContext|AnalyserNode|getByteFrequencyData|requestAnimationFrame/);
-});

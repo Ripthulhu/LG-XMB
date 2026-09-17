@@ -41,26 +41,33 @@ Forcing a fallback is not emulating Chromium 87 or testing a TV. To use an
 installed browser, set `PLAYWRIGHT_CHANNEL=chrome` or
 `PLAYWRIGHT_EXECUTABLE_PATH` to its executable.
 
-For the existing full browser suite, start `npm run preview` in another terminal,
-then run `npm run test:browser` and `node tests/wave-retention-browser.cjs`.
-These use installed Edge by default; `PLAYWRIGHT_CHANNEL=chrome` selects Chrome.
-CI installs the required browsers explicitly.
+For the full browser suite, start `npm run preview` in another terminal, then
+run `npm run test:browser`. It uses installed Edge by default;
+`PLAYWRIGHT_CHANNEL=chrome` selects Chrome. Note that it needs the local
+reference pack (`app/ps3-native-data.js` and `app/ps3-background-data.js`),
+cause without it the wave is the static backdrop and the WebGL checks fail.
 
 `npm run test:music` runs the focused background-music browser checks against the
 preview server, using generated silent PCM for audio lifecycle checks. No recording is required.
 Native launches
 and HDMI playback are simulated; actual audio handoff still needs a TV test.
 
-`npm run test:menu` runs the focused category-motion and wave-renderer checks
-against a local preview server. It tests both UI sizes, interrupted transitions,
-reduced motion, selection styling and renderer lifetime. It does not replace the
-full browser suite or on-TV testing.
+`npm run test:menu` runs the focused category-motion checks against a local
+preview server: both UI sizes, interrupted transitions, reduced motion and
+selection styling. It does not replace the full browser suite or on-TV testing.
 
 ## Releases
 
 Build with `npm run package`, then `npm run verify:package`. Review manifest
 changes together with the helper's exact-byte pin. Keep the app ID and existing
 preferences stable unless the change includes a migration.
+
+There's no CI and no release workflow at the moment, on purpose. The renderer is
+still being tested on the TV, so builds are made on a computer and installed by
+hand (see [Installation](docs/INSTALLATION.md)). When a build is worth
+publishing, attach the IPK, `SHA256SUMS` and matching source from `dist/` to a
+GitHub release yourself, with notes in `docs/releases/<app-version>.md` that
+include the known limitations.
 
 A release needs a TV test record, including install, upgrade, removal and recovery.
 List untested platforms as untested. Automated tests are not a substitute for
@@ -71,27 +78,3 @@ Follow the [Homebrew publishing rules](https://www.webosbrew.org/develop/guides/
 Disclose AI assistance in review or submission; a maintainer must understand and
 review the code. Do not replace missing validation with generated descriptions
 or compatibility claims.
-
-### Publish a prerelease
-
-Add notes in `docs/releases/<app-version>.md`, including known limitations.
-After **Checks** succeeds for a push to `main`, either run **Publish prerelease**
-in GitHub Actions with that run ID and full source commit SHA, or update
-`.github/release-request.json` on `main` with the same two string fields:
-
-```json
-{
-  "run_id": "<successful Checks push run ID>",
-  "source_sha": "<full tested commit SHA>"
-}
-```
-
-Only changes to that request file trigger publishing on a push; ordinary code
-pushes do not. No release branch or PR is required. The referenced source must
-already be on `main`, with a successful Checks build and release notes.
-
-The workflow promotes that exact IPK and matching source, verifies the files
-before and after upload, and publishes a prerelease with SHA-256 checksums. Notes
-come from the tested commit. It does not rebuild the app or replace an existing
-release or tag. Changing the request is an explicit release action, not a way to
-skip checks.

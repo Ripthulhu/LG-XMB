@@ -39,23 +39,25 @@ Revision: `1ec453a9dddec5448d615116ff428349f42d454e`.
 Copyright (c) 2025 Mart. MIT License; the full permission and disclaimer are
 included in `app/licenses/PS3-XMB-MIT.txt`.
 
-`app/ps3-wave.js` adapts the synthetic spline displacement, parameter values,
-mesh rendering and Fresnel-style shading from `ps3xmbwave/spline-reverse.js`,
-`spline.js` and `spline-settings.js`. The WebGL 1 port uses reusable CPU mesh
-buffers, time-based smoothing, smooth normals and a soft RGBA8 composite.
-The combined app remains GPL version 3; the MIT notice is preserved in this file
-and the package. The reference credits Alphardex's CodePen as its starting point.
-No Sony firmware code, extracted DDS assets or PlayStation logos are included.
-See `WAVE-PROVENANCE.md` for scope and differences from the reference.
+Up to 0.1.30 `app/ps3-wave.js` adapted the synthetic spline displacement,
+parameter values, mesh rendering and Fresnel-style shading from
+`ps3xmbwave/spline-reverse.js`, `spline.js` and `spline-settings.js`. That
+renderer was removed in 0.1.31. `app/wave-colors.js` still carries the monthly
+gradient tables from the same project, so the MIT notice stays in this file and
+the package. The combined app remains GPL version 3. The reference credits
+Alphardex's CodePen as its starting point. See `WAVE-PROVENANCE.md` for the
+removed renderer and `docs/WEBGL2-NOTICES.md` for the current one.
 
 ## FXAA edge-search shader
 
-`app/wave-post.js` adapts three.js `examples/jsm/shaders/FXAAShader.js` at
+The FXAA edge search in `shaders/compositeFragment.frag` (bundled into
+`app/ps3-native-shaders.js`) came in through the removed `app/wave-post.js`,
+which adapted three.js `examples/jsm/shaders/FXAAShader.js` at
 `caddbf4cd84b62d7edf6b9fc937ca709afdfe915` (MIT; Copyright 2010-2025 three.js
 authors). Upstream credits NVIDIA's FXAA algorithm, Jasper Flick's implementation
 and Dave Hoskins' GLSL port. The full MIT notice is in
 `app/licenses/THREE-FXAA-MIT.txt`. No Three.js runtime dependency is included.
-See `WAVE-PROVENANCE.md` for WebGL 1 changes and the wave-opacity variant.
+See `docs/WEBGL2-NOTICES.md` for the GLSL ES 3.00 changes.
 
 ## User-provided background music
 
