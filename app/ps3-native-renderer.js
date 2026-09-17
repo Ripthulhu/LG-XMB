@@ -714,7 +714,9 @@
       // the canvas instead of swapping it, half of all fragment work. The
       // compositor keeps showing the last presented frame while we're
       // paused, the buffer is only cleared by the next draw.
-      this.gl = this.canvas.getContext('webgl2', { alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
+      // preserveDrawingBuffer stays off in production; the pixel-readback
+      // browser check asks for it explicitly through the constructor option.
+      this.gl = this.canvas.getContext('webgl2', { alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: this.options.preserveDrawingBuffer === true, powerPreference: 'high-performance' });
       if (!this.gl)
         throw new Error('WebGL 2 unavailable; using static backdrop');
       var gl = this.gl;
@@ -808,9 +810,9 @@
         this.pollCompile();
       return;
     }
-    if (this.resizePending)
-      this.resize();
-    this.draw();
+    // resize() already paints when the size changed; don't paint it twice.
+    if (!(this.resizePending && this.resize()))
+      this.draw();
     if (!this.reducedMotion && this.mode === 'webgl' && !this.raf)
       this.raf = root.requestAnimationFrame(this.tickBound);
   };

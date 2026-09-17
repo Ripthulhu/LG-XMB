@@ -11,15 +11,18 @@ const {chromium} = require('playwright');
     const page = await browser.newPage({viewport: {width: 1920, height: 1080}});
     page.on('pageerror', error => errors.push(error.message));
     await page.setContent('<canvas id="testWave" style="width:1280px;height:720px"></canvas>');
-    // wave.js hosts the context and the clock but no longer draws anything on
-    // its own, so the spline and the modules it reaches for load first, in the
-    // same order index.html uses.
-    for (const module of ['wave-post.js', 'ps3-particles.js', 'wave-colors.js', 'wave-msaa.js',
-      'ps3-wave.js', 'wave.js']) {
+    // The native renderer's script chain, in the order index.html uses. The two
+    // data files are the local reference pack; without them C5Wave reports a
+    // static backdrop and this check cannot run.
+    for (const module of ['wave-colors.js', 'ps3-native-data.js', 'ps3-background-data.js', 'ps3-background-clock.js',
+      'ps3-native-core.js', 'ps3-native-shaders.js', 'ps3-native-renderer.js']) {
       await page.addScriptTag({path: path.resolve(__dirname, '../app/' + module)});
     }
     await page.evaluate(() => {
-      window.waveTest = new C5Wave(document.getElementById('testWave'), {quality: '720p', adaptive: false});
+      // The app runs without preserveDrawingBuffer (it was half the C5's GPU
+      // work). This check reads pixels back after presentation, which only
+      // works with a preserved buffer, so it asks for one explicitly.
+      window.waveTest = new C5Wave(document.getElementById('testWave'), {quality: '720p', adaptive: false, preserveDrawingBuffer: true});
       waveTest.setReducedMotion(true);
       window.pixelState = () => {
         const gl = waveTest.gl, canvas = waveTest.canvas;
@@ -36,28 +39,26 @@ const {chromium} = require('playwright');
     await page.waitForFunction(() => waveTest.mode === 'webgl');
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const context = await page.evaluate(() => waveTest.getDiagnostics());
-    assert.equal(context.capabilities.contextAttributes.preserveDrawingBuffer, false);
+    assert.equal(context.capabilities.contextAttributes.preserveDrawingBuffer, true, 'the test instance asked for a preserved buffer');
     assert.equal(context.quality, '720p');
     assert.equal(context.targetFps, 60);
     const painted = await page.evaluate(() => pixelState());
     assert.deepEqual([painted.width, painted.height], [1280, 720]);
     assert.ok(painted.nonblack > 0, 'the retained frame contains rendered colour after presentation');
-    checks.push('Rich WebGL keeps a nonblack presented frame with 720p backing and the unchanged 30fps target');
+    checks.push('Native WebGL 2 keeps a nonblack presented frame with 720p backing and a 60 fps target');
 
     await page.evaluate(() => {
-      // Count repaints, not GL calls: the spline puts a backdrop and a composite
-      // pass on the wire for every one of them, so drawArrays no longer answers
-      // the question these assertions ask.
+      // Count repaints, not GL calls: one repaint is several draws on the wire.
       window.waveDraws = 0;
-      const draw = waveTest._draw.bind(waveTest);
-      waveTest._draw = (...args) => { waveDraws++; return draw(...args); };
+      const draw = waveTest.draw.bind(waveTest);
+      waveTest.draw = (...args) => { waveDraws++; return draw(...args); };
       waveTest.setPaused(true);
       Object.defineProperty(document, 'hidden', {configurable: true, value: true});
       document.dispatchEvent(new Event('visibilitychange'));
       waveTest.canvas.style.width = '1000px'; waveTest.canvas.style.height = '600px';
-      waveTest._resize();
+      waveTest.resize();
       waveTest.canvas.style.width = '960px'; waveTest.canvas.style.height = '540px';
-      waveTest._resize();
+      waveTest.resize();
     });
     await page.waitForTimeout(60);
     const hidden = await page.evaluate(() => ({pixels: pixelState(), draws: waveDraws,
@@ -83,13 +84,27 @@ const {chromium} = require('playwright');
     assert.equal(resumed.resizePending, false);
     checks.push('Resume applies the latest deferred geometry and repaints once, retaining reduced-motion behavior');
 
-    await page.evaluate(() => { waveTest._resize(); waveTest._resize(); });
+    await page.evaluate(() => { waveTest.resize(); waveTest.resize(); });
     const unchanged = await page.evaluate(() => ({pixels: pixelState(), draws: waveDraws}));
     assert.deepEqual(unchanged.pixels, resumed.pixels);
     assert.equal(unchanged.draws, resumed.draws);
     checks.push('Unchanged-size events neither clear the frame nor redraw it');
+
+    // The production default: no preserved buffer.
+    const production = await page.evaluate(() => {
+      const c = document.createElement('canvas'); c.style.width = '640px'; c.style.height = '360px'; document.body.appendChild(c);
+      window.waveDefault = new C5Wave(c, {quality: '540p', adaptive: false});
+      waveDefault.setReducedMotion(true);
+      return new Promise(resolve => {
+        const poll = () => waveDefault.mode === 'webgl' || waveDefault.mode === 'static' ? resolve(waveDefault.getDiagnostics()) : setTimeout(poll, 20);
+        poll();
+      });
+    });
+    assert.equal(production.mode, 'webgl');
+    assert.equal(production.capabilities.contextAttributes.preserveDrawingBuffer, false, 'production requests no preserved buffer');
+    checks.push('Default construction requests no preserved drawing buffer');
     assert.deepEqual(errors, []);
-    await page.evaluate(() => waveTest.destroy());
+    await page.evaluate(() => { waveDefault.destroy(); waveTest.destroy(); });
     const result = {passed: checks.length, checks, browser: await browser.version(), testedOnTV: false,
       preserveDrawingBuffer: false, nativePerformanceAndPresentationVerified: false};
     const output = path.resolve(__dirname, '../qa/wave-retention-check.json');
