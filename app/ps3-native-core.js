@@ -286,6 +286,9 @@
     this.tick = 0;
     this.births = 0;
     this.refused = 0;
+    // How many particles may be alive. The pool can be bigger than this, so a
+    // lower density doesn't pay for the higher one's slots.
+    this.limit = particles.capacity;
     this.revision = -1;
     this.free = [];
     for (var i = 0; i < particles.capacity; i++) if (particles.state[i * 12 + 3] === DEAD) this.free.push(i);
@@ -315,7 +318,7 @@
       var c = this.previous[i], made = B.createBirth(c.position, this.sample(c.x, c.y), settings, this.signed, [0, 0, 1]);
       if (!made) continue;
       // A full pool refuses the birth, it never overwrites a live particle.
-      if (B.applyBirth(this.particles.state, this.free, made) >= 0) born++; else this.refused++;
+      if (this.particles.capacity - this.free.length < this.limit && B.applyBirth(this.particles.state, this.free, made) >= 0) born++; else this.refused++;
     }
     this.previous = fresh;
     this.births += born;

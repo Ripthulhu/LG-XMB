@@ -27,7 +27,7 @@ or resetting the final position. Reduced motion disables menu transitions.
 ## Wave particles
 
 Settings → Waves includes **Particles: On / Off** and **Particle density:
-Low / Medium / Normal** (500 / 1,000 / 2,000). Normal is the count the console ran.
+Low / Medium / High** (1,000 / 2,000 / 4,000). Medium is the count the console ran.
 Particles are born on the moving wave and leave along its local motion, the way
 the console's emitter does it, so they gather around the sheet. Moving up and
 down the menu blows a short local wind through them and a left or right press

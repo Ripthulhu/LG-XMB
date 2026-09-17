@@ -35,7 +35,21 @@
       throw new Error('Local PS3 reference pack missing. Run tools/import-ps3-reference.py.');
     this.reference = reference;
     this.wave = new Core.Wave(reference.wave, reference.settings);
-    this.particles = new Core.Particles(reference.particles, new Core.Parameters(reference.particleParams));
+    // With the emitter the pool grows to 4096 slots, so the High density has
+    // room. The extra slots start dead and borrow a captured orientation, cause
+    // the console's allocator keeps whatever quaternion a slot already holds and
+    // how it fills a fresh pool isn't recovered.
+    var records = reference.particles, captured = records.length / 12;
+    if (root.LGXMBRecoveredParticleBirth && captured < 4096) {
+      var grown = new Float32Array(4096 * 12);
+      grown.set(records);
+      for (var slot = captured; slot < 4096; slot++) {
+        grown[slot * 12 + 3] = Core.DEAD;
+        for (var q = 8; q < 12; q++) grown[slot * 12 + q] = records[(slot % captured) * 12 + q];
+      }
+      records = grown;
+    }
+    this.particles = new Core.Particles(records, new Core.Parameters(reference.particleParams));
     // Births come from the moving sheet when the recovered host equations are
     // loaded. Without them the captured particles are recycled, as before.
     if (root.LGXMBRecoveredParticleBirth) {
@@ -584,6 +598,7 @@
     gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
     gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
     if (this.settings.particles) {
+      if (p.emitter) p.emitter.limit = this.settings.particleCount;
       this.lastCount = Math.min(p.count, this.settings.particleCount);
       if (this.particleRevision !== p.revision || !this.particlesUploaded) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer);

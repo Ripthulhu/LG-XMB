@@ -12,7 +12,9 @@ if(saved && typeof saved === 'object') {
   if([0,2,4].indexOf(saved.waveMSAA)!==-1)preferences.waveMSAA=saved.waveMSAA;
   if([30,60].indexOf(saved.waveFrameRate)!==-1)preferences.waveFrameRate=saved.waveFrameRate;
   if(typeof saved.waveParticles==='boolean')preferences.waveParticles=saved.waveParticles;
-  if([500,1000,2000].indexOf(saved.waveParticleCount)!==-1)preferences.waveParticleCount=saved.waveParticleCount;
+  // 500 was Low until the densities became 1,000 / 2,000 / 4,000.
+  if(saved.waveParticleCount===500)preferences.waveParticleCount=1000;
+  else if([1000,2000,4000].indexOf(saved.waveParticleCount)!==-1)preferences.waveParticleCount=saved.waveParticleCount;
   preferences.musicEnabled=saved.musicEnabled===true;
   if([0.1,0.25,0.5,0.75,1].indexOf(saved.musicVolume)!==-1)preferences.musicVolume=saved.musicVolume;
   if([1,1.25,1.5,2].indexOf(saved.waveSampling)!==-1)preferences.waveSampling=saved.waveSampling;
@@ -250,8 +252,9 @@ function openWaveSettings(){
   qualityChoice('Mesh detail',[['standard','Reduced'],['high','Original'],['fine','Original (legacy)']],'waveDetail');
   qualityChoice('Edge softness',[[0,'Sharp'],[0.75,'Subtle'],[1.5,'Soft']],'waveSoftness');
   qualityChoice('Particles',[[true,'On'],[false,'Off']],'waveParticles');
-  // The capture holds 2,025 particle records, so nothing above 2,000 exists to draw.
-  qualityChoice('Particle density',[[500,'Low'],[1000,'Medium'],[2000,'Normal']],'waveParticleCount');
+  // Births come from the wave now, so High really fills a bigger pool. Medium
+  // is the count the console ran.
+  qualityChoice('Particle density',[[1000,'Low'],[2000,'Medium'],[4000,'High']],'waveParticleCount');
   qualityChoice('Post-process antialiasing',[['off','Off'],['fxaa','FXAA'],['wave','Wave FXAA']],'wavePostprocess');
   qualityChoice('Smoothing strength',[['gentle','Gentle'],['normal','Normal'],['strong','Strong']],'waveSmoothing');
   var note=document.createElement('p');note.className='wave-quality-note';
