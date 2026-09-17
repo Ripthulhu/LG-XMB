@@ -17,7 +17,8 @@ This feature does not need the root helper or change names on the TV.
 
 ## Menu motion
 
-Left/right uses the same short CSS transform transition as up/down. The
+Left/right uses the same CSS transform transition as up/down, shaped like the
+PS3's own position curve (95% of the way at 200 ms, settling by 400 ms). The
 horizontal bar glides to the selected category; its icon scales into focus.
 The vertical list stays anchored instead of sliding sideways or fading as a
 whole. Repeated input retargets the current transition, without queuing effects

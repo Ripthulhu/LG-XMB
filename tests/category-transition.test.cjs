@@ -62,8 +62,8 @@ test('destroy is idempotent; an absent bar never prevents the selection update',
   assert.equal(f.updates(),1);assert.equal(f.classes.has('categories-instant'),true);
   const empty=new f.root.LGXMBCategoryTransition();empty.change(1,f.update,true);empty.destroy();assert.equal(f.updates(),2);
 });
-test('horizontal and vertical motion share the 160 ms CSS timing and icon scale transition',()=>{
-  assert.match(css,/--navigation-duration:\.16s/);
+test('horizontal and vertical motion share the 400 ms CSS timing and icon scale transition',()=>{
+  assert.match(css,/--navigation-duration:\.4s/);
   for(const selector of ['#categories','.item','.item-icon','.category .category-icon']){
     const blocks=css.replace(/\/\*[\s\S]*?\*\//g,'').split('}').filter(b=>b.slice(0,b.indexOf('{')).trim()===selector);
     assert.ok(blocks.some(b=>b.includes('transition:transform var(--navigation-duration) var(--ease)')),selector);
@@ -73,4 +73,15 @@ test('horizontal and vertical motion share the 160 ms CSS timing and icon scale 
 test('transition code never touches the list or reads layout, clones rows, or schedules cleanup',()=>{
   assert.doesNotMatch(source,/cloneNode|getBoundingClientRect|getComputedStyle|querySelector|\.children|requestAnimationFrame|setTimeout|setInterval|\.animate\(|onfinish|oncancel|\.style\./);
   assert.doesNotMatch(source,/this\.list|willChange|opacityFrom|columnFrom/);
+});
+
+test('the easing tracks the PS3 position curve recovered from the 3.01 firmware',()=>{
+  // Selector 5 with the 200 ms setting: p = (p + (1 - p) * k) once per 60 Hz frame.
+  const k=0.22058835625648499,match=/--ease:cubic-bezier\(([^)]+)\);--navigation-duration:([\d.]+)s/.exec(css);
+  assert.ok(match);const [x1,y1,x2,y2]=match[1].split(',').map(Number),frames=Number(match[2])*60;
+  const console3=[0];for(let i=1;i<=frames;i++)console3.push(console3[i-1]+(1-console3[i-1])*k);
+  assert.ok(Math.abs(console3[12]-0.9497)<0.001,'95% at 200 ms');
+  function bezier(x){let lo=0,hi=1;for(let n=0;n<40;n++){const s=(lo+hi)/2,bx=3*(1-s)*(1-s)*s*x1+3*(1-s)*s*s*x2+s*s*s;if(bx<x)lo=s;else hi=s;}
+    const s=(lo+hi)/2;return 3*(1-s)*(1-s)*s*y1+3*(1-s)*s*s*y2+s*s*s;}
+  for(let i=1;i<frames;i++)assert.ok(Math.abs(bezier(i/frames)-console3[i])<0.006,'frame '+i);
 });

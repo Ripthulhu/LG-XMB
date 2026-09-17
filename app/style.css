@@ -1,5 +1,12 @@
 /* OpenXMB C5 web adaptation. SPDX-License-Identifier: GPL-3.0-or-later */
-:root{color-scheme:dark;--accent:#ffffff;--accent-rgb:255,255,255;--background:#050911;--background-rgb:5,9,17;--text:#ffffff;--muted:rgba(255,255,255,.65);--anchor:31%;--ease:cubic-bezier(.22,.8,.2,1);--navigation-duration:.16s}
+:root{color-scheme:dark;--accent:#ffffff;--accent-rgb:255,255,255;--background:#050911;--background-rgb:5,9,17;--text:#ffffff;--muted:rgba(255,255,255,.65);--anchor:31%;--ease:cubic-bezier(.16,.92,.34,1);--navigation-duration:.4s}
+/* Menu motion is the PS3's position curve. The 3.01 firmware moves the bar and
+   the lists with a per-frame approach to the target, p += (1 - p) * 0.2206 at
+   60 Hz for its 200 ms setting: 53% at 50 ms, 95% at 200 ms, 99.7% at 400 ms,
+   and it retargets from wherever the widget is. This bezier over 400 ms stays
+   within 0.4% of that, and a CSS transition retargets the same way. It runs on
+   the compositor, so it costs the main thread nothing per frame. Don't drive
+   it from JavaScript. */
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--background);font-family:"LG Smart UI","Segoe UI",Arial,sans-serif;color:var(--text)}
 body{transition:background 1s ease}button{font:inherit;color:inherit;border:0;cursor:pointer}button:focus-visible{outline:2px solid var(--accent);outline-offset:7px}button:focus:not(:focus-visible){outline:none}button:disabled{cursor:wait}svg{width:100%;height:100%;display:block}
 #wave,.ambient{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}.ambient{background:radial-gradient(ellipse at 57% 21%,rgba(var(--accent-rgb),.05),transparent 52%),linear-gradient(180deg,rgba(0,0,0,.08),transparent 55%,rgba(0,0,0,.22))}

@@ -43,21 +43,21 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
         menuPress('ArrowLeft');menuPress('ArrowDown');menuPress('ArrowDown');menuPress('ArrowDown');
         window.inputRows=[...document.querySelectorAll('#items>.item')];
       });
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(450);
       // Up/down is the reference: measure its actual CSS transform timing.
       const vertical=await page.evaluate(()=>{
         menuPress('ArrowUp');const row=document.querySelector('#items>.item');
         const animation=row.getAnimations().find(a=>a.transitionProperty==='transform');
         return animation&&{duration:animation.effect.getTiming().duration,easing:animation.effect.getTiming().easing};
       });
-      assert.equal(vertical.duration,160);await page.waitForTimeout(200);
-      await page.evaluate(()=>menuPress('ArrowDown'));await page.waitForTimeout(200);
+      assert.equal(vertical.duration,400);await page.waitForTimeout(450);
+      await page.evaluate(()=>menuPress('ArrowDown'));await page.waitForTimeout(450);
       await page.evaluate(()=>menuPress('ArrowRight'));
       const frame=await page.evaluate(seekBar,0);assert.deepEqual(frame.travel,vertical);
       assert.equal(await page.evaluate(()=>C5App.getState().category),'watch');
       const initial=await page.evaluate(column);
       assert.equal(initial.transform,'none');assert.equal(initial.opacity,'1');assert.equal(initial.effects,0);
-      for(const time of [40,80,159,160]){
+      for(const time of [100,200,399,400]){
         await page.evaluate(seekBar,time);
         assert.deepEqual(await page.evaluate(column),initial,'the entire vertical column must stay anchored');
       }
@@ -67,10 +67,23 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       const before=await page.screenshot({clip});
       const transform=await page.locator('#categories').evaluate(n=>n.style.transform);
       await page.evaluate(()=>document.getElementById('categories').getAnimations({subtree:true}).forEach(a=>a.finish()));
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(450);
       assert.deepEqual(await page.evaluate(column),initial);
       assert.equal(await page.locator('#categories').evaluate(n=>n.style.transform),transform);
-      assert.deepEqual(await page.screenshot({clip}),before,'icon rasterization changes after settling');
+      // Pixels, not PNG bytes. The wave shows through the icon, and the GPU's
+      // blend over it wobbles by one level on a few dozen pixels between two
+      // identical frames. A one-pixel snap moves an edge, which is a change of
+      // tens of levels, so two levels of slack still catches it.
+      const settled=await page.screenshot({clip});
+      const delta=await page.evaluate(async([first,second])=>{
+        const load=data=>new Promise(resolve=>{const image=new Image();image.onload=()=>resolve(image);image.src='data:image/png;base64,'+data;});
+        const images=[await load(first),await load(second)];
+        if(images[0].width!==images[1].width||images[0].height!==images[1].height)return 255;
+        const canvas=document.createElement('canvas');canvas.width=images[0].width;canvas.height=images[0].height;
+        const context=canvas.getContext('2d'),pixels=images.map(image=>{context.clearRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0);return context.getImageData(0,0,canvas.width,canvas.height).data;});
+        let worst=0;for(let i=0;i<pixels[0].length;i++)worst=Math.max(worst,Math.abs(pixels[0][i]-pixels[1][i]));return worst;
+      },[before.toString('base64'),settled.toString('base64')]);
+      assert.ok(delta<=2,'icon rasterization changes after settling: '+delta+' levels');
 
       await page.evaluate(()=>menuPress('ArrowLeft'));await page.evaluate(seekBar,60);
       const reversal=await page.evaluate(()=>{
@@ -83,7 +96,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       assert.ok(Math.abs(reversal)<0.05,'CSS reversal must start at the current horizontal position');
       await page.evaluate(()=>document.getElementById('categories').getAnimations({subtree:true}).forEach(a=>a.finish()));
       await page.waitForTimeout(30);
-      await page.evaluate(()=>menuPress('ArrowLeft'));await page.waitForTimeout(200);
+      await page.evaluate(()=>menuPress('ArrowLeft'));await page.waitForTimeout(450);
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#items>.item')].every((n,i)=>n===inputRows[i])),true);
       assert.equal(await page.locator('#items .above-bar').count(),3);
       assert.equal(await page.evaluate(()=>C5App.getState().item),'com.webos.app.hdmi4');
@@ -112,11 +125,11 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       });
       assert.ok(burst.travel<=1);assert.equal(burst.list,0);assert.equal(burst.ghosts,0);assert.equal(burst.boxes,1);
       assert.equal(new Set(burst.ids).size,burst.ids.length);
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(450);
       // A far pointer jump is still one position transition and selection is immediate.
       await page.evaluate(()=>document.querySelector('[aria-label="Settings"]').click());
       assert.equal(await page.evaluate(()=>C5App.getState().category),'settings');
-      const jump=await page.evaluate(seekBar,60);assert.equal(jump.travel.duration,160);
+      const jump=await page.evaluate(seekBar,60);assert.equal(jump.travel.duration,400);
       await page.screenshot({path:path.join(dir,`menu-css-${width}.png`)});
       await page.evaluate(()=>menuPress('Enter'));assert.equal(await page.evaluate(()=>C5App.getState().modal),'appearance');
       assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().filter(a=>a.transitionProperty==='transform').length),0);
@@ -146,7 +159,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       assert.equal(await page.locator('#items').evaluate(n=>n.getAnimations().length),0);
       assert.equal(await page.locator('#items').evaluate(n=>getComputedStyle(n).opacity),'1');
       if(mode==='reduced'||mode==='system-reduced')assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().length),0);
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(450);
       checks.push(`${mode}: usable immediate selection, no column effects or JavaScript animation dependency`);
     }finally{await page.close();}
   }
