@@ -1,19 +1,21 @@
 #version 300 es
 // Recovered normals and Fresnel lookup, with an explicitly adapted linear
 // material/composite. Sony's encoded-HDR display chain is NOT reproduced here.
-precision highp float;
+// mediump ALU, the C5's Mali runs fp16 at twice the rate; the geometry
+// inputs stay highp because the clip-space normal is used raw.
+precision mediump float;
 uniform sampler2D uFresnel;
 uniform vec3 uWave;
 uniform float uBrightness;
 uniform vec3 uMaterial; // Fresnel coefficient, brightness coefficient, mipmap bias
-in vec4 tfPosition;
-in vec4 tfNormal;
-in vec2 vUV;
+in highp vec4 tfPosition;
+in highp vec4 tfNormal;
+in highp vec2 vUV;
 layout(location=0) out vec4 outColor;
 void main() {
-  float plen=max(length(tfPosition.xyz),0.000001);
-  float nlen=max(length(tfNormal.xyz),0.000001);
-  vec3 eye=tfPosition.xyz/plen;
+  highp float plen=max(length(tfPosition.xyz),0.000001);
+  highp float nlen=max(length(tfNormal.xyz),0.000001);
+  highp vec3 eye=tfPosition.xyz/plen;
   float cosine=abs(dot(eye,tfNormal.xyz/nlen));
   // Edge-on the dot goes to zero, and on a fold that's a region, not a line,
   // so the sheet dropped out in an oval. Floor it at a slice of the normal's

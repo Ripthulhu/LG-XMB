@@ -88,6 +88,7 @@
       this.glareProgram = this.program(Shaders.glareVertex, Shaders.glareFragment);
       this.compositeProgram = this.program(Shaders.fullscreenVertex, Shaders.compositeFragment);
       this.monthlyProgram = this.program(Shaders.fullscreenVertex, Shaders.monthlyBackground);
+      this.backdropProgram = this.program(Shaders.fullscreenVertex, Shaders.backdropFragment);
     }
     catch (error) {
       this.destroy(false);
@@ -165,6 +166,9 @@
     this.uniforms.glare = this.locations(this.glareProgram);
     this.uniforms.composite = this.locations(this.compositeProgram);
     this.uniforms.monthly = this.locations(this.monthlyProgram);
+    this.uniforms.backdrop = this.locations(this.backdropProgram);
+    this.backdrop = null;
+    this.backdropKey = '';
     this.waveVAO = this.resource('VertexArray');
     this.indexBuffer = this.resource('Buffer');
     this.fullscreenVAO = this.resource('VertexArray');
@@ -467,12 +471,57 @@
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return true;
   };
+  // Rows the projected sheet can reach: the spline stays inside the convex
+  // hull of its control points, and that holds for y/w too while w>0, so the
+  // control points' NDC extent bounds the surface. Margin covers the FXAA
+  // search and the softness taps. Guards only extend x.
+  Renderer.prototype.band = function (h) {
+    var c = this.simulation.wave.controls, lo = 1, hi = -1;
+    for (var i = 0; i < c.length; i += 4) {
+      var w = c[i + 3];
+      if (w <= 0.00001) return [0, 1];
+      var y = c[i + 1] / w;
+      if (y < lo) lo = y;
+      if (y > hi) hi = y;
+    }
+    var margin = 24 / Math.max(1, h);
+    return [Math.max(0, (lo + 1) * 0.5 - margin), Math.min(1, (hi + 1) * 0.5 + margin)];
+  };
+  // Cached full-size backdrop: the bicubic upsample of the monthly pass,
+  // re-rendered only when its clock uniforms or the output size change.
+  Renderer.prototype.backdropPass = function (w, h) {
+    var gl = this.gl, key = this.monthlyKey + '@' + w + 'x' + h;
+    if (this.backdrop && (this.backdrop.width !== w || this.backdrop.height !== h)) {
+      this.releaseTarget(this.backdrop);
+      this.backdrop = null;
+    }
+    if (!this.backdrop) {
+      this.backdrop = this.allocate(w, h, 0);
+      this.allocations++;
+    }
+    if (key === this.backdropKey)
+      return;
+    this.backdropKey = key;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.backdrop.framebuffer);
+    gl.viewport(0, 0, w, h);
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.backdropProgram);
+    gl.bindVertexArray(this.fullscreenVAO);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.monthlyTexture);
+    gl.uniform1i(this.uniforms.backdrop.uMonthly, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  };
   Renderer.prototype.draw = function (w, h, wave, brightness, background, palette) {
     if (!this.ready || this.dead)
       return false;
     this.updateGrid();
     this.resize(w, h);
     var monthly = !!(palette && palette.monthly && this.monthlyPass(palette.monthly));
+    if (monthly)
+      this.backdropPass(w, h);
+    var band = this.band(h);
     this.outputWidth = w; this.outputHeight = h;
     var gl = this.gl, t = this.target, p = this.simulation.particles;
     gl.bindFramebuffer(gl.FRAMEBUFFER, t.msaaFbo || t.framebuffer);
@@ -502,12 +551,13 @@
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, t.texture);
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, monthly ? this.monthlyTexture : t.texture);
+    gl.bindTexture(gl.TEXTURE_2D, monthly ? this.backdrop.texture : t.texture);
     gl.activeTexture(gl.TEXTURE0);
     var u = this.uniforms.composite;
     gl.uniform1i(u.uScene, 0);
-    gl.uniform1i(u.uMonthly, 1);
-    gl.uniform1i(u.uMonthlyEnabled, monthly ? 1 : 0);
+    gl.uniform1i(u.uBackdrop, 1);
+    gl.uniform1i(u.uBackdropEnabled, monthly ? 1 : 0);
+    gl.uniform2f(u.uBand, band[0], band[1]);
     gl.uniform2f(u.uTexel, 1 / w, 1 / h);
     gl.uniform3fv(u.uTuning, this.filterTunings[this.settings.strength]);
     gl.uniform1i(u.uCoverage, this.settings.postprocess === 'wave' ? 1 : 0);
@@ -565,10 +615,12 @@
     this.dead = true;
     if (!lost) {
       this.releaseTarget(this.target);
+      this.releaseTarget(this.backdrop);
       var gl = this.gl;
       this.objects.reverse().forEach(function (o) { gl['delete' + o[0]](o[1]); });
     }
     this.target = null;
+    this.backdrop = null;
     this.objects = [];
     this.programs = [];
   };
