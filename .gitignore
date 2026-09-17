@@ -15,3 +15,8 @@ Thumbs.db
 # Local preview recording/runtime link; never distribute user music.
 app/user-music.mp3
 app/audio/
+
+# Local PS3 reference inputs and generated validation output; never publish RAM.
+/app/ps3-native-data.js
+/private-data/
+/evidence/

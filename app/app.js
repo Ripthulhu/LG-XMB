@@ -156,7 +156,7 @@ else if(type==='music'){openMusicSettings();}
 else if(type==='sound'){row('Off',null,!preferences.sound,function(){preferences.sound=false;save();openModal(type);});row('On',null,preferences.sound,function(){preferences.sound=true;save();tick();openModal(type);});}
 else if(type==='previews'){row('Cached',null,preferences.previewMode==='cached',function(){preferences.previewMode='cached';save();openModal(type);});row('Live',null,preferences.previewMode==='live',function(){preferences.previewMode='live';save();openModal(type);});helperStatusPanel();}
 else if(type==='remote'){C5RemoteSettings.open({getBack:function(){return preferences.backBehavior;},setBack:function(value){if(['stay','lg'].indexOf(value)===-1)throw new Error('Choose a valid Back button setting.');var next=Object.assign({},preferences,{backBehavior:value});try{localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(next));}catch(ignore){throw new Error('This device could not save the Back button setting.');}preferences.backBehavior=value;}});}
-else{$('modalContent').innerHTML='<div class="about-copy"><p>A webOS adaptation of phenom64/OpenXMB. Original waves and seasonal colours come from Syndromatic and contributors. The PS3-style spline surface adapts linkev/PlayStation-3-XMB by Mart.</p><p>This launcher adds no advertising or usage logging. Your TV and the apps you open retain their own privacy settings.</p><p>GPL version 3. Full source and licence notices accompany this app.</p></div>';}
+else{$('modalContent').innerHTML='<div class="about-copy"><p>A webOS adaptation of phenom64/OpenXMB. Original waves and seasonal colours come from Syndromatic and contributors. The native WebGL 2 background uses reconstructed PS3 3.01 simulation. Its original material and emitter behavior remain under validation; historical renderer credits are preserved in the accompanying notices.</p><p>This launcher adds no advertising or usage logging. Your TV and the apps you open retain their own privacy settings.</p><p>GPL version 3. Full source and licence notices accompany this app.</p></div>';}
 var chosen=$('modalContent').querySelector('[aria-pressed="true"]')||$('modalContent').querySelector('button')||$('closeModal');chosen.focus();}
 function openWaveSettings(){
   var colorButton=row('Wave colours',null,false,function(){openModal('wave-colors');});colorButton.id='openWaveColors';
@@ -185,14 +185,14 @@ function openWaveSettings(){
   }
   qualityChoice('MSAA',msaaChoices(),'waveMSAA');
   qualityChoice('Supersampling',[[1,'Off'],[1.25,'1.25×'],[1.5,'1.5×'],[2,'2×']],'waveSampling');
-  qualityChoice('Mesh detail',[['standard','Standard'],['high','High'],['fine','Fine']],'waveDetail');
+  qualityChoice('Mesh detail',[['standard','Reduced'],['high','Original'],['fine','Original (legacy)']],'waveDetail');
   qualityChoice('Edge softness',[[0,'Sharp'],[0.75,'Subtle'],[1.5,'Soft']],'waveSoftness');
   qualityChoice('Particles',[[true,'On'],[false,'Off']],'waveParticles');
   qualityChoice('Particle density',[[500,'Low'],[2000,'Normal'],[4000,'High']],'waveParticleCount');
   qualityChoice('Post-process antialiasing',[['off','Off'],['fxaa','FXAA'],['wave','Wave FXAA']],'wavePostprocess');
   qualityChoice('Smoothing strength',[['gentle','Gentle'],['normal','Normal'],['strong','Strong']],'waveSmoothing');
   var note=document.createElement('p');note.className='wave-quality-note';
-  note.textContent='MSAA only smooths geometric edges, so it does little for the wave’s soft shading or its particle sprites while costing more than any other option. Supersampling smooths all of them and measured close to free at 1.25× on the C5, so try supersampling with MSAA Off first; enabling both roughly doubles the cost. Higher mesh detail adds processor work as well as graphics work. FXAA smooths edges at the output resolution, without filtering text. Wave FXAA uses wave opacity to find edges and is the default. Smoothing strength applies when either filter is enabled.';
+  note.textContent='Native WebGL 2 renderer. Original detail uses the captured 128 × 128 grid; Reduced uses 64 × 64. Fine is retained as an alias for Original. Supersampling and MSAA affect the wave surface; particles are drawn afterward at output resolution. FXAA never filters launcher text or particles. The captured seed pack limits the live population to about 2,000 particles, including when High density is selected. TV performance and final PS3 compositing have not been verified.';
   $('modalContent').appendChild(note);
   var status=document.createElement('p');status.id='waveRenderStatus';status.className='wave-quality-note';status.setAttribute('role','status');
   $('modalContent').appendChild(status);updateWaveStatus();
@@ -240,16 +240,17 @@ function updateWaveStatus(){
   var status=$('waveRenderStatus');if(!status||!wave)return;
   var diag=wave.getDiagnostics(),surface=diag.surface;
   if(diag.mode!=='webgl'||!surface||!surface.surfaceWidth){
-    status.textContent=diag.mode==='pending'||diag.mode==='compiling'?'Preparing waves…':'Waves need WebGL, which this display is not providing.';return;
+    status.textContent=diag.mode==='pending'||diag.mode==='compiling'?'Preparing WebGL 2 waves…':
+      'Static backdrop: '+(diag.error||'WebGL 2 renderer unavailable.');return;
   }
-  status.textContent='Output '+diag.backingWidth+' × '+diag.backingHeight+' · Wave surface '+surface.surfaceWidth+' × '+surface.surfaceHeight+(surface.cropped&&surface.bandHeight?' (cropped to '+surface.bandWidth+' × '+surface.bandHeight+' output band)':'')+
-    (surface.samplingFallback?' · '+surface.effectiveScale+'× applied ('+surface.samplingFallback.toLowerCase()+').':'')+
-    ' · MSAA '+(surface.msaaSamples ? surface.msaaSamples+'×' : 'Off')+
-    (surface.msaaFallback?' ('+surface.msaaFallback.toLowerCase()+')':'')+
-    ' · Filter '+({off:'Off',fxaa:'FXAA',wave:'Wave FXAA'}[surface.postprocess]||'Off')+
-    (surface.postWidth?' at '+surface.postWidth+' × '+surface.postHeight:'')+
-    (surface.postprocessFallback?' ('+surface.postprocessFallback.toLowerCase()+')':'');
-  if(preferences.waveParticles){status.textContent+=surface.particlesFallback?' · Particles unavailable':' · '+surface.particleCount+' particles';}
+  status.textContent='WebGL 2 · GLSL ES 3.00 · Output '+diag.backingWidth+' × '+diag.backingHeight+
+    ' · Wave surface '+surface.surfaceWidth+' × '+surface.surfaceHeight+
+    ' · Mesh '+surface.grid+' × '+surface.grid+
+    ' · MSAA '+(surface.msaaSamples?surface.msaaSamples+'×':'Off')+
+    (surface.samplingFallback?' · '+surface.samplingFallback:'')+
+    (surface.msaaFallback?' · '+surface.msaaFallback:'')+
+    ' · Filter '+({off:'Off',fxaa:'FXAA',wave:'Wave FXAA'}[surface.postprocess]||'Off');
+  if(preferences.waveParticles)status.textContent+=' · '+surface.particleCount+' particles';
 }
 function updateHelperStatus(){
   var status=$('helperStatus'),retry=$('retryHelper');
