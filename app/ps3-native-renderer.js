@@ -165,6 +165,26 @@
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, type, pixels);
     return t;
   };
+  // Only the 2,048-pixel colour intermediate uses FP16. Full-size targets
+  // stay 32 bits per pixel: RGBA8 for the wave, RGB10_A2 for the backdrop.
+  Renderer.prototype.prepareMonthlyTarget = function () {
+    var gl = this.gl;
+    this.releaseTarget(this.monthlyTarget);
+    this.monthlyTarget = null;
+    this.monthlyTexture = null;
+    this.monthlyFbo = null;
+    this.monthlyKey = '';
+    if (gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float')) {
+      try { this.monthlyTarget = this.allocate(64, 32, 0, gl.RGBA16F); }
+      catch (ignored) { /* A refused optional target must not disable the waves. */ }
+    }
+    if (!this.monthlyTarget) {
+      try { this.monthlyTarget = this.allocate(64, 32, 0); }
+      catch (ignored) { return; }
+    }
+    this.monthlyTexture = this.monthlyTarget.texture;
+    this.monthlyFbo = this.monthlyTarget.framebuffer;
+  };
   Renderer.prototype.finish = function () {
     if (this.ready || this.dead)
       return;
@@ -238,13 +258,7 @@
       gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
-      this.monthlyTexture = this.texture(64, 32, null, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);
-      this.monthlyFbo = this.resource('Framebuffer');
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.monthlyFbo);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.monthlyTexture, 0);
-      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
-        this.monthlyTexture = null;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      this.prepareMonthlyTarget();
     }
     this.material = this.materialUniforms(reference);
     this.materialRows = new Float32Array(16);
@@ -324,22 +338,24 @@
     if (t.texture)
       gl.deleteTexture(t.texture);
   };
-  Renderer.prototype.allocate = function (w, h, samples) {
-    var gl = this.gl, t = { width: w, height: h, samples: samples }, ok = false;
+  Renderer.prototype.allocate = function (w, h, samples, format) {
+    var gl = this.gl, internalFormat = format || gl.RGBA8;
+    var t = { width: w, height: h, samples: samples, format: internalFormat }, ok = false;
     try {
       t.texture = gl.createTexture();
       t.framebuffer = gl.createFramebuffer();
       if (!t.texture || !t.framebuffer)
         throw new Error('No render target');
       gl.bindTexture(gl.TEXTURE_2D, t.texture);
-      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, internalFormat, w, h);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.bindFramebuffer(gl.FRAMEBUFFER, t.framebuffer);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.texture, 0);
-      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR)
+      var status = gl.checkFramebufferStatus(gl.FRAMEBUFFER), error = gl.getError();
+      if (status !== gl.FRAMEBUFFER_COMPLETE || error !== gl.NO_ERROR)
         throw new Error('Incomplete render target');
       if (samples) {
         t.msaaBuffer = gl.createRenderbuffer();
@@ -347,7 +363,7 @@
         if (!t.msaaBuffer || !t.msaaFbo)
           throw new Error('No MSAA target');
         gl.bindRenderbuffer(gl.RENDERBUFFER, t.msaaBuffer);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, w, h);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, internalFormat, w, h);
         if (gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_SAMPLES) !== samples)
           throw new Error('MSAA sample mismatch');
         gl.bindFramebuffer(gl.FRAMEBUFFER, t.msaaFbo);
@@ -455,6 +471,10 @@
     gl.uniform4fv(u.uModelviewProjection, rows);
     gl.uniform4fv(u.uColor, this.colorVector);
     gl.uniform1f(u.uGamma, brightness);
+    // The compositor has already added the ambient halo; additive particles
+    // need just its transmission to retain the old CSS-layer appearance.
+    gl.uniform1i(u.uAmbientEnabled, this.monthlyActive ? 0 : 1);
+    gl.uniform2f(u.uAmbientInvSize, 1 / this.outputWidth, 1 / this.outputHeight);
     gl.uniform1f(u.uIridescentExponent, ref.particleMaterial['iridescent exp']);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.iridescenceTexture);
@@ -509,6 +529,22 @@
   };
   // Cached full-size backdrop: the bicubic upsample of the monthly pass,
   // re-rendered only when its clock uniforms or the output size change.
+  // Opaque cached colour needs no fractional alpha. RGB10_A2 stores four
+  // times as many RGB levels in the same 32 bits/texel as RGBA8. Never use a
+  // full-size floating-point target; keep the existing wave/MSAA path intact.
+  Renderer.prototype.allocateBackdrop = function (w, h) {
+    var gl = this.gl, target = null;
+    if (this.backdropFormat !== gl.RGBA8) {
+      try { target = this.allocate(w, h, 0, gl.RGB10_A2); }
+      catch (ignored) {
+        this.backdropFormat = gl.RGBA8;
+        this.backdropFallback = 'RGB10_A2 unavailable';
+      }
+    }
+    if (!target) target = this.allocate(w, h, 0);
+    this.backdropFormat = target.format;
+    return target;
+  };
   Renderer.prototype.backdropPass = function (w, h) {
     var gl = this.gl, key = this.monthlyKey + '@' + w + 'x' + h;
     if (this.backdrop && (this.backdrop.width !== w || this.backdrop.height !== h)) {
@@ -516,7 +552,8 @@
       this.backdrop = null;
     }
     if (!this.backdrop) {
-      this.backdrop = this.allocate(w, h, 0);
+      this.backdrop = this.allocateBackdrop(w, h);
+      this.backdropKey = '';
       this.allocations++;
     }
     if (key === this.backdropKey)
@@ -530,6 +567,7 @@
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.monthlyTexture);
     gl.uniform1i(this.uniforms.backdrop.uMonthly, 0);
+    gl.uniform1f(this.uniforms.backdrop.uCacheLevels, this.backdrop.format === gl.RGB10_A2 ? 1023 : 255);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   };
@@ -539,6 +577,7 @@
     this.updateGrid();
     this.resize(w, h);
     var monthly = !!(palette && palette.monthly && this.monthlyPass(palette.monthly));
+    this.monthlyActive = monthly;
     if (monthly)
       this.backdropPass(w, h);
     var band = this.band(h);
@@ -577,6 +616,7 @@
     gl.uniform1i(u.uScene, 0);
     gl.uniform1i(u.uBackdrop, 1);
     gl.uniform1i(u.uBackdropEnabled, monthly ? 1 : 0);
+    gl.uniform1i(u.uAmbientEnabled, monthly ? 0 : 1);
     gl.uniform2f(u.uBand, band[0], band[1]);
     gl.uniform2f(u.uTexel, 1 / w, 1 / h);
     gl.uniform3fv(u.uTuning, this.filterTunings[this.settings.strength]);
@@ -624,6 +664,12 @@
       samplingFallback: this.samplingFallback, msaaSupported: this.msaaSupported.slice(), msaaSamples: this.msaaSamples, msaaFallback: this.msaaFallback,
       detail: this.settings.detail, detailAlias: this.settings.detail === 'fine' ? 'Original 128 x 128 grid' : null, grid: this.grid, vertices: this.grid * this.grid, postprocess: this.settings.postprocess,
       postprocessImplementation: 'GLSL ES 3.00 FXAA; particles excluded', postWidth: this.outputWidth, postHeight: this.outputHeight, postprocessFallback: null,
+      gradientOutput: { active: this.monthlyActive === true,
+        intermediate: this.monthlyTarget ? (this.monthlyTarget.format === this.gl.RGBA16F ? 'RGBA16F' : 'RGBA8') : null,
+        cache: this.backdrop ? (this.backdrop.format === this.gl.RGB10_A2 ? 'RGB10_A2' : 'RGBA8') : null,
+        fallback: this.backdropFallback || null, cacheBytes: this.backdrop ? this.backdrop.width * this.backdrop.height * 4 : 0,
+        dither: 'screen-fixed triangular, +/-1 display code', ambientOverlay: false,
+        ambientStage: this.monthlyActive ? 'none' : 'pre-dither', pipelineRevision: 'ambient-before-dither-1' },
       particleCount: this.lastCount, particleCapacity: p.capacity, particlesFallback: null,
       particleRespawnPolicy: p.emitter ? 'recovered host emitter: births on the moving sheet' : 'captured-distribution recycling',
       particleBirths: p.emitter ? p.emitter.births : 0, particleBirthsRefused: p.emitter ? p.emitter.refused : 0,
@@ -639,11 +685,15 @@
     if (!lost) {
       this.releaseTarget(this.target);
       this.releaseTarget(this.backdrop);
+      this.releaseTarget(this.monthlyTarget);
       var gl = this.gl;
       this.objects.reverse().forEach(function (o) { gl['delete' + o[0]](o[1]); });
     }
     this.target = null;
     this.backdrop = null;
+    this.monthlyTarget = null;
+    this.monthlyTexture = null;
+    this.monthlyFbo = null;
     this.objects = [];
     this.programs = [];
   };
@@ -719,6 +769,7 @@
   C5Wave.prototype.fail = function (error) {
     this.error = String(error.message || error);
     this.mode = 'static';
+    this.syncBackgroundLayer(false);
     this.cancel();
     if (this.renderer)
       this.renderer.destroy(this.contextLost);
@@ -797,12 +848,31 @@
     }
     return changed;
   };
+  // CSS alpha gradients after the canvas can reintroduce banding and tint
+  // the original PS3 colour pass. Hide that legacy decoration only while a
+  // monthly frame is actually displayed. No per-frame DOM writes.
+  C5Wave.prototype.syncBackgroundLayer = function (monthly) {
+    // Every successful WebGL frame now includes the legacy decoration where
+    // appropriate. Keep CSS only for the static fallback. No per-frame writes.
+    var composited = !this.destroyed && this.mode === 'webgl';
+    if (this.compositedBackgroundLayer !== composited) {
+      this.compositedBackgroundLayer = composited;
+      if (composited) this.canvas.setAttribute('data-background-composited', 'true');
+      else this.canvas.removeAttribute('data-background-composited');
+    }
+    monthly = monthly === true;
+    if (this.monthlyBackgroundLayer === monthly) return;
+    this.monthlyBackgroundLayer = monthly;
+    if (monthly) this.canvas.setAttribute('data-ps3-background', 'true');
+    else this.canvas.removeAttribute('data-ps3-background');
+  };
   C5Wave.prototype.draw = function () {
     if (!this.allowed() || this.mode !== 'webgl')
       return;
     try {
       this.renderer.configure(this.ps3Quality);
       var changed = this.renderer.draw(this.canvas.width, this.canvas.height, this.wave, this.brightness, this.background, this.palette);
+      this.syncBackgroundLayer(this.renderer.monthlyActive === true);
       if (changed && this.onRenderStatus)
         this.onRenderStatus();
     }
@@ -924,6 +994,7 @@
     if (this.destroyed)
       return;
     this.destroyed = true;
+    this.syncBackgroundLayer(false);
     this.cancel();
     document.removeEventListener('visibilitychange', this.visibilityBound);
     root.removeEventListener('resize', this.resizeBound);

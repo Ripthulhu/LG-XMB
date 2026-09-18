@@ -10,6 +10,11 @@
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--background);font-family:"LG Smart UI","Segoe UI",Arial,sans-serif;color:var(--text)}
 body{transition:background 1s ease}button{font:inherit;color:inherit;border:0;cursor:pointer}button:focus-visible{outline:2px solid var(--accent);outline-offset:7px}button:focus:not(:focus-visible){outline:none}button:disabled{cursor:wait}svg{width:100%;height:100%;display:block}
 #wave,.ambient{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}.ambient{background:radial-gradient(ellipse at 57% 21%,rgba(var(--accent-rgb),.05),transparent 52%),linear-gradient(180deg,rgba(0,0,0,.08),transparent 55%,rgba(0,0,0,.22))}
+/* The original monthly gradient is already shaded and dithered in WebGL. */
+#wave[data-ps3-background="true"] + .ambient{display:none}
+/* WebGL handles the legacy halo/vignette before dithering. Static fallback
+   keeps CSS; never paint a second gradient over a completed WebGL frame. */
+#wave[data-background-composited="true"] + .ambient{display:none}
 .screen{position:relative;width:100%;height:100%;padding:5.1vh 5.7vw}header{display:flex;align-items:center;justify-content:flex-end}
 .clock{display:flex;align-items:baseline;gap:1.25vw;letter-spacing:.03em}#time{font-size:clamp(21px,1.88vw,42px);font-weight:400;font-variant-numeric:tabular-nums}#date{font-size:clamp(11px,.82vw,20px);text-transform:uppercase;color:var(--muted);letter-spacing:.12em}
 #categories{position:absolute;left:0;top:29.5vh;height:15vh;width:100%;isolation:isolate}

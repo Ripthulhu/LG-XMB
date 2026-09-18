@@ -539,5 +539,7 @@ void main() {
     float s593=(s590 * _NightDayBlend + s583); // 0x2790
     float s594=(s591 * _NightDayBlend + s584); // 0x2790
     float s595=(s592 * _NightDayBlend + s585); // 0x2790
-    outColor=vec4(s593, s594, s595, _Alpha);
+    // Preserve the old RGBA8 target's range when the tiny cache uses FP16.
+    // The reconstructed colour calculation above is unchanged.
+    outColor=clamp(vec4(s593, s594, s595, _Alpha),0.0,1.0);
 }

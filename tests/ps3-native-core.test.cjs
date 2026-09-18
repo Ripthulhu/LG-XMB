@@ -40,7 +40,8 @@ for (const [name, source] of Object.entries(Shaders)) {
   test(`${name}: native GLSL ES 3.00, no legacy shader constructs`, () => {
     assert.ok(source.startsWith('#version 300 es\n'));
     assert.doesNotMatch(source, /\b(attribute|varying|gl_FragColor|texture2D)\b/);
-    if (name.endsWith('Fragment')) assert.match(source, /layout\(location\s*=\s*0\)\s*out\s+vec4/);
+    // The output may carry its own precision qualifier, like the composite pass.
+    if (name.endsWith('Fragment')) assert.match(source, /layout\(location\s*=\s*0\)\s*out\s+(?:lowp |mediump |highp )?vec4/);
   });
 }
 test('known SPU reciprocal estimate differs from ideal division', () => {
