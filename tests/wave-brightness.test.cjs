@@ -18,7 +18,7 @@ const gainExpression = required(app, /brightness:(\{[^}]+\})\[preferences\.waveB
 const menuLine = required(app, /choiceGroup\('Brightness',[^\n]+\);/)[0];
 const styleMethod = required(renderer, /C5Wave\.prototype\.setStyle = function \(o\) \{[\s\S]*?\n  \};/)[0];
 function loadPreferences(value, legacy = false, raw = false) {
-  const prefixEnd = app.indexOf('// Keep the canvas and spline surface');
+  const prefixEnd = app.indexOf('// Keep the requested output at full HD');
   assert.ok(prefixEnd > 0);
   const storage = {};
   if (value !== undefined) storage[legacy ? 'openxmb-c5-preferences-v1' : 'lg-xmb-preferences-v1'] = raw ? value : JSON.stringify(value);

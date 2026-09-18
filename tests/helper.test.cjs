@@ -55,7 +55,7 @@ test('timeout does not retry and ignores a late success; retry is explicit',asyn
 test('capture failure leaves on-demand Home controls ready and gives a distinct status',async()=>{
   const h=setup(),p=h.helper.ensure();h.reply(0,{...ready,captureRunning:false});await p;
   assert.equal(h.helper.isReady(),true);assert.equal(h.helper.getState().captureRunning,false);
-  assert.match(h.helper.getState().message,/capture worker did not start/);
+  assert.match(h.helper.getState().message,/HDMI capture did not start/);
 });
 test('malformed and oversized execution replies cannot enable the helper',async()=>{
   for(const raw of ['garbage','[]','x'.repeat(65537),JSON.stringify({returnValue:true,stdoutString:'{}'})]){
