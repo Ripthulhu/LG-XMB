@@ -186,13 +186,14 @@ the canvas each frame, half of all fragment work. A paused launcher keeps showin
 the last presented frame because nothing draws over it; what the webOS compositor
 retains across a native app or HDMI handoff still needs a TV test.
 
-## Reference data is separate from source
+## Reference data
 
-`app/ps3-native-data.js` is **local data**, not a newly licensed project asset. It
-contains selected numerical seed state, basis tables and two small lookup textures
-from the user's supplied resources. It contains no firmware executable or whole
-RAM image. The source archive intentionally excludes it and excludes private
-fixtures. Python 3.10+ is required for the importer and guarded installer. Keep it ignored; do not force-add it to Git.
+`app/ps3-native-data.js` is committed, so a clone builds the real waves. It
+isn't a newly licensed project asset though. It holds selected numerical seed
+state, basis tables and two small lookup textures from the supplied resources,
+and no firmware executable or whole RAM image. The raw captures and test
+fixtures under `private-data/` stay out of Git. Python 3.10+ is required for
+the importer and guarded installer.
 
 To regenerate it from the earlier analysis packages:
 

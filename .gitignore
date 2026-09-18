@@ -16,9 +16,8 @@ Thumbs.db
 app/user-music.mp3
 app/audio/
 
-# Local PS3 reference inputs and generated validation output; never publish RAM.
-/app/ps3-native-data.js
-/app/ps3-background-data.js
+# Raw capture inputs and validation output. The app's own data files are
+# committed, so a clone builds the real waves.
 /private-data/
 /evidence/
 

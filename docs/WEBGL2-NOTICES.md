@@ -65,8 +65,8 @@ and `app/ps3-background-clock.js` the recovered calendar and day/night arithmeti
 from `custom_render_plugin.sprx` 3.01, both from the ps3-gradient-backgrounds
 research pack, checked there against the decoded instructions to float32.
 `app/ps3-background-data.js` holds the 24 `textures/month_bg` top levels (64x32
-RGBA8) out of `lines.qrc`. It is local data, gitignored, and not relicensed as
-project source. The bicubic upsample in `compositeFragment.frag` is a stand-in
+RGBA8) out of `lines.qrc`. It's committed so the build is complete, but it
+isn't relicensed as project source. The bicubic upsample in `compositeFragment.frag` is a stand-in
 for `bg_copy.fpo`, whose lookup table is not recovered.
 
 ## Particle births and navigation response

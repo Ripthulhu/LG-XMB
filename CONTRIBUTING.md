@@ -59,9 +59,8 @@ installed browser, set `PLAYWRIGHT_CHANNEL=chrome` or
 
 For the full browser suite, start `npm run preview` in another terminal, then
 run `npm run test:browser`. It uses installed Edge by default;
-`PLAYWRIGHT_CHANNEL=chrome` selects Chrome. Note that it needs the local
-reference pack (`app/ps3-native-data.js` and `app/ps3-background-data.js`),
-cause without it the wave is the static backdrop and the WebGL checks fail.
+`PLAYWRIGHT_CHANNEL=chrome` selects Chrome. The WebGL checks rely on
+`app/ps3-native-data.js` and `app/ps3-background-data.js`, which are committed.
 
 `npm run test:music` runs the focused background-music browser checks against the
 preview server, using generated silent PCM for audio lifecycle checks. No recording is required.

@@ -71,8 +71,8 @@ try {
     requireCondition(resolved.startsWith(appDir + path.sep), `App file leaves package directory: ${relativeName}`);
     requireCondition(fs.statSync(resolved).isFile(), `Missing app file: ${relativeName}`);
   }
-  // The reference pack is gitignored. A tree without it still packages, but the
-  // app draws the static backdrop instead of the wave, so say so.
+  // The reference data is committed, but a tree without it still packages and
+  // the app draws the static backdrop instead of the wave, so say so.
   for (const name of ['ps3-native-data.js', 'ps3-background-data.js']) {
     if (!fs.existsSync(path.join(appDir, name)))
       console.warn(`Note: app/${name} is missing, so this build shows the static backdrop instead of the wave.`);
