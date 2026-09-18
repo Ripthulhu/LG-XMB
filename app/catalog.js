@@ -22,7 +22,7 @@ window.C5Catalog=[
         "title": "Waves",
         "icon": "motion",
         "type": "SETTING",
-        "description": "Adjust animation, speed, and brightness.",
+        "description": "Configure the animated background.",
         "action": "motion"
       },
       {
@@ -38,7 +38,7 @@ window.C5Catalog=[
         "title": "Background music",
         "icon": "music",
         "type": "SETTING",
-        "description": "Loop background music while Home is open.",
+        "description": "Loop your own MP3 while Home is open.",
         "action": "music"
       },
       {
@@ -51,10 +51,10 @@ window.C5Catalog=[
       },
       {
         "id": "remote",
-        "title": "Remote buttons",
+        "title": "Back button",
         "icon": "settings",
         "type": "SETTING",
-        "description": "Choose what Home and Back do.",
+        "description": "Choose whether Back keeps Home open or shows the TV exit prompt.",
         "action": "remote"
       },
       {

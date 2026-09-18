@@ -1,138 +1,116 @@
-# Installation and recovery
+# Installation and removal
 
-## Install
+Installing the IPK adds a launcher named **Home**. It doesn't replace LG Home or
+change the Home button. Root-only Home replacement is a separate procedure in
+[HOME-TAKEOVER.md](HOME-TAKEOVER.md).
 
-1. Download the `.ipk` asset from [Releases](https://github.com/Ripthulhu/LG-XMB/releases).
-   Read that release's requirements and limitations. Prereleases are test builds;
-   the source-code ZIP is not installable on the TV.
-2. In [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop/releases),
-   connect to your TV using its existing Developer Mode or rooted connection.
-3. Install the IPK and open **Home**. Test navigation and launching an app.
+## Install the app
 
-On a rooted TV with working Homebrew Channel and Python 3.7 or newer, Home
-prepares its bundled helper automatically. No separate file transfer or SSH
-installation is needed. The helper code is inside the IPK; it is not downloaded
-or installed into `/var/lib`.
+1. Download the IPK from [Releases](https://github.com/Ripthulhu/LG-XMB/releases),
+   or [build it](BUILDING.md). The source ZIP isn't an installable app.
+2. Connect to the TV in
+   [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop/releases)
+   using your existing Developer Mode or rooted connection.
+3. Install the IPK and open **Home**. Check navigation and launch an app before
+   changing anything else.
 
-A fresh setup leaves the Home-button assignment unchanged and all background
-controls on **Allow**. To change them, use **Settings → Remote buttons** and
-**Settings → Background activity**. Setup does not root a TV or change service
-permissions. The helper's native integrations remain C5-specific; see
-[Compatibility](COMPATIBILITY.md) before enabling them on another TV.
+The development target is the LG C5 with webOS 10.3.1. Read
+[Compatibility](COMPATIBILITY.md) before testing another model.
 
-**Settings → Input previews** shows helper setup status and a retry button when
-setup fails. Missing files, unavailable Homebrew execution and an explicit
-non-root result are different errors. Cached images appear only after an eligible
-HDMI input has been viewed; an input label is not evidence that a picture exists.
+## Helper setup
 
-Developer Mode-only installations can use the launcher and native input names
-where the firmware permits the read. Helper features stay unavailable, with icon
-fallbacks for cached pictures. Keep Developer Mode active according to
-[Homebrew's guide](https://www.webosbrew.org/devmode/).
+On a rooted TV with Homebrew Channel and Python 3.7 or newer, Home prepares the
+bundled capture helper on launch. No separate helper download is needed.
+**Settings → Input previews** shows its status and a retry option.
 
-## Upgrade
+The helper creates cached HDMI pictures and prepares links to optional user
+audio. It doesn't assign Home, stop LG services or manage background apps.
+The **Back button** setting only changes Back inside this launcher.
 
-Install the new IPK over the existing app, then open **Home**. Setup stops a
-recognized old worker before migrating its settings or starting new code. It
-removes only the exact reviewed old startup hook. It will not overwrite an
-unknown script, a foreign symlink, or conflicting configurations.
+A Developer Mode-only installation can use the menu and permitted native APIs.
+Root-only helper features remain unavailable. Keep the Developer Mode session
+active using the TV's normal Developer Mode procedure.
 
-Settings and saved restoration values from `/var/lib/openxmb-c5/background.json`
-are migrated to `/var/lib/lg-xmb/background.json` when present. The old file is
-preserved, and a migration record prevents later upgrades from importing stale
-choices again. Do not delete configuration files as an upgrade step: they may
-contain the only record of settings that need restoring.
+Cached pictures appear after an eligible HDMI input has been viewed. An input
+name appearing in the menu doesn't mean a picture has been captured.
 
-The installed application ID remains `org.local.openxmb.c5` solely to preserve
-in-place upgrades and existing Home assignments. Project and runtime names use
-`lg-xmb`; changing the installation ID would create a different app.
+## Update
+
+Install the new IPK over the existing app, then open **Home**. Its package ID,
+`org.local.openxmb.c5`, stays unchanged for in-place upgrades.
+
+Setup verifies the installed bundle, stops a recognised worker from an older
+bundle and starts or reuses the matching worker. Unknown hooks, foreign links
+and untrusted files are left alone. Don't delete persistent state to get past
+a failed check.
+
+A copied Home-replacement payload is **not** updated by installing an IPK.
+Update it separately from the same build, following
+[the Home replacement guide](HOME-TAKEOVER.md#updating-the-payload).
 
 ## Files on the TV
 
 | Path | Purpose |
 | --- | --- |
-| Installed app's `helper/` directory | Matching controller, capture worker and recovery code |
-| `/var/lib/lg-xmb/background.json` | Choices and saved restoration values |
-| `/tmp/lg-xmb-thumbnails` | Volatile HDMI pictures and capture status |
-| `/tmp/lg-xmb-controls` | Volatile controller state and launch leases |
-| `/var/lib/webosbrew/init.d/60-lg-xmb` | Symlink to the app's `helper-startup.py` |
-| `/var/lib/webosbrew/lg-xmb-startup.log` | Bounded startup record |
+| `/media/developer/apps/usr/palm/applications/org.local.openxmb.c5/` | Installed app and verified helper bundle |
+| `/var/lib/lg-xmb/` | Helper setup record and lock |
+| `/tmp/lg-xmb-thumbnails/` | Cached pictures and capture status |
+| `/var/lib/webosbrew/init.d/60-lg-xmb` | Link to the packaged helper bootstrap |
+| `/var/lib/webosbrew/lg-xmb-startup.log` | Bounded helper setup log |
+| `/media/internal/lg-xmb/` | Your optional MP3 and sound files |
+| `/var/lib/lg-xmb-home/` | Separate Home-replacement payload, when configured |
 
-The app owns the startup target. Removing the app breaks that link, preventing
-future boot starts. Removing it does not restore LG settings automatically.
+The user-audio directory is outside the package and remains after updates or
+uninstallation. The picture cache is temporary.
 
-## Helper setup errors
+## Troubleshooting
 
-From a root shell, read `/var/lib/webosbrew/lg-xmb-startup.log`. Starting with
-0.1.13, setup records early failures before bundle validation, not only worker
-launch. The file is root-only and capped at 16 KiB. It includes the failure code,
-exception type and source location, but no raw native replies or saved settings.
-The app shows its path only when writing the error record succeeded.
+Check **Settings → Input previews** first. A missing Homebrew service, a non-root
+execution result and an incomplete helper bundle are different failures.
 
-A rejected `helper/` directory records its numeric owner and permissions.
-The released 0.1.12 IPK incorrectly packaged this directory as 0777; install
-0.1.13 over it rather than deleting settings or bypassing ownership checks.
-A non-root process or an unsafe/unwritable log location cannot create this log;
-the command's JSON reply remains available in that case.
+From an existing root shell, read:
 
-Worker state remains in `/tmp/lg-xmb-thumbnails/status.json`. The setup log does
-not contain a full worker stdout/stderr transcript or prove a capture succeeded.
-`lg-xmb-worker.lock` in `/var/lib/webosbrew` is a separate lifetime lock, so an
-already running worker cannot prevent setup diagnostics.
+```sh
+cat /var/lib/webosbrew/lg-xmb-startup.log
+cat /tmp/lg-xmb-thumbnails/status.json
+```
 
-## Return to LG Home and remove
+The setup log is root-only and limited to 16 KiB. It records setup errors, not
+every worker message. A successful setup entry doesn't prove a capture worked.
+An unsafe log path may prevent logging; use the error shown in the app too.
 
-In **Settings → Remote buttons**, select **LG Home**. In **Background activity**,
-set any managed entries to **Allow** and confirm restoration before uninstalling.
-The Back preference is local to this menu and does not remap other applications.
+Reinstall the matching IPK for a missing or mismatched bundle. Don't disable
+ownership or hash checks, and don't recursively change permissions on shared TV
+directories. Sound-link problems are covered in [HOME-SOUND-REPAIR.md](HOME-SOUND-REPAIR.md).
 
-For a rooted installation, the guarded recovery commands below stop the worker,
-remove its startup links and restore saved background values. Run them before
-removing the app. A launcher-only installation can be removed normally in the
-TV's app manager or Dev Manager.
+## Remove
+
+For a Home replacement, disable its boot hook and restore the stock Home mount
+**before** removing the developer app. Follow the recovery steps in
+[HOME-TAKEOVER.md](HOME-TAKEOVER.md#restore-lg-home).
+
+On a rooted installation, stop the capture helper while its recovery script is
+still installed:
 
 ```sh
 APP=/media/developer/apps/usr/palm/applications/org.local.openxmb.c5
 /usr/bin/python3 -I -B "$APP/helper/stop_thumbnail_helper.py"
-/usr/bin/python3 -I -B "$APP/helper/process_control.py" restore
-luna-send -n 1 luna://com.webos.applicationManager/setDefaultApp '{"category":"home","appId":"com.webos.app.home"}'
-luna-send -n 1 luna://com.webos.applicationManager/launch '{"id":"com.webos.app.home"}'
 ```
 
-Check each result. Do not force removal past a refused identity or restoration
-check. Saved files remain for recovery; there is no recursive cleanup of unknown
-files. Do not reopen Home between stopping its helper and uninstalling it, since
-normal startup prepares the helper again.
+Check the result before continuing. A refused identity or hook check needs
+investigation, not forced deletion. Don't reopen Home before uninstalling,
+because opening it starts normal helper setup again.
 
-## Build
+Remove the app using Dev Manager or the TV's app manager. A launcher-only
+Developer Mode installation can be removed normally without the root command.
 
-Use Node.js 20 or newer and Python 3.10 or newer on your computer. The TV helper
-still needs only Python 3.7. Packaging uses `python3` (`python` on Windows); set
-`PYTHON` to select another interpreter:
+Older builds may have left saved LG settings or a separate Home assignment.
+The current capture helper doesn't restore those settings. Keep any old recovery
+records until you've checked the TV's configuration; don't run commands for a
+controller that isn't in this package.
 
-```sh
-npm ci --ignore-scripts --no-audit --no-fund
-npm test
-npm run package
-npm run verify:package
-```
+## Audio
 
-The IPK and checksum are in `dist/`. The packager stages the helper from its
-reviewed sources without putting generated files in `app/`. Packaging also checks
-the bytes, root ownership, and directory/file permissions inside the actual IPK.
-The pinned CLI creates 0777 directories, so packaging normalizes app-owned
-entries to 0755/0644 before checksums are generated. Shared TV ancestor entries
-and file contents are not changed:
-
-```sh
-python3 tools/verify-helper-package.py
-```
-
-A manifest change requires updating the controller's reviewed manifest pin in
-the same commit. Packaging rejects a mismatched pin. Keep matching source with
-each build, and do not commit device credentials, cached pictures or TV state.
-
-## Optional music
-
-Music is not included. See [music setup](MUSIC.md) to copy your own MP3 to
-`/media/internal/lg-xmb/background.mp3`, outside the app installation.
+[Background music](MUSIC.md) uses `/media/internal/lg-xmb/background.mp3`.
+[Menu sounds](MENU-SOUNDS.md) use `/media/internal/lg-xmb/Sounds/`.
+Both are optional and supplied by you.

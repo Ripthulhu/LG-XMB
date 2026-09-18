@@ -30,7 +30,7 @@
       if(sections.clock)sections.clock.hidden=state.mode!=='ps3';
       ['red','green','blue','top','bottom'].forEach(function(key){if(sections[key])sections[key].hidden=state.mode!=='rgb';});
     }
-    choices('Colour source','mode',[['theme','Current theme'],['ps3','PS3 original'],['monthly','Monthly presets'],['rgb','Original (RGB Sliders)']]);
+    choices('Colour source','mode',[['theme','Current theme'],['ps3','PS3 original'],['monthly','Monthly presets'],['rgb','Custom RGB']]);
     choices('Clock','clock',[['auto','Follow the clock'],['fixed','Fixed month']],2);
     choices('Month','month',root.LGXMBWaveColors.months.map(function(m,i){return[i+1,m];}),4);
     choices('Day / Night','period',[['day','Day'],['night','Night']],2);

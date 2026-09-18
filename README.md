@@ -1,123 +1,91 @@
 # LG-XMB
 
-An XMB-style launcher for LG webOS TVs, based on [OpenXMB](https://github.com/phenom64/OpenXMB).
-The installed app is called **Home**.
+LG-XMB replaces the home screen on an LG webOS TV with an XMB-style menu for apps and inputs.
 
 ![Home screen](docs/images/home.png)
 
-Navigate apps and inputs with the remote or pointer. Choose a background theme
-and adjust the animated waves.
-HDMI pictures are cached by an optional root helper; live previews are opt-in
-because they can change HDR mode. Optional background music loops your own MP3 while Home is open. There is no general-purpose media player or emulator.
+The app is called **Home** on the TV. You can install it as a separate launcher,
+or use a root-only bind mount to replace LG Home. Installing the IPK alone doesn't
+replace the Home screen.
 
-HDMI names follow the TV's input labels when its input service allows the read.
-Names refresh at startup and when returning to Home; the port number remains
-visible in the details. Unavailable reads keep the default or last known name.
-This feature does not need the root helper or change names on the TV.
+## What you need
 
-## Menu motion
+The development target is the **LG C5 running webOS 10.3.1**. Other models and
+firmware versions need separate testing. See [Compatibility](docs/COMPATIBILITY.md).
 
-Left/right uses the same CSS transform transition as up/down, shaped like the
-PS3's own position curve (95% of the way at 200 ms, settling by 400 ms). The
-horizontal bar glides to the selected category; its icon scales into focus.
-The vertical list stays anchored instead of sliding sideways or fading as a
-whole. Repeated input retargets the current transition, without queuing effects
-or resetting the final position. Reduced motion disables menu transitions.
-
-## Wave particles
-
-Settings → Waves includes **Particles: On / Off** and **Particle density:
-Low / Medium / High** (1,000 / 2,000 / 4,000). Medium is the count the console ran.
-Particles are born on the moving wave and leave along its local motion, the way
-the console's emitter does it, so they gather around the sheet. Moving up and
-down the menu blows a short local wind through them and a left or right press
-makes them jitter for a moment. The sparkle layer follows Wave speed, brightness,
-and animation settings; it stops with the renderer when Home is hidden. Without WebGL 2 there's no wave
-and no particles, only the static backdrop.
-
-**Settings → Waves → Show waves full screen** hides the menu and leaves only the
-waves. Back or Home brings the menu back.
-
-## Background music
-
-No recording is included in the repository or IPK. Open Home once to prepare
-`/media/internal/lg-xmb/`, then copy your own MP3 there as `background.mp3`.
-Open **Settings → Background music → On**. The menu shows the path and volume
-controls. Music is off by default, starting at 25% volume when enabled.
-
-The file stays outside the installed app and survives upgrades. Playback loops
-while Home is visible and releases its player for live HDMI previews and app
-launches. Missing music does not affect the launcher or helper.
-See [music setup](docs/MUSIC.md) for file transfer and replacement instructions.
-
-## Compatibility
-
-Development targets **webOS 22–26**. Version 0.1.11 was tested on an **LG C5 with
-webOS 10.3.1**; the target range is not a claim that every version works.
-See the [compatibility and test matrix](docs/COMPATIBILITY.md).
-
-The launcher can be installed through Developer Mode or an existing homebrew
-setup. Home-button assignment, cached pictures and background controls require
-the bundled helper, prepared automatically through Homebrew Channel. Its native
-integrations are still C5-specific; a working menu is not a compatibility test.
+You need an existing Developer Mode or rooted connection to install the IPK.
+Replacing LG Home requires root. The optional HDMI capture helper also needs a
+rooted TV with Homebrew Channel and Python 3.7 or newer.
 
 ## Install
 
-Download the `.ipk` from [Releases](https://github.com/Ripthulhu/LG-XMB/releases),
-then follow [Installation](docs/INSTALLATION.md) to install it with **webOS Dev
-Manager**. Installing the launcher alone does not change the Home button.
-Rooted installations prepare their helper on first launch. Recovery is covered in
-the same guide.
+Download an IPK from [Releases](https://github.com/Ripthulhu/LG-XMB/releases) and
+install it with [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop/releases).
+Open **Home** to test navigation and app launching.
 
-Releases include the installable IPK, SHA-256 checksums and matching source.
-Releases are C5 prereleases, not stable or broadly compatible ones. Read the notes
-for the version you download in [docs/releases/](docs/releases/), cause the known
-limitations differ between them. There's no CI build right now; development
-builds come from `npm run package` on a computer.
+[Installation and removal](docs/INSTALLATION.md) covers the standalone app.
+[Replacing LG Home](docs/HOME-TAKEOVER.md) covers the bind mount, its limitations
+and recovery. Keep a working SSH connection before changing the Home screen.
 
-## Develop
+## Use
 
-Use Node.js 20 or newer. The Node requirement is for your computer, not the TV.
+Left and Right change categories. Up and Down select an item. Press OK to open
+it, or hold OK to open [item options](docs/ITEM-OPTIONS.md). Pointer navigation
+works too.
+
+**Settings** contains appearance, wave, audio and Back-button options. The waves
+use WebGL 2. Without it, the menu uses a static background. There's no media
+player or emulator built into LG-XMB; media shortcuts open the TV's apps.
+
+HDMI names follow the TV's input labels where its service permits the read.
+Cached pictures need the helper and appear after an eligible input has been
+viewed. Live previews are optional because they can change HDR mode.
+
+You can add your own [menu sounds](docs/MENU-SOUNDS.md) and
+[background MP3](docs/MUSIC.md). Neither is required, and no recordings are
+included. See [Menu categories](docs/MENU-CATEGORIES.md) for the shortcuts and
+[Wave settings](docs/WEBGL2.md#settings) for the renderer controls.
+
+## Build
+
+Use Node.js 20 or newer and Python 3.10 or newer on your computer.
 
 ```sh
+git clone https://github.com/Ripthulhu/LG-XMB.git
+cd LG-XMB
 npm ci --ignore-scripts --no-audit --no-fund
-npm run preview
-```
-
-Open <http://127.0.0.1:8765>. Desktop TV actions are simulated.
-
-```sh
-npm test
 npm run package
 npm run verify:package
 ```
 
-The package is written to `dist/`. Nothing is installed on a TV by these commands.
-For the tools linked by webOS Homebrew, `npm run tools:download` downloads a
-pinned, checksum-verified `ares-cli-rs` archive into `.tools/`. It does not extract
-or run it. The existing `@webos-tools/cli` remains the release packager.
+The IPK and `SHA256SUMS` are written to `dist/`. These commands don't install
+anything on a TV.
 
-See [Contributing](CONTRIBUTING.md) for browser tests, Python tests and change
-review. The native C/C++ SDK is not needed for this HTML/JavaScript application.
+All application source, shaders and runtime data needed to build the waves are
+in this repo. You don't need a firmware dump, a separate renderer archive or an
+import step. `npm ci` installs the pinned development tools.
 
-## License
+For a desktop preview, run `npm run preview` and open
+<http://127.0.0.1:8765>. TV actions are simulated there.
+[Building and testing](docs/BUILDING.md) covers the remaining commands.
 
-GNU GPL v3; files permitting later versions retain that permission. Upstream
-copyright and license notices are retained in [LICENSE](LICENSE),
-[third-party notices](THIRD-PARTY-NOTICES.md), and [wave provenance](WAVE-PROVENANCE.md).
-This project is not affiliated with LG or Sony.
+## Notes
 
-The wave is a WebGL 2 reconstruction of the PS3's own renderer, see
-[docs/WEBGL2.md](docs/WEBGL2.md) and [its notices](docs/WEBGL2-NOTICES.md).
-Without WebGL 2 it falls back to a static gradient.
-[Wave provenance](WAVE-PROVENANCE.md) covers the renderer shipped up to 0.1.30.
+The package ID is still `org.local.openxmb.c5` so existing installations can
+upgrade in place. It isn't the project name.
 
-## Wave colours
+The Home bind mount is separate from IPK installation. Updating the IPK doesn't
+update that copied payload automatically. The two installations need to match
+for helper-managed sound links to work.
 
-Open **Settings → Waves → Wave colours**. **Current theme** keeps the existing
-Appearance palette. **PS3 original** draws the console's own monthly background,
-following the TV clock (the month, and day or night by the hour) or pinned to a
-month under **Clock**. **Monthly presets** provides January–December and explicit
-Day/Night variants from the reference project. **Original (RGB Sliders)** exposes
-red, green, blue, top intensity and bottom intensity. Choices apply immediately
-and are saved independently of quality settings. Back returns to Waves.
+Don't treat a browser test as proof that native TV services work. App launches,
+HDMI capture, standby and recovery need testing on the actual firmware.
+
+## Licence
+
+Project code is distributed under GPL version 3. Files marked
+`GPL-3.0-or-later` retain that permission. Third-party code and extracted
+reference data have separate notices in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+The project licence doesn't relicense Sony's extracted data.
+
+LG-XMB isn't affiliated with LG or Sony.

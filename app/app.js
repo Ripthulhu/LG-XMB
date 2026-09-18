@@ -6,10 +6,9 @@ var themes={midnight:{name:'Midnight',background:'#050911',wave:'#738acf',accent
 // Monthly colours are adapted from OpenXMB config.json, shell.theme-month-colours.
 var monthColours=['#f2e6a6','#9e4540','#4da640','#f299cc','#99cc59','#b399e6','#80d9f2','#3373f2','#2e2e73','#994db3','#cc8040','#e64040'];
 var $=function(id){return document.getElementById(id);};
-// Retain saved gains: low=0.6 (Medium), normal=1 (High). New dim=0.3
-// is Low; a saved high=1.5 is capped at the new maximum.
+// Preserve stored brightness keys; the old high gain is capped at normal.
 try{var saved=JSON.parse(localStorage.getItem('lg-xmb-preferences-v1')||localStorage.getItem('openxmb-c5-preferences-v1')||'{}');if(Object.prototype.hasOwnProperty.call(themes,saved.theme))preferences.theme=saved.theme;if(saved.motion==='reduced'||saved.motion==='full')preferences.motion=saved.motion;else if(matchMedia('(prefers-reduced-motion: reduce)').matches)preferences.motion='reduced';preferences.sound=saved.sound===true;preferences.previewMode=saved.previewMode==='live'?'live':'cached';if(['slow','normal','fast'].indexOf(saved.waveSpeed)!==-1)preferences.waveSpeed=saved.waveSpeed;if(['dim','low','normal'].indexOf(saved.waveBrightness)!==-1)preferences.waveBrightness=saved.waveBrightness;else if(saved.waveBrightness==='high')preferences.waveBrightness='normal';if(saved.backBehavior==='lg')preferences.backBehavior='lg';}catch(ignore){}
-// New quality preferences are independent of existing appearance and TV settings.
+// Load quality settings separately from appearance and TV preferences.
 if(saved && typeof saved === 'object') {
   if([0,2,4].indexOf(saved.waveMSAA)!==-1)preferences.waveMSAA=saved.waveMSAA;
   if([30,60].indexOf(saved.waveFrameRate)!==-1)preferences.waveFrameRate=saved.waveFrameRate;
@@ -25,7 +24,7 @@ if(saved && typeof saved === 'object') {
   if(['off','fxaa','wave'].indexOf(saved.wavePostprocess)!==-1)preferences.wavePostprocess=saved.wavePostprocess;
   if(['gentle','normal','strong'].indexOf(saved.waveSmoothing)!==-1)preferences.waveSmoothing=saved.waveSmoothing;
 }
-// Keep the canvas and spline surface at full HD; do not downscale on timing gaps.
+// Keep the requested output at full HD; allocation limits are handled by the renderer.
 preferences.waveColors=LGXMBWaveColors.normalize(saved && saved.waveColors);
 var wave=new C5Wave($('wave'),{quality:'1080p',adaptive:false,onRenderStatus:updateWaveStatus});
 var inputPreview=new C5InputPreview($('inputPreview'),{isTV:function(){return C5TV.isTV();}});
@@ -70,22 +69,16 @@ function renderDetailText(){
   detailItemId=item.id;
   $('previewButton').setAttribute('aria-label','Open '+item.title+' full-screen');
 }
-// A key press already moves every row and recolours two of them. Rewriting the
-// detail panel in that same frame is what tipped the C5 over a vsync: measured
-// on the TV, 55 of 100 vertical presses dropped a frame, 17 with the panel held
-// back and the flat row brightness below. The panel repaints fine on its own,
-// so navigation lets it follow 140 ms later, and a burst repaints it once.
+// Delay detail text by 140 ms so rapid navigation repaints it once,
+// separately from the moving rows.
 var detailTimer=0;
 function renderDetail(){clearTimeout(detailTimer);detailTimer=0;renderDetailText();syncInputPreview();}
 // Only the text waits. The preview has to hear about the new row at once, cause
 // leaving an HDMI row must stop a live preview immediately.
 function scheduleDetail(){clearTimeout(detailTimer);detailTimer=setTimeout(function(){detailTimer=0;renderDetailText();},140);syncInputPreview();}
 function buildCategories(){var nav=$('categories');categories.forEach(function(cat,index){var b=document.createElement('button');b.className='category';b.style.transform='translateX(calc(-50% + '+(index*LGXMBCategoryTransition.DISTANCE)+'vw))';b.setAttribute('aria-label',cat.title);b.setAttribute('data-category',cat.id);var face='<span class="category-icon">'+C5Icon(cat.icon)+'</span><span class="category-label"></span>';b.innerHTML='<span class="face dim">'+face+'</span><span class="face lit" aria-hidden="true">'+face+'<i class="category-dot"></i></span>';[].forEach.call(b.querySelectorAll('.category-label'),function(label){label.textContent=cat.title;});b.addEventListener('click',function(){if(!busy)selectCategory(index);});nav.appendChild(b);});}
-// Every category keeps its rows in the page, each category in its own wrapper
-// that is its own GPU layer. The inactive ones sit parked off the right edge,
-// already painted, so a category change moves layers and rasters no text. On
-// the C5 that, with the twin faces on the bar, took a category change from
-// dropping a frame 62 times in 87 presses to 8, for about 4 MB of GPU memory.
+// Retain painted category rows off-screen so switching categories can move
+// existing layers instead of rebuilding and rasterising their text.
 var itemButtons = new WeakMap(), itemOffsets = new WeakMap(), itemLists = [], itemListKeys = [];
 function buildItems(){
   var list=$('items');list.setAttribute('aria-label',categories[selectedCategory].title);
@@ -218,7 +211,7 @@ function row(label,colour,isSelected,handler,parent){var button=document.createE
 function selectChoice(parent,value){[].forEach.call(parent.querySelectorAll('[data-choice]'),function(button){var chosen=button.getAttribute('data-choice')===String(value);button.setAttribute('aria-pressed',String(chosen));button.querySelector('.option-check').textContent=chosen?'✓':'';});}
 function choiceGroup(label,choices,value,handler){var group=document.createElement('section');group.className='choice-group';group.setAttribute('role','group');group.setAttribute('aria-label',label);var title=document.createElement('h3');title.textContent=label;group.appendChild(title);var options=document.createElement('div');options.className='choice-options';group.appendChild(options);choices.forEach(function(choice){var button=row(choice[1],null,value===choice[0],function(){handler(choice[0]);selectChoice(options,choice[0]);},options);button.setAttribute('data-choice',choice[0]);});$('modalContent').appendChild(group);return group;}
 var modalType='';
-function openModal(type){cancelHold();categoryTransition.cancel();if(!modalOpen||modalType!==type)clearToast();if(modalType==='remote')C5RemoteSettings.close();if(modalType==='datetime')dateTimeSettings.close();stopInputPreview();modalType=type;$('modal').classList.toggle('waves-settings',type==='motion'||type==='music'||type==='wave-colors');$('modal').classList.toggle('appearance-settings',type==='appearance');modalOpen=true;syncInputPreview();document.querySelector('.screen').setAttribute('aria-hidden','true');$('modalBackdrop').hidden=false;$('modalContent').textContent='';$('modalContent').classList.remove('theme-options');$('modalTitle').textContent={datetime:'Date & time',appearance:'Appearance',motion:'Waves','wave-colors':'Wave colours',sound:'Navigation sound',music:'Background music',previews:'Input previews',remote:'Back button',about:'About this menu'}[type];$('modalIntro').textContent={datetime:'Set the TV clock manually.',appearance:'',motion:'','wave-colors':'Monthly gradients and manual RGB controls.',sound:'',music:'Loop your own MP3 while Home is open. Music pauses during live HDMI previews and when you leave Home.',previews:'Live previews can change HDR mode.',remote:'Applies in this menu only.',about:'Version 0.1.31'}[type];
+function openModal(type){cancelHold();categoryTransition.cancel();if(!modalOpen||modalType!==type)clearToast();if(modalType==='remote')C5RemoteSettings.close();if(modalType==='datetime')dateTimeSettings.close();stopInputPreview();modalType=type;$('modal').classList.toggle('waves-settings',type==='motion'||type==='music'||type==='wave-colors');$('modal').classList.toggle('appearance-settings',type==='appearance');modalOpen=true;syncInputPreview();document.querySelector('.screen').setAttribute('aria-hidden','true');$('modalBackdrop').hidden=false;$('modalContent').textContent='';$('modalContent').classList.remove('theme-options');$('modalTitle').textContent={datetime:'Date & time',appearance:'Appearance',motion:'Waves','wave-colors':'Wave colours',sound:'Navigation sound',music:'Background music',previews:'Input previews',remote:'Back button',about:'About this menu'}[type];$('modalIntro').textContent={datetime:'Set the TV clock manually.',appearance:'',motion:'','wave-colors':'Monthly gradients and manual RGB controls.',sound:'',music:'Loop your own MP3 while Home is open. Music pauses during live HDMI previews and when you leave Home.',previews:'Cached pictures need the capture helper. Live previews can change HDR mode.',remote:'Applies in this menu only.',about:'Version 0.1.31'}[type];
 if(type==='appearance'){$('modalContent').classList.add('theme-options');Object.keys(themes).forEach(function(key){var button=row(themes[key].name,key==='seasonal'?monthColours[new Date().getMonth()]:themes[key].wave,preferences.theme===key,function(){preferences.theme=key;applyPreferences();save();selectChoice($('modalContent'),key);});button.setAttribute('data-choice',key);});}
 else if(type==='motion'){openWaveSettings();}
 else if(type==='datetime'){dateTimeSettings.open($('modalContent'));}
@@ -227,11 +220,10 @@ else if(type==='music'){openMusicSettings();}
 else if(type==='sound'){openSoundSettings();}
 else if(type==='previews'){row('Cached',null,preferences.previewMode==='cached',function(){preferences.previewMode='cached';save();openModal(type);});row('Live',null,preferences.previewMode==='live',function(){preferences.previewMode='live';save();openModal(type);});helperStatusPanel();}
 else if(type==='remote'){C5RemoteSettings.open({getBack:function(){return preferences.backBehavior;},setBack:function(value){if(['stay','lg'].indexOf(value)===-1)throw new Error('Choose a valid Back button setting.');var next=Object.assign({},preferences,{backBehavior:value});try{localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(next));}catch(ignore){throw new Error('This device could not save the Back button setting.');}preferences.backBehavior=value;}});}
-else{$('modalContent').innerHTML='<div class="about-copy"><p>A webOS adaptation of phenom64/OpenXMB. Original waves and seasonal colours come from Syndromatic and contributors. The native WebGL 2 background uses reconstructed PS3 3.01 simulation. Its original material and emitter behavior remain under validation; historical renderer credits are preserved in the accompanying notices.</p><p>This launcher adds no advertising or usage logging. Your TV and the apps you open retain their own privacy settings.</p><p>GPL version 3. Full source and licence notices accompany this app.</p></div>';}
+else{$('modalContent').innerHTML='<div class="about-copy"><p>LG-XMB is an XMB-style launcher for LG webOS TVs. Its WebGL 2 background reconstructs parts of the PS3 3.01 waves and particles.</p><p>LG-XMB adds no advertising or usage logging. Your TV and other apps keep their own privacy settings.</p><p>Project code is distributed under GPL version 3. Third-party code and extracted reference data have separate notices in the source and app package.</p></div>';}
 var chosen=(type==='datetime'&&$('modalContent').querySelector('.date-time-value'))||$('modalContent').querySelector('[aria-pressed="true"]')||$('modalContent').querySelector('button')||$('closeModal');chosen.focus();}
-// Waves on their own: the menu steps aside until Back or Home. It's hidden with
-// visibility, cause opacity on text is what costs the C5 frames, and keys are
-// swallowed meanwhile so the hidden menu doesn't wander off.
+// Hide with visibility to avoid text-opacity compositing on the C5.
+// Ignore navigation while hidden so the menu retains its selection.
 var waveOnly=false;
 function setWaveOnly(on){
   on=on===true;if(waveOnly===on)return;
@@ -244,7 +236,7 @@ function updateSoundStatus(){
   var state=sounds.getState();
   status.textContent=!state.enabled?'Sound is off.':state.phase==='loading'?'Loading local sounds…':
     state.phase==='unsupported'?'Web Audio is unavailable on this device.':
-    state.loaded===state.total?'Original PS3 menu sounds are ready.':
+    state.loaded===state.total?'All menu sounds are ready.':
     state.loaded+' of '+state.total+' menu sounds loaded. Missing navigation clips use the built-in click; other missing clips stay silent.';
 }
 function openSoundSettings(){
@@ -252,7 +244,7 @@ function openSoundSettings(){
     preferences.sound=value;sounds.setEnabled(value);save();updateSoundStatus();
   });
   var note=document.createElement('p');note.className='wave-quality-note';
-  note.textContent='Optional: copy your extracted Sounds folder here. Names and capitalisation must match. No PS3 audio is bundled.';
+  note.textContent='Copy your Sounds folder here. Filenames are case-sensitive. No recordings are included.';
   $('modalContent').appendChild(note);
   var path=document.createElement('p');path.className='wave-quality-note music-file-path';path.textContent='/media/internal/lg-xmb/Sounds/';$('modalContent').appendChild(path);
   var status=document.createElement('p');status.id='soundStatus';status.className='wave-quality-note';status.setAttribute('role','status');$('modalContent').appendChild(status);
@@ -291,13 +283,12 @@ function openWaveSettings(){
   qualityChoice('Mesh detail',[['standard','Reduced'],['high','Original'],['fine','Original (legacy)']],'waveDetail');
   qualityChoice('Edge softness',[[0,'Sharp'],[0.75,'Subtle'],[1.5,'Soft']],'waveSoftness');
   qualityChoice('Particles',[[true,'On'],[false,'Off']],'waveParticles');
-  // Births come from the wave now, so High really fills a bigger pool. Medium
-  // is the count the console ran.
+  // The emitter has a 4,096-slot pool; density limits the live population.
   qualityChoice('Particle density',[[1000,'Low'],[2000,'Medium'],[4000,'High']],'waveParticleCount');
   qualityChoice('Post-process antialiasing',[['off','Off'],['fxaa','FXAA'],['wave','Wave FXAA']],'wavePostprocess');
   qualityChoice('Smoothing strength',[['gentle','Gentle'],['normal','Normal'],['strong','Strong']],'waveSmoothing');
   var note=document.createElement('p');note.className='wave-quality-note';
-  note.textContent='Native WebGL 2 renderer. 60 fps draws every vsync and is smoothest; 30 fps halves the graphics work if a heavier setting stutters. Original detail uses the captured 128 × 128 grid; Reduced uses 64 × 64. Fine is retained as an alias for Original. Supersampling and MSAA affect the wave surface; particles are drawn afterward at output resolution. FXAA never filters launcher text or particles. The captured seed pack limits the live population to about 2,000 particles, including when High density is selected. TV performance and final PS3 compositing have not been verified.';
+  note.textContent='Supersampling and MSAA affect the wave surface, not menu text or particles. Reduced detail uses a 64 × 64 mesh; Original uses 128 × 128. Particle density limits the population to 1,000, 2,000 or 4,000. The status below shows the actual settings. Lower the frame rate or supersampling if animation stutters.';
   $('modalContent').appendChild(note);
   var status=document.createElement('p');status.id='waveRenderStatus';status.className='wave-quality-note';status.setAttribute('role','status');
   $('modalContent').appendChild(status);updateWaveStatus();

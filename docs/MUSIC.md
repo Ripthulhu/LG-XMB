@@ -1,56 +1,55 @@
 # Background music
 
-LG-XMB does not include or download a recording. Supply your own MP3.
+LG-XMB loops your own MP3 while Home is visible. It doesn't include or download
+a recording. Music starts off, with volume set to 25%.
 
-## On a rooted TV
+## Add a recording
 
-1. Install LG-XMB and open Home once. Setup creates the music directory and one
-   app-relative link. Preparing music is optional: failure cannot block the helper.
-2. In Dev Manager's file browser or your existing root file-transfer connection,
-   copy the MP3 to `/media/internal/lg-xmb/background.mp3` (exact lowercase name).
-3. Open **Settings → Background music → On**. Set volume as desired. Music is
-   initially off, with 25% volume selected. After copying a missing file, select
-   **Retry playback** or toggle Off and On.
+Open the installed app once on a rooted TV so its helper can prepare the music
+path. Copy your MP3 to:
 
-The directory must be traversable and the MP3 readable by the media player:
-`0755` for the music directory, `0644` for the file. Do not recursively change
-permissions on shared TV directories or private helper settings. If the directory is not present,
-create just `/media/internal/lg-xmb` using the TV's existing root connection.
+```text
+/media/internal/lg-xmb/background.mp3
+```
 
-The file is user data, never executable helper code. The app reads it through
-`user-music.mp3`, a fixed link prepared on launch. Setup never replaces, copies,
-reads, deletes or changes ownership of the recording. The app installer does not
-manage the external music directory, so normal app upgrades leave it in place;
-Home recreates its own link after an upgrade. It also remains after uninstall.
-An unexpected existing link/file is not overwritten; setup logs
-`music_path_unavailable` while continuing with the rest of the helper.
+Use that exact lowercase filename. The directory must be traversable and the
+file readable by the media player: `0755` for this directory and `0644` for the
+MP3. Don't recursively change permissions on shared TV directories.
 
-## Earlier builds
+Enable **Settings → Background music → On**. Select **Retry playback** after
+adding a missing file or when autoplay was blocked.
 
-The canonical path is `/media/internal/lg-xmb/background.mp3`. A recognized
-app-relative link from 0.1.22/0.1.23 is retargeted during setup. No recording is
-moved or overwritten: a file previously placed in `/var/lib/lg-xmb/music/`
-remains there until you copy it to the canonical path yourself.
+The developer app reads the file through `user-music.mp3`, a fixed link created
+by its helper. The recording remains outside the app, survives updates and isn't
+removed on uninstall. Setup doesn't read, overwrite or change ownership of it.
+An unexpected existing link or file is left alone and logged.
 
-## Replacing the recording
+For a bind-mounted Home, the copied payload also needs this fixed music link.
+The capture bootstrap's automatic Home-payload repair covers sound effects,
+not the music link. See [Home replacement](HOME-TAKEOVER.md).
 
-Turn music Off, upload a replacement named `background.mp3`, then turn it On.
-For an atomic replacement, upload as `background.mp3.new` then rename it in the
-same directory. Retry playback starts from the beginning of the current file.
-Playback resumes the previous position only when returning from an app or live
-preview during the same session.
+## Replace a recording
 
-## Playback behaviour
+Turn music off, replace `background.mp3`, then turn it on. To avoid a partial
+file during upload, copy it as `background.mp3.new` and rename it when complete.
+Retry starts the current file from the beginning.
 
-Music loops only while Home is visible. It releases the player before live HDMI
-playback or launching another app, then resumes on return. An unsupported,
-missing or unreadable file leaves Home usable with a status message and an
-explicit retry. Autoplay denial waits for a user gesture; no polling/downloads.
-Actual local-file access and audio handoff still require TV validation.
+Music releases its player when launching an app or starting a live HDMI preview.
+On return during the same session, it resumes from the previous position.
+Missing, unreadable or unsupported files leave the menu usable.
 
-## Desktop development
+Under `com.webos.app.home`, the TV may create an audio pipeline without connecting
+it to the speakers. `connectMusicAudio` in `app/tv-bridge.js` connects that pipeline
+when music starts. A “playing” state alone doesn't prove audible output.
 
-For a local preview, place a disposable copy at `app/user-music.mp3`. It is ignored
-by Git and excluded from package staging, as is the old `app/audio/` directory.
-Do not commit recordings. Browser lifecycle tests generate silent PCM in memory;
-this checks decoding/looping without requiring or shipping anyone's music.
+## Desktop preview
+
+Place a disposable MP3 at `app/user-music.mp3` for the local preview. Git and the
+packager exclude it. Don't commit recordings.
+
+```sh
+npm run test:music
+```
+
+Run the preview server first. The test uses generated audio and synthetic native
+calls. TV file access and HDMI/audio handoff still need an on-device check.

@@ -1,64 +1,42 @@
 # Menu categories
 
-The horizontal order is Settings, Photo, Music, Video, TV, Apps, Browser,
-Network. Users and Friends are not included. Inputs and Library
-are replaced by the relevant TV and media categories, not added as extra tabs.
-The selected category remains anchored and the bar scrolls; the eight icons are
-not squeezed into the old five-category width.
+The bar contains Settings, Photo, Music, Video, TV, Apps, Browser and Network.
+Home starts in **TV** and remembers the selected row separately for each category.
+Changing categories doesn't launch an app.
 
 | Category | Shortcuts |
 | --- | --- |
-| Settings | Existing launcher settings and native TV Settings |
+| Settings | Launcher settings and native TV Settings |
 | Photo | LG Gallery+ and Media Player |
-| Music | Native Music and Media Player |
-| Video | Media Player |
-| TV | Live TV, LG Channels, HDMI 1–4 |
-| Apps | Home Hub, then other apps returned by installed-app discovery |
+| Music | Music, Media Player and Plex |
+| Video | Media Player and Plex |
+| TV | Live TV, LG Channels and HDMI 1–4 |
+| Apps | Home Hub and other discovered apps |
 | Browser | Web Browser |
 | Network | Homebrew Channel and LG Apps |
 
-Only existing curated application IDs are reused. Media Player deliberately
-appears in all three media categories: it is the shared native media browser,
-not a verified photo/music/video-specific deep link. This change does not add a
-media indexer, new player, subscription, or remote service. Other discovered
-apps remain under Apps; there is no title-based guessing of app genres.
+Media Player opens the same native media browser from each category. These
+aren't separate photo, music or video players implemented by LG-XMB.
+Plex uses the curated LG store ID `cdp-30`; availability can differ on another TV.
+Curated shortcuts are excluded from the discovered Apps list to avoid duplicates.
 
-Homebrew Channel and the LG store share the Network category. Browser remains separate. Selecting a
-category does not launch anything. OK/Enter on its item uses the existing
-application manager path. Native app availability is still model/firmware
-specific; existing launch-error handling remains in place.
+HDMI names are read from the TV where its service permits it. Refreshing a name
+keeps the physical input ID and selection unchanged. Cached and live previews
+are selected by that input ID, not by the category's position in the bar.
 
-Startup selects TV by its category ID, not an array index. HDMI preview routing
-uses each item's input action and physical app ID, not the old Inputs tab.
-Label refresh ignores TV's non-input entries and updates the existing HDMI
-nodes in place. Each category keeps its own selected row. Curated apps are
-still excluded from the discovered Apps list to avoid duplicates.
+Hold OK on an item for [sorting, information and other options](ITEM-OPTIONS.md).
+Sort order is local to LG-XMB and doesn't reorder LG's launcher.
 
-Wave/particle code, animation timing, app identity and preference keys remain
-unchanged. Optional local sound playback is described in MENU-SOUNDS.md. Its
-same-origin loader is the only reason connect-src now allows 'self'.
+## Code and tests
 
-## Focused tests
+`app/catalog.js` defines the curated entries. `app/app.js` handles installed-app
+discovery and navigation. Use category IDs and item IDs in tests rather than
+assuming a fixed row number.
 
 ```sh
 node --test tests/catalog.test.cjs
 node tests/catalog-browser.cjs
 ```
 
-The browser test uses the app controller, HTML, local CSS, catalog, icons and
-category-transition module, with explicit doubles for the TV bridge, media
-previews, music and background renderer. It loads local source strings without
-a server. CSP bypass is only a test-harness setting for injection; the product
-CSP is not changed. Use PLAYWRIGHT_EXECUTABLE_PATH to select a local Chromium.
-The project Playwright dependency is sufficient; no new production dependency
-is added.
-
-The focused tests cover category order, native targets, discovery/deduplication,
-startup, category boundaries, rapid reversal, selected-row retention,
-accessibility IDs, cached/live HDMI routing, label changes, error recovery,
-and reduced motion at 1280×720, 1920×1080 and 1024×768.
-
-These do not certify TV launches, HDMI playback, GPU performance or the entire
-repository test suite. Older browser scenarios that assume Watch/Inputs or
-fixed column indices need their navigation routes updated to this new catalog;
-the stable data attributes should be used instead of positional selectors.
+The browser test uses synthetic TV, media and renderer objects. It checks menu
+behaviour, not whether a particular native app is installed or launchable.

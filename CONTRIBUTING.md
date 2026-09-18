@@ -1,95 +1,58 @@
 # Contributing
 
-Keep changes small enough to review. Describe the problem, the change and how
-you tested it. Bug reports should include the app version, TV model, installed
-webOS version and steps to reproduce; do not include device credentials or
-captured HDMI pictures.
+Keep a change focused on the problem it fixes. Explain why it's needed and list
+the checks you actually ran. Include the app version, TV model and firmware in
+bug reports. Don't post credentials or captured HDMI pictures.
 
-## Code
+## Code and text
 
-Target Chromium 87 for the web app (webOS 22). Use the existing plain JavaScript
-modules; a new framework or dependency needs a concrete reason. Follow
-`.editorconfig`. Do not mix whole-file formatting with behavior changes.
-Comments should explain platform constraints or non-obvious decisions, not
-repeat the code. Keep user-facing text short and describe only implemented
-features.
+Use the existing plain JavaScript modules and follow `.editorconfig`. Don't mix
+a formatting pass with behaviour changes. Add a dependency only when the code
+needs it.
 
-Optional TV APIs must fail independently. A successful read from a root shell
-does not establish permission to write from the packaged app. Do not loosen
-process identity, path, manifest or restoration checks to make another model
-appear supported. Add evidence and tests for the new behavior instead.
+Comments should explain a constraint or a non-obvious decision. Remove notes
+about abandoned implementations instead of adding another update underneath.
+Write documentation from the current code, not from a development conversation.
+Use direct instructions, exact paths and the labels shown in the app. Keep test
+results separate from claims about TV compatibility.
 
-## Performance guardrails
+Preserve application IDs, stored preference keys and recovery fixtures unless
+the change includes a migration. Some identifiers still use the old project
+name because installed TVs depend on them.
 
-The C5 rendering budget is tight. Follow [the performance notes](docs/PERFORMANCE.md)
-and run the focused cache/layer tests after changing rendering or menu code.
+## Native services
 
-- Keep composite colour, tone mapping and output `mediump`; use `highp` for
-  addressing and the dither hash. Cached colour generation may use `highp`.
-- Cache constant spatial work. Do not rebuild gradients, lookup tables, or
-  serialized cache keys every animation frame.
-- No `will-change` in any app stylesheet, and no opacity on text or its
-  containers. Dim with colour alpha; animate transforms, not text colours.
-- Closed overlays must leave the painted layer tree. Reuse their DOM, not
-  permanent full-screen GPU surfaces.
-- Full-size render targets stay 32-bit UNORM. Floating-point render targets
-  require an explicit tiny-size exception, not a default format switch.
+Optional services must fail independently. A root-shell command working doesn't
+prove the packaged app has permission to call it.
 
-## Tests
+Keep the helper's ownership, path and manifest checks. Don't weaken them to make
+an unsupported TV look compatible. `app/appinfo.json` is hashed by the helper;
+changes require updating its pin in `tv-helper/thumbnail_cache.py`.
 
-```sh
-npm ci --ignore-scripts --no-audit --no-fund
-npm test
-python3 -B -m unittest discover -s tests -p 'test_*.py'
-python3 -B -m unittest discover -s tv-helper -p 'test_*.py'
-python3 -B -m unittest discover -s tv-helper/recovery -p 'test_*.py'
-```
+Never test recovery or ownership checks against a real TV's files from a desktop
+test runner. The Python tests use temporary directories. Some require a Linux
+root test environment and skip elsewhere.
 
-The isolated layout test starts no TV connection or preview server:
+## Checks
 
-```sh
-npx playwright install chromium
-npm run test:compat
-```
+Use [Building and testing](docs/BUILDING.md). Run the relevant unit and browser
+tests, then build and inspect the IPK. Record failures and skipped tests rather
+than describing a partial run as the whole suite.
 
-It checks native CSS and forces the aspect-ratio fallback at 720p and 1080p.
-Forcing a fallback is not emulating Chromium 87 or testing a TV. To use an
-installed browser, set `PLAYWRIGHT_CHANNEL=chrome` or
-`PLAYWRIGHT_EXECUTABLE_PATH` to its executable.
-
-For the full browser suite, start `npm run preview` in another terminal, then
-run `npm run test:browser`. It uses installed Edge by default;
-`PLAYWRIGHT_CHANNEL=chrome` selects Chrome. The WebGL checks rely on
-`app/ps3-native-data.js` and `app/ps3-background-data.js`, which are committed.
-
-`npm run test:music` runs the focused background-music browser checks against the
-preview server, using generated silent PCM for audio lifecycle checks. No recording is required.
-Native launches
-and HDMI playback are simulated; actual audio handoff still needs a TV test.
-
-`npm run test:menu` runs the focused category-motion checks against a local
-preview server: both UI sizes, interrupted transitions, reduced motion and
-selection styling. It does not replace the full browser suite or on-TV testing.
+For a native change, test the packaged app on the TV. Check install, upgrade,
+app and HDMI return, standby, removal and the recovery path affected by the
+change. Keep a separate way to reach the TV when testing Home replacement.
 
 ## Releases
 
-Build with `npm run package`, then `npm run verify:package`. Review manifest
-changes together with the helper's exact-byte pin. Keep the app ID and existing
-preferences stable unless the change includes a migration.
+Build from the commit being released. Upload the verified IPK, `SHA256SUMS` and
+matching source. Add a short version note under `docs/releases/` with changes
+and known limitations. Old notes describe those versions, not the current app.
 
-There's no CI and no release workflow at the moment, on purpose. The renderer is
-still being tested on the TV, so builds are made on a computer and installed by
-hand (see [Installation](docs/INSTALLATION.md)). When a build is worth
-publishing, attach the IPK, `SHA256SUMS` and matching source from `dist/` to a
-GitHub release yourself, with notes in `docs/releases/<app-version>.md` that
-include the known limitations.
+This checkout has no GitHub Actions publishing workflow. Pushing a commit
+doesn't build or publish a release.
 
-A release needs a TV test record, including install, upgrade, removal and recovery.
-List untested platforms as untested. Automated tests are not a substitute for
-those checks. Preserve upstream licenses and provide matching source alongside
-binaries.
+Keep licence notices with the code and data they cover. Document where new
+assets came from and whether they can be redistributed. A file being committed
+doesn't give it the project's licence automatically.
 
-Follow the [Homebrew publishing rules](https://www.webosbrew.org/develop/guides/publishing/rules/).
-Disclose AI assistance in review or submission; a maintainer must understand and
-review the code. Do not replace missing validation with generated descriptions
-or compatibility claims.

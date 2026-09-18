@@ -1,5 +1,5 @@
 // lg-xmb web application, 2026. SPDX-License-Identifier: GPL-3.0-only
-// Local build/inspection only. This script has no device or deployment commands.
+// Build and inspect the local IPK. This does not install it on a TV.
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -65,14 +65,13 @@ try {
     }
     fs.copyFileSync(path.join(projectDir, 'docs', 'WEBGL2-NOTICES.md'), path.join(licenseDir, 'WEBGL2-NOTICES.md'));
   }
-  for (const relativeName of [appinfo.main, appinfo.icon, 'ps3-particle-birth.js', 'ps3-native-core.js', 'ps3-native-shaders.js', 'ps3-native-renderer.js', 'ps3-background-clock.js', 'background-music.js', 'category-transition.js', 'wave-colors.js', 'wave-color-settings.js', 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/WEBGL2-NOTICES.md', 'licenses/PARTICLE-BIRTH-MIT.txt', 'licenses/UPSTREAM-original.frag', 'licenses/UPSTREAM-config.json', 'licenses/PS3-XMB-MIT.txt', 'licenses/THREE-FXAA-MIT.txt']) {
+  for (const relativeName of [appinfo.main, appinfo.icon, 'ps3-particle-birth.js', 'ps3-native-core.js', 'ps3-native-shaders.js', 'ps3-native-renderer.js', 'ps3-background-clock.js', 'background-music.js', 'category-transition.js', 'wave-colors.js', 'wave-color-settings.js', 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/WEBGL2-NOTICES.md', 'licenses/PARTICLE-BIRTH-MIT.txt', 'licenses/PS3-XMB-MIT.txt', 'licenses/THREE-FXAA-MIT.txt']) {
     requireCondition(typeof relativeName === 'string' && relativeName.length > 0, 'App entry and icon paths are required.');
     const resolved = path.resolve(appDir, relativeName);
     requireCondition(resolved.startsWith(appDir + path.sep), `App file leaves package directory: ${relativeName}`);
     requireCondition(fs.statSync(resolved).isFile(), `Missing app file: ${relativeName}`);
   }
-  // The reference data is committed, but a tree without it still packages and
-  // the app draws the static backdrop instead of the wave, so say so.
+  // Allow deliberate static-only builds, but report missing runtime data.
   for (const name of ['ps3-native-data.js', 'ps3-background-data.js']) {
     if (!fs.existsSync(path.join(appDir, name)))
       console.warn(`Note: app/${name} is missing, so this build shows the static backdrop instead of the wave.`);
@@ -101,7 +100,7 @@ try {
   fs.writeFileSync(path.join(outputDir, 'SHA256SUMS'), `${hash}  ${path.basename(packagePath)}\n`, 'utf8');
   console.log(`Verified ${path.basename(packagePath)} (${packageBytes.length} bytes)`);
   console.log(`SHA-256 ${hash}`);
-  console.log('Created locally; installation and TV behavior have not been tested by this build command.');
+  console.log('Package verified locally. Nothing was installed on a TV.');
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;

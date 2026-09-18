@@ -21,7 +21,7 @@
     SETUP_PENDING:'Another lg-xmb setup is still finishing. Open this menu again to check its progress.',
     WORKER_BUSY:'The worker lock is held without a verified reusable helper. No additional worker was started.',
     TIMEOUT:'Helper setup was not confirmed. It may still be running; no retry was sent.',
-    SETUP_FAILED:'Helper setup failed. Existing settings were preserved. Check the helper files before retrying.'
+    SETUP_FAILED:'Helper setup failed. Check the startup log and installed helper files before retrying.'
   };
   function problem(code){var e=new Error(messages[code]||messages.SETUP_FAILED);e.code=code;return e;}
   function object(value){return !!value&&typeof value==='object'&&!Array.isArray(value);}
@@ -61,9 +61,7 @@
     if(failure&&failure.code!=='SETUP_PENDING')return Promise.reject(failure);
     if(!root.C5TV||!root.C5TV.isTV()||typeof root.PalmServiceBridge!=='function')return Promise.reject(problem('EXEC_UNAVAILABLE'));
     failure=null;phase='starting';emit();
-    // Keep the bridge alive until it replies. There are no downloads, generic
-    // caller-supplied commands, root exploits or restart loops. Setup does not
-    // assign Home or enable new background restrictions.
+    // Keep the bridge alive until this fixed setup command replies.
     var operation=new Promise(function(resolve,reject){
       var bridge,timer,done=false;
       function finish(error,value){
@@ -84,7 +82,7 @@
   function status(){
     return {phase:phase,ready:!!confirmed,captureRunning:!!(confirmed&&confirmed.captureRunning),
       code:failure?failure.code:null,message:failure?failure.message:phase==='starting'?'Preparing TV helper…':
-        confirmed?(confirmed.captureRunning?'TV helper ready. Cached pictures appear after an input is viewed.':'Home controls are ready, but the capture worker did not start.'):'TV helper has not started.'};
+        confirmed?(confirmed.captureRunning?'TV helper ready. Cached pictures appear after an input is viewed.':'Helper setup finished, but HDMI capture did not start.'):'TV helper has not started.'};
   }
   root.LGXMBHelper=Object.freeze({ensure:ensure,isReady:function(){return !!confirmed;},getState:status,
     retry:function(){if(pending)return pending;failure=null;confirmed=null;return ensure();}});

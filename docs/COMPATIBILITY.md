@@ -1,89 +1,59 @@
 # Compatibility
 
-The first target is webOS 22–26. Choose by the installed platform, not the TV's
-purchase year. LG publishes the [engine mapping](https://webostv.developer.lge.com/develop/specifications/web-api-and-web-engine):
+The development target is the **LG C5 (OLED42C54LA) running webOS 10.3.1**.
+Other TVs aren't confirmed compatible just because they run webOS.
 
-| Platform | Chromium | Project status |
-| --- | --- | --- |
-| webOS 22 | 87 | Target; not TV-tested by this compatibility change |
-| webOS 23 | 94 | Target; not TV-tested by this compatibility change |
-| webOS 24 | 108 | Target; not TV-tested by this compatibility change |
-| webOS 25 | 120 | Existing 0.1.11 C5 test record: webOS 10.3.1; new changes need retesting |
-| webOS 26 | 132 | Target; not TV-tested by this compatibility change |
+The interface targets the webOS 22-era browser and newer. The package declares
+1920 × 1080, and its animated background requires WebGL 2. A missing or failed
+WebGL 2 context leaves a static background rather than preventing navigation.
+A desktop layout check at another resolution isn't a test on that TV model.
 
-The manifest remains 1920×1080. There is no 720p package variant yet. A desktop
-720p layout check is not validation on a Full HD TV; see LG's
-[app resolution requirements](https://webostv.developer.lge.com/develop/specifications/app-resolution).
+## Check each feature separately
 
-## What is independent
+| Feature | Requirement or limit |
+| --- | --- |
+| Menu and desktop preview | Browser support for the app's JavaScript and CSS |
+| Native app launching and HDMI names | The packaged app must be allowed to call the TV services |
+| Cached HDMI pictures | Rooted Homebrew environment, Python and compatible capture behaviour |
+| Live HDMI preview | A working TV media pipeline; starting it can change HDR mode |
+| Home replacement | Root access and a manually managed bind mount |
+| App deletion and clock changes | Native service permission under the app's actual identity |
+| User audio | Readable local files and a working audio path |
 
-The menu, app launching, live previews, cached capture, Home assignment and each
-background control need separate verification. In particular, the C5 helper's
-process paths, service definitions and capture geometry are not generic webOS
-contracts. The current helper still reports all controls as supported; do not
-interpret that as a cross-model capability check.
+The capture worker has C5-specific geometry: a 3840 × 2160 panel and a
+1920 × 1080 preview capture surface. Don't reuse those assumptions blindly on
+a different model. OpenCV and NumPy are needed for its live-preview crop path,
+not for ordinary full-input PNG capture.
 
-On webOS 26 Re:New, test Luna calls from the packaged app under LG's
-[ACG model](https://webostv.developer.lge.com/develop/guides/acg-guide).
-The shell diagnostic below does not change the manifest or test app permissions.
+The helper doesn't provide Home remapping or background-service controls.
+Changing an LS2 manifest or a service permission isn't part of installation.
 
 ## Read-only diagnostic
 
-On a TV where SSH already works, use a POSIX shell on your computer:
+From a POSIX shell on your computer, using an existing TV SSH connection:
 
 ```sh
-ssh YOUR_EXISTING_TV_CONNECTION '/usr/bin/python3 -I -B -' < tools/tv-diagnostics.py
+ssh YOUR_TV_CONNECTION '/usr/bin/python3 -I -B -' < tools/tv-diagnostics.py
 ```
 
-Replace `YOUR_EXISTING_TV_CONNECTION` with your configured SSH host alias or
-user and host. Do not enable root or change SSH settings for this command.
-It needs Python 3.7 or newer and the TV's existing `luna-send`.
+Replace `YOUR_TV_CONNECTION` with your SSH alias or `user@host`. The script
+requires Python 3.7 or newer and the TV's `luna-send`.
 
-The command reads the SDK version and the shapes of Home, preload and video
-status responses. It reports missing commands and failures independently,
-bounds each native response, and omits raw app lists and video data. It does not
-load the controller, repair permissions, create caches, assign Home, stop
-services or capture a picture. Module availability is checked without importing
-OpenCV or NumPy. No report is uploaded automatically.
+It reports SDK information, command availability and the shapes of selected
+native replies. It doesn't capture pictures, start the helper or change TV
+settings. Nothing is uploaded automatically.
 
-`ok` means a read returned the expected shape in that shell context. It does not
-mean the corresponding feature is safe to enable. `service_refused` deliberately
-does not guess whether the cause is a permission, a missing method or firmware
-behavior. SDK versions are reported verbatim, not inferred from a model name.
+A successful shell read doesn't establish permission for the packaged app.
+`service_refused` can mean a missing method, denied access or different firmware
+behaviour. The diagnostic doesn't guess which one.
 
-## Startup lifecycle
+## Reporting a test
 
-The `init.d` entry is now a symlink to the packaged `app/helper-startup.py`,
-following [Homebrew's startup guidance](https://www.webosbrew.org/develop/guides/startup-script/).
-Recovery accepts only that exact root-owned link or a reviewed legacy copy.
-Tests cover migration, dangling links, changed/foreign entries and app removal;
-CI also checks that the IPK contains the executable startup entry.
+Record the TV model, installed firmware/SDK, app commit, installation method and
+whether root was used. Test native calls from the running app, not just SSH.
+Check navigation, app and HDMI return, standby, upgrade and removal. For Home
+replacement, also test [restoring LG Home](HOME-TAKEOVER.md#restore-lg-home).
 
-Deleting the app breaks the link, not the TV's Home assignment. Restore settings
-before uninstalling; see [removal and leftovers](INSTALLATION.md#return-to-lg-home-and-remove).
-The new startup/recovery path still needs an actual C5 install, reboot, upgrade
-and removal test before release. The earlier 0.1.11 test record does not cover it.
-
-## Before broad distribution
-
-Outstanding: per-feature helper profiles, capture/controller isolation, and
-verified geometry outside the C5. Keep the helper C5-only until those changes are tested.
-
-Before Homebrew submission, make the corresponding source publicly reachable
-and verify the package source URL. Do not submit a private source URL to the
-open-source repository pool.
-
-For each claimed platform, record the model, installed SDK/firmware, app commit,
-installation method and whether root was used. Test cold start, remote/pointer
-navigation, app launch/return, helper absence, Home/Back behavior, standby/resume,
-upgrade and removal. Test live HDMI, capture, Home assignment and restoration
-only as separate, deliberate checks with an independent recovery route.
-
-## Clean-install test record
-
-Native input labels in build `edde24c` were confirmed working by the maintainer.
-Cached pictures and Home remapping failed when the old external helper was
-removed: that build did not bundle its helper modules. Version 0.1.12 packages
-them and adds automatic setup, migration and safe fresh defaults. These changes
-still need the same clean-install test on the TV; CI does not establish native
-API permissions or capture compatibility.
+Earlier test records apply to their recorded builds. They don't validate later
+renderer or helper changes. Browser and synthetic-service tests don't establish
+TV frame pacing, native permissions or capture compatibility.

@@ -11,10 +11,10 @@ function group(label,choices,value,handler){
 function render(key,initial){
   var root=content(),scroll=root.scrollTop;root.textContent='';
   if(errorMessage){var error=element('p','background-error',errorMessage);error.setAttribute('role','alert');root.appendChild(error);}
-  var back=group('Back button',[['stay','Stay in Home'],['lg','LG behavior']],options.getBack(),function(value){
+  var back=group('Back button',[['stay','Stay in Home'],['lg','Show exit prompt']],options.getBack(),function(value){
     errorMessage='';try{options.setBack(value);}catch(error){errorMessage=error.message||'Could not save the Back button setting.';}render('Back button:'+value,false);
   });
-  back.appendChild(element('p','remote-note','Panels close first. LG behavior uses the TV’s exit prompt from the main menu.'));
+  back.appendChild(element('p','remote-note','Back closes an open panel first. From the main menu, it stays here or opens the TV exit prompt.'));
   var target=null;[].forEach.call(root.querySelectorAll('[data-remote-choice]'),function(button){if(button.getAttribute('data-remote-choice')===key)target=button;});
   if(!target&&initial)target=root.querySelector('[aria-pressed="true"]')||root.querySelector('button');
   if(target)target.focus();root.scrollTop=scroll;

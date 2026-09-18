@@ -1,102 +1,45 @@
-# Date & time and item-options presentation
+# Date and time
 
-## Date & time
+Open **Settings → Date & time** to edit the TV clock. The panel reads the native
+clock and time zone before enabling edits.
 
-Open **Settings → Date & time**. The editor reads the native clock once and shows
-its time zone. It edits day, month, year, hour, minute and second (24-hour time).
-Left/Right changes field; Up/Down changes its value; number keys allow direct
-entry. OK moves to Apply. Clicking the +/− controls works with a pointer.
-Back closes without applying the edited values.
+Left and Right select a field. Up and Down change its value. Number keys enter
+a value directly; pointer users can use the +/− controls. OK moves to **Apply
+date & time**. Back closes without submitting the edits.
 
-**Apply date & time** sends exactly one request through PalmServiceBridge:
+The editor uses 24-hour time and supports dates from 2000 through 2099. The TV's
+native service may accept a narrower range. Automatic time synchronisation
+stays unchanged and can override a manual value.
 
-```text
-luna://com.webos.service.systemservice/time/setSystemTime
-{"utc": <integer Unix seconds>}
+## Applying a change
+
+Nothing is written while opening or editing the panel. Apply sends one request
+to `com.webos.service.systemservice/time/setSystemTime` with an integer Unix
+`utc` value in **seconds**, not JavaScript milliseconds.
+
+The conversion uses the TV's reported time zone. Invalid dates and nonexistent
+daylight-saving times are rejected. For a repeated autumn hour, choose its
+first or second occurrence.
+
+After an acknowledgement, the panel reads the clock back with a ten-second
+tolerance. A different result is reported as a mismatch. A timeout leaves the
+outcome uncertain and doesn't trigger another write.
+
+Closing the panel cancels pending reads, but can't undo a write already sent.
+The desktop preview doesn't set the computer's clock or connect to a TV.
+
+## Code and tests
+
+`app/system-time.js` handles the native calls and time conversion.
+`app/date-time-settings.js` implements the editor. There is no shell command,
+permission change or automatic root fallback. A service refusal leaves the
+rest of Home usable.
+
+```sh
+node --test tests/system-time.test.cjs
+node tests/date-time-options-browser.cjs
 ```
 
-No shell command is executed, no root fallback is added, and no permission or
-Home-manifest changes are made. The endpoint is the one provided for this TV.
-A root-shell success does not establish permission for the packaged application;
-a service refusal is shown without disabling other launcher features.
-
-The UI converts local calendar fields using the time zone reported by
-`time/getSystemTime`, not a hard-coded offset or the development computer's
-zone. It validates calendar dates and round-trips the conversion. Nonexistent
-spring-forward times are rejected; the repeated autumn hour exposes a first/
-second occurrence choice. The editor supports 2000–2099, subject to the TV's
-native time service accepting that range. Compatibility beyond 2038 on older
-32-bit firmware is not established.
-
-The native API gets seconds, **not JavaScript milliseconds**. The OSE reference
-has inconsistent wording for this parameter (its example uses Unix seconds);
-this implementation follows the supplied TV command and tests its exact value.
-
-Nothing writes on open or while editing. Apply checks for duplicate submissions,
-then reads the time back. A successful acknowledgement with a different read-back
-value is reported as a mismatch, not as a verified clock update. Read-back uses
-a ten-second tolerance to allow request/processing time. Automatic/network time
-and timezone preferences are deliberately unchanged; they can override a manual
-value. The top-bar clock and currently selected background are refreshed after
-an accepted change without reconfiguring renderer quality or simulation.
-
-Reads are cancelled on close/hide. A sent write cannot be undone by closing the
-panel: it finishes independently, but cannot reopen or overwrite a later dialog.
-Timeouts explicitly leave the result uncertain and do not automatically retry.
-Desktop preview does not set either the computer's or TV's clock.
-
-## Item-options opening
-
-The previous panel performed its render/focus/visibility changes together with
-its opening transform. Native metadata could arrive while it was moving and
-change the status text and Delete state. It also had a full-height shadow and
-a partially transparent surface blending over the animated background.
-
-Changes:
-
-- Populate the panel during the existing 650 ms hold, without opening it,
-  playing sounds, or calling native services. Reuse the four main action nodes.
-- Keep the shell translated outside the viewport with a persistent transform
-  layer. Add layout/style/paint containment. Do not animate visibility, opacity,
-  dimensions, or shadows. There is no frame-by-frame JS animation.
-- Allow a presented frame for focus/layout and preview cleanup before starting
-  the 220 ms CSS slide. Query app metadata only when that slide completes, with
-  a bounded fallback when transition events are absent.
-- Use an opaque panel and a thin border instead of the old 93%-opaque panel and
-  blurred shadow. The right pane no longer shows the moving wave through it.
-  The surrounding dimmer remains a flat translucent rectangle.
-- Back/close cancels scheduled work; Start/lifecycle closes immediately; reduced
-  motion bypasses the staging and transition. Confirm/Delete cannot fire from
-  the held opening key. Input during the brief opening stage is ignored except
-  Back/Left, which can close it.
-
-The waveform, particles, brightness, audio mapping, shaders, helper, media
-lifecycle implementation and app identity are unchanged. No extra WebGL pass,
-readback or production dependency is added. Persistent compositor layers trade
-some retained UI memory for avoiding layer churn; their allocation and cost are
-driver-dependent. This is not a zero-memory-overhead claim.
-
-## Evidence and limits
-
-An isolated Chromium 144 trace used the actual before/after item-options module
-and stylesheet, with a synthetic metadata reply 50 ms after the request. In the
-interior of the opening transition (excluding a 2 ms boundary margin), the old
-panel had one Layout and two Paint events; the revised panel had zero of each.
-The revised metadata request occurred after the transition rather than during it.
-Both animations kept approximately 217 ms of slide time. This demonstrates
-removal of a mid-slide repaint path, not a C5 frame-rate measurement.
-
-Focused browser suites run the actual controller and panels at 720p and 1080p,
-with native/media/renderer fixtures. Their stylesheet and catalog baseline were
-verified against GitHub blob IDs at 9929efd. The actual WebGL workload, native
-clock writes, Magic Remote delivery and C5 GPU scheduling remain on-TV checks.
-The complete repository test suite was not run.
-
-Sources consulted:
-
-- https://www.webosose.org/docs/reference/ls2-api/com-webos-service-systemservice/
-- https://webostv.developer.lge.com/develop/references/system-service
-- https://web.dev/articles/animations-guide
-
-The OSE service reference is a protocol reference, not evidence of identical
-permissions on commercial TV firmware. AI-assisted change; review before merge.
+Browser tests use synthetic service replies. Native write permission and the
+TV's accepted date range need testing on its actual firmware. For the shared
+options-panel layout, see [ITEM-OPTIONS-STYLING.md](ITEM-OPTIONS-STYLING.md).
