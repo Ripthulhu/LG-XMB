@@ -1,0 +1,37 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+.item-options{position:fixed;inset:0;z-index:30;pointer-events:none;contain:layout style paint}
+.item-options.open{pointer-events:auto}
+/* Keep the panel layer outside the viewport instead of hiding/recreating it. */
+.item-options-shade{position:absolute;inset:0;background:rgba(0,8,20,.27);transform:translate3d(0,-110%,0);will-change:transform}
+.item-options.open .item-options-shade{transform:translate3d(0,0,0)}
+/* Opaque, paint-contained panel: no full-height translucent blend or shadow.
+   Two persistent UI layers; only the panel transform animates. */
+.item-options-panel{position:absolute;right:0;top:0;width:32%;height:100%;padding:18vh 3vw 4vh 2.3vw;background:#1d415d;border-left:1px solid rgba(215,239,255,.45);contain:layout style paint;will-change:transform;transform:translate3d(105%,0,0);transition:transform .22s cubic-bezier(.16,.92,.34,1);overflow:auto;outline:none;color:#fff}
+.item-options.shown .item-options-panel{transform:translate3d(0,0,0)}
+.item-options-heading{font-size:clamp(18px,1.4vw,28px);font-weight:400;margin:0 0 1vh;overflow-wrap:anywhere}
+.item-options-caption{font-size:clamp(12px,.95vw,20px);color:rgba(255,255,255,.68);margin:0 0 3vh;overflow-wrap:anywhere}
+.item-options-actions{display:flex;flex-direction:column;align-items:stretch;gap:.25vh}
+.item-options-button{background:none;border:0;padding:1vh .6vw;text-align:left;font-size:clamp(18px,1.35vw,28px);color:rgba(255,255,255,.78);border-left:2px solid transparent;line-height:1.35}
+.item-options-button:focus{outline:none!important;border-left-color:#fff;color:#fff;background:rgba(255,255,255,.09)}
+.item-options-button[aria-disabled=true]{color:rgba(255,255,255,.36)}
+.item-options-button[aria-pressed=true]::after{content:' ✓';float:right}
+.item-options-button[data-action=sort]{margin-bottom:8vh}
+.item-options-button[data-action=sort]::after{content:'›';float:right}
+.item-options-status{font-size:clamp(12px,1vw,20px);color:rgba(255,255,255,.72);line-height:1.5;margin:2vh .6vw;overflow-wrap:anywhere;min-height:3em}
+.item-options-info{font-size:clamp(13px,1.05vw,22px);line-height:1.5;overflow-wrap:anywhere;margin:2vh .6vw}
+.item-options-info dt{color:rgba(255,255,255,.6);margin-top:1.1vh}
+.item-options-info dd{margin:0}
+.item-options-warning{font-size:clamp(15px,1.1vw,23px);line-height:1.6;margin:2vh .6vw}
+.item-options-close{position:absolute;top:4vh;right:2vw;font-size:clamp(15px,1.1vw,24px);background:none;padding:.5em;color:rgba(255,255,255,.8)}
+body.reduced-motion .item-options-panel{transition:none}
+@media(prefers-reduced-motion:reduce){.item-options-panel{transition:none}}
+@media(max-width:1050px){.item-options-panel{width:38%;padding-left:2vw;padding-right:2vw}.item-options-button[data-action=sort]{margin-bottom:4vh}}
+
+/* Accessibility still hides the underlying menu, but the shade already dims it.
+   Do not also run the existing settings-panel text opacity animations. */
+body.item-options-visible .screen[aria-hidden=true] #categories,
+body.item-options-visible .screen[aria-hidden=true] .cross-content,
+body.item-options-visible .screen[aria-hidden=true] header{opacity:1;transition:none}
+body.item-options-visible .screen{pointer-events:none}
+
+.item-options.instant .item-options-panel{transition:none}

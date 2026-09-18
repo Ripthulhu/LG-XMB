@@ -24,3 +24,6 @@ app/audio/
 
 # Console-derived wave fixtures and firmware tables for the WebGL 2 experiment; never publish.
 experiments/ps3-wave-webgl2/private/
+
+# Backups the patch installers leave in the checkout.
+.lg-xmb-backups/

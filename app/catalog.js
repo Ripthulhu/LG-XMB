@@ -58,6 +58,14 @@ window.C5Catalog=[
         "action": "remote"
       },
       {
+        "id": "datetime",
+        "title": "Date & time",
+        "icon": "settings",
+        "type": "SETTING",
+        "description": "Set the TV date and time.",
+        "action": "datetime"
+      },
+      {
         "id": "com.palm.app.settings",
         "title": "TV Settings",
         "icon": "settings",

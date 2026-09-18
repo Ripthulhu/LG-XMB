@@ -15,7 +15,7 @@ const probe=`window.soundProbe={played:[],stopped:0};
 const realStart=AudioBufferSourceNode.prototype.start,realStop=AudioBufferSourceNode.prototype.stop;
 AudioBufferSourceNode.prototype.start=function(...args){soundProbe.played.push(this.buffer.duration);return realStart.apply(this,args);};
 AudioBufferSourceNode.prototype.stop=function(...args){soundProbe.stopped++;return realStop.apply(this,args);};`;
-const scripts=['icons.js','catalog.js','category-transition.js','fixture.js','probe.js','menu-sounds.js','app.js'];
+const scripts=['icons.js','catalog.js','category-transition.js','fixture.js','probe.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','item-options.js','system-time.js','date-time-settings.js','app.js'];
 const html=fs.readFileSync(path.join(root,'app/index.html'),'utf8').replace(/  <script src="[^"]+"><\/script>\n/g,'').replace('</body>',scripts.map(s=>'<script src="'+s+'"></script>').join('\n')+'\n</body>');
 const server=http.createServer((req,res)=>{
  const name=decodeURIComponent(req.url.split('?')[0]).slice(1);
@@ -28,7 +28,7 @@ const server=http.createServer((req,res)=>{
  if(!name){data=html;type='text/html';}
  else if(name==='fixture.js')data=fs.readFileSync(path.join(__dirname,'fixtures/catalog-platform.js'));
  else if(name==='probe.js')data=probe;
- else if(scripts.includes(name)||name==='style.css'){data=fs.readFileSync(path.join(root,'app',name));if(name.endsWith('.css'))type='text/css';}
+ else if(scripts.includes(name)||name==='style.css'||name==='item-options.css'||name==='date-time-settings.css'){data=fs.readFileSync(path.join(root,'app',name));if(name.endsWith('.css'))type='text/css';}
  else {res.writeHead(404);res.end();return;}
  res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});res.end(data);
 });
@@ -50,6 +50,8 @@ const samples=k=>480+Object.keys(FILES).indexOf(k)*48;
     });
     await page.setContent(html.replace(/<script[\s\S]*?<\/script>/g,'').replace(/<link[^>]+>/g,''));
     await page.addStyleTag({content:fs.readFileSync(path.join(root,'app/style.css'),'utf8')});
+    await page.addStyleTag({content:fs.readFileSync(path.join(root,'app/item-options.css'),'utf8')});
+    await page.addStyleTag({content:fs.readFileSync(path.join(root,'app/date-time-settings.css'),'utf8')});
     await page.evaluate(()=>{
       const storage=new Map();Object.defineProperty(window,'localStorage',{value:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,String(v)),clear:()=>storage.clear()}});
       window.XMLHttpRequest=class{

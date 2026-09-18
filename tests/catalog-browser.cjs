@@ -22,13 +22,14 @@ async function select(page,id){
     for(const [width,height] of [[1280,720],[1920,1080],[1024,768]]){
       const context=await browser.newContext({viewport:{width,height},bypassCSP:true});
       const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
-      const scripts=['icons.js','catalog.js','category-transition.js','catalog-platform.js','menu-sounds.js','app.js'];
+      const scripts=['icons.js','catalog.js','category-transition.js','catalog-platform.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','item-options.js','system-time.js','date-time-settings.js','app.js'];
       let html=fs.readFileSync(path.join(root,'app/index.html'),'utf8').replace(/  <script src="[^"]+"><\/script>\n/g,'');
       // Load only local source strings. No server or network is needed. CSP is
       // bypassed for this harness's injected scripts, never changed in the app.
       html=html.replace(/<link[^>]+rel="stylesheet"[^>]*>/g,'');
       await page.setContent(html);
       await page.addStyleTag({content:fs.readFileSync(path.join(root,'app/style.css'),'utf8')});
+      await page.addStyleTag({content:fs.readFileSync(path.join(root,'app/item-options.css'),'utf8')});
       for(const name of scripts){
         const file=name==='catalog-platform.js'?path.join(__dirname,'fixtures',name):path.join(root,'app',name);
         await page.addScriptTag({content:fs.readFileSync(file,'utf8')});
