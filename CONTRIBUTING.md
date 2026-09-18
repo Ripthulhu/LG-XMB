@@ -19,6 +19,22 @@ does not establish permission to write from the packaged app. Do not loosen
 process identity, path, manifest or restoration checks to make another model
 appear supported. Add evidence and tests for the new behavior instead.
 
+## Performance guardrails
+
+The C5 rendering budget is tight. Follow [the performance notes](docs/PERFORMANCE.md)
+and run the focused cache/layer tests after changing rendering or menu code.
+
+- Keep composite colour, tone mapping and output `mediump`; use `highp` for
+  addressing and the dither hash. Cached colour generation may use `highp`.
+- Cache constant spatial work. Do not rebuild gradients, lookup tables, or
+  serialized cache keys every animation frame.
+- No `will-change` in any app stylesheet, and no opacity on text or its
+  containers. Dim with colour alpha; animate transforms, not text colours.
+- Closed overlays must leave the painted layer tree. Reuse their DOM, not
+  permanent full-screen GPU surfaces.
+- Full-size render targets stay 32-bit UNORM. Floating-point render targets
+  require an explicit tiny-size exception, not a default format switch.
+
 ## Tests
 
 ```sh

@@ -24,6 +24,9 @@ uniform vec4 uNearControl;
 uniform vec4 uDarkness;
 uniform vec4 uModelviewProjection[4];
 uniform vec4 uTransparency;
+uniform bool uAmbientEnabled;
+uniform mediump sampler2D uAmbient;
+out mediump float vBackdropTransmission;
 void main() {
   vec4 r0=vec4(0),r1=vec4(0),r2=vec4(0),r3=vec4(0),r4=vec4(0),r5=vec4(0),r6=vec4(0),r7=vec4(0),r8=vec4(0),r9=vec4(0),r10=vec4(0),r11=vec4(0),r12=vec4(0),r13=vec4(0),r14=vec4(0),r15=vec4(0);
   vec4 o0=vec4(0,0,0,1),o7=vec4(0,0,0,1),o9=vec4(0,0,0,1),o10=vec4(0,0,0,1),o11=vec4(0,0,0,1),o12=vec4(0,0,0,1),o14=vec4(0,0,0,1);
@@ -605,5 +608,8 @@ void main() {
     o10.w=vv.w;
   }
   gl_Position=o0;
+  vBackdropTransmission=1.0;
+  if(uAmbientEnabled && o0.w>0.000001)
+    vBackdropTransmission=texture(uAmbient,0.5*(o0.xy/o0.w)+0.5).r;
   vUV=o7.xy;vFocus=o9.xy;vFade=o10.w;vNormal=o11.xyz;vPosition=o12.xyz;vViewNormal=o14.xyz;
 }

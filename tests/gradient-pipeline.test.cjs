@@ -50,10 +50,9 @@ test('static failure and destruction remove the general WebGL marker',()=>{
   assert.equal(attrs['data-ps3-background'],undefined);
  }
 });
-test('the same ambient terms are used for the composite and both particle passes',()=>{
- const take=s=>s.slice(s.indexOf('highp vec2 ambientTerms('),s.indexOf('\n}',s.indexOf('highp vec2 ambientTerms('))+2);
- const a=take(shaders.compositeFragment);assert.ok(a.length>200);
- for(const n of ['particleFragment','glareFragment'])assert.equal(take(shaders[n]),a);
+test('ambient spatial functions run only in the cache, not the repeated fragment passes',()=>{
+  assert.match(shaders.backdropFragment,/vec2 ambientTerms/);
+  for(const n of ['compositeFragment','particleFragment','glareFragment'])assert.doesNotMatch(shaders[n],/ambientTerms/);
 });
 test('vignette/halo terms reproduce the CSS corner and center values without quantization',()=>{
  assert.deepEqual(terms(0,1-.55),[1,0]); // outside the halo and vignette zero
@@ -65,8 +64,8 @@ test('vignette/halo terms reproduce the CSS corner and center values without qua
 });
 test('additive particle light gets transmission only, without repeating the white halo',()=>{
  for(const n of ['particleFragment','glareFragment']){
-  const s=shaders[n];assert.match(s,/outColor\.rgb \*= ambientTerms\(gl_FragCoord\.xy\*uAmbientInvSize\)\.x/);
-  assert.ok(s.indexOf('discard;')<s.indexOf('outColor.rgb *= ambientTerms'));
+  const s=shaders[n];assert.match(s,/outColor\.rgb \*= vBackdropTransmission/);
+  assert.ok(s.indexOf('discard;')<s.indexOf('outColor.rgb *= vBackdropTransmission'));
   assert.doesNotMatch(s,/outColor\.a\s*\*=/);
  }
  for(let i=0;i<100;i++){
@@ -74,26 +73,26 @@ test('additive particle light gets transmission only, without repeating the whit
   assert.ok(Math.abs(((base+light)*a+h)-((base*a+h)+light*a))<1e-15);
  }
 });
-test('particle uniforms use actual output resolution and are off for PS3-original frames',()=>{
+test('particle shaders sample the tiny cache in the vertex stage, and turn it off for PS3-original frames',()=>{
  for(const [monthly,width,height] of [[false,1920,1080],[false,1280,720],[true,1920,1080]]){
   const calls=[],gl={useProgram(){},bindVertexArray(){},uniform4fv(){},uniform1f(){},activeTexture(){},bindTexture(){},drawArraysInstanced(){},
     uniform1i:(u,v)=>calls.push([u,v]),uniform2f:(u,x,y)=>calls.push([u,x,y])};
   const r={gl,monthlyActive:monthly,outputWidth:width,outputHeight:height,material:{uModelviewProjection:new Float32Array(16)},
    materialRows:new Float32Array(16),simulation:{reference:{particleMaterial:{'iridescent exp':1}}}};
-  method('Renderer','particlePass').call(r,{}, {uAmbientEnabled:'ambient',uAmbientInvSize:'size'},width/height,1);
+  method('Renderer','particlePass').call(r,{}, {uAmbientEnabled:'ambient',uAmbient:'cache'},width/height,1);
   assert.ok(calls.some(x=>x[0]==='ambient'&&x[1]===(monthly?0:1)));
-  assert.ok(calls.some(x=>x[0]==='size'&&x[1]===1/width&&x[2]===1/height));
+  assert.ok(calls.some(x=>x[0]==='cache'&&x[1]===2));
  }
 });
-test('compositor sets the same mode flag and applies decoration before its existing dither',()=>{
- assert.match(source,/gl\.uniform1i\(u\.uAmbientEnabled, monthly \? 0 : 1\)/);
- const s=shaders.compositeFragment,a=s.indexOf('rgb=rgb*ambient.x+ambient.y;');
- assert.ok(a>s.indexOf('highp vec3 displayColour'));
- assert.ok(a<s.indexOf('return clamp(rgb+noise*amount'));
- assert.match(s,/precision mediump float;/);assert.match(s,/float m=signalAt\(vUV\);/);
- assert.match(s,/highp float d=\(n0\+n1-1\.0\)\/255\.0;/);
+test('cached decoration is quantized only after the gradient is generated',()=>{
+  assert.match(source,/gl\.uniform1i\(u\.uAmbientEnabled, monthly \? 0 : 1\)/);
+  const s=shaders.backdropFragment,a=s.indexOf('rgb=clamp(rgb,0.0,1.0)*ambient.x+vec3(ambient.y);');
+  assert.ok(a>s.indexOf('void main()'));assert.ok(a<s.indexOf('vec3 code=floor'));
+  assert.match(shaders.compositeFragment,/precision mediump float;/);
+  assert.match(shaders.compositeFragment,/float m=signalAt\(vUV\);/);
+  assert.equal((shaders.compositeFragment.match(/52\.9829189/g)||[]).length,1);
 });
 test('diagnostics identify the actual pre-dither pipeline',()=>{
- assert.match(source,/pipelineRevision: 'ambient-before-dither-1'/);
- assert.match(source,/ambientStage: this\.monthlyActive \? 'none' : 'pre-dither'/);
+ assert.match(source,/pipelineRevision: 'cached-colour-mediump-1'/);
+ assert.match(source,/ambientStage: this\.monthlyActive \? 'none' : 'cached'/);
 });

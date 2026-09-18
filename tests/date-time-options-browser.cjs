@@ -71,9 +71,15 @@ async function navigate(p,category,id){
   assert.equal(await p.evaluate(()=>catalogHarness.launches.length),launches);assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getAppInfo')).length),pre);
   await p.waitForFunction(()=>!C5App.getState().itemOptions.opening&&C5App.getState().itemOptions.removable);
   assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getAppInfo')).length),pre+1);checks.push(width+': prewarm during hold; no launch or metadata call during slide');
-  const style=await p.locator('.item-options-panel').evaluate(el=>{const s=getComputedStyle(el);return {bg:s.backgroundColor,shadow:s.boxShadow,contain:s.contain,will:s.willChange,transition:s.transitionProperty};});
-  assert.equal(style.bg,'rgb(29, 65, 93)');assert.equal(style.shadow,'none');assert.match(style.contain,/paint|content/);assert.equal(style.transition,'transform');assert.equal(style.will,'transform');
-  const box=await p.locator('.item-options-panel').boundingBox();assert.ok(Math.abs(box.x+box.width-width)<2);assert.equal(box.height,width*9/16);await p.screenshot({path:path.join(out,'options-'+width+'.png')});checks.push(width+': opaque contained transform-only panel fits viewport');
+  const style=await p.locator('.item-options-panel').evaluate(el=>{
+    const s=getComputedStyle(el),settings=getComputedStyle(document.getElementById('modal'));
+    const props=['backgroundColor','borderLeftColor','borderLeftWidth','width','height','marginRight','paddingLeft'];
+    const pick=node=>Object.fromEntries(props.map(key=>[key,node[key]]));
+    return {actual:pick(s),settings:pick(settings),shadow:s.boxShadow,contain:s.contain,will:s.willChange,transition:s.transitionProperty};
+  });
+  for(const key of ['width','height','marginRight','paddingLeft']){assert.ok(Math.abs(parseFloat(style.actual[key])-parseFloat(style.settings[key]))<.02,key+' matches settings');delete style.actual[key];delete style.settings[key];}
+  assert.deepEqual(style.actual,style.settings);assert.equal(style.actual.backgroundColor,'rgba(0, 0, 0, 0)');assert.equal(style.shadow,'none');assert.match(style.contain,/paint|content/);assert.equal(style.transition,'transform');assert.equal(style.will,'auto');
+  const box=await p.locator('.item-options-panel').boundingBox();assert.ok(Math.abs(box.x+box.width-width*.94)<2);assert.ok(Math.abs(box.height-width*9/16*.82)<2);await p.screenshot({path:path.join(out,'options-'+width+'.png')});checks.push(width+': shared settings styling with contained transform-only slide');
   await p.keyboard.press('Escape');await p.waitForTimeout(280);await p.keyboard.press('F2');await p.waitForFunction(()=>!C5App.getState().itemOptions.opening);
   assert.equal(await p.evaluate(()=>[...document.querySelectorAll('.item-options-actions>button')].every((b,i)=>b===mainNodes[i])),true);checks.push(width+': action nodes reused on repeat opening');
   await p.keyboard.press('Escape');await p.keyboard.press('F2');await p.keyboard.press('Escape');await p.waitForTimeout(350);assert.equal((await state(p)).itemOptions.open,false);assert.equal(await p.locator('.item-options').getAttribute('aria-hidden'),'true');checks.push(width+': closing before slide invalidates frames and deferred metadata');

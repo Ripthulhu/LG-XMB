@@ -85,3 +85,32 @@ test('the easing tracks the PS3 position curve recovered from the 3.01 firmware'
     const s=(lo+hi)/2;return 3*(1-s)*(1-s)*s*y1+3*(1-s)*s*s*y2+s*s*s;}
   for(let i=1;i<frames;i++)assert.ok(Math.abs(bezier(i/frames)-console3[i])<0.006,'frame '+i);
 });
+
+function stylesheets(directory) {
+  return fs.readdirSync(directory, {withFileTypes: true}).flatMap(entry => {
+    const filename = path.join(directory, entry.name);
+    if (entry.isSymbolicLink()) return [];
+    return entry.isDirectory() ? stylesheets(filename) : entry.name.endsWith('.css') ? [filename] : [];
+  });
+}
+test('all app stylesheets, including nested modules, reject will-change', () => {
+  const files = stylesheets(path.join(__dirname, '../app'));
+  assert.ok(files.some(name => name.endsWith('item-options.css')));
+  for (const filename of files) {
+    const text = fs.readFileSync(filename, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.doesNotMatch(text, /\bwill-change\s*:/i, filename);
+  }
+});
+
+test('opacity declarations are confined to reviewed non-text icons and markers in every stylesheet', () => {
+  const allowed=new Set(['.detail-emblem','.input-preview-symbol','.thumbnail-symbol',
+    '.option:before','.option:focus:before','.background-option:before','.background-option:focus:before']);
+  for (const filename of stylesheets(path.join(__dirname,'../app'))) {
+    const text=fs.readFileSync(filename,'utf8').replace(/\/\*[\s\S]*?\*\//g,'');
+    for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selector=rule[1].trim(),body=rule[2];
+      assert.doesNotMatch(body,/\btransition\s*:[^;]*\bopacity\b/i,filename+': '+selector);
+      if (/(?:^|;)\s*opacity\s*:/i.test(body)) assert.ok(allowed.has(selector),filename+': text opacity is not allowed on '+selector);
+    }
+  }
+});

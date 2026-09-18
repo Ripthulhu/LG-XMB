@@ -2,33 +2,23 @@
 // FXAA edge search adapted from three.js FXAAShader.js caddbf4cd84b62d7edf6b9fc937ca709afdfe915.
 // Copyright 2010-2025 three.js authors. MIT: licenses/THREE-FXAA-MIT.txt.
 // Native ES 3.00 and integration: lg-xmb contributors.
-//
-// Precision: mediump by default. The C5's Mali-G52 runs fp16 ALU at twice
-// the rate and this pass was 11 ms a frame at Strong. Anything that is a
-// texture coordinate or a pixel step stays highp, fp16 can't address 1080p.
+// The C5 measured 11 ms for the full-precision version. Keep colour, tone
+// mapping, output and FXAA mediump. Only addressing and the dither hash need highp.
 precision mediump float;
+precision mediump sampler2D;
 uniform sampler2D uScene;
-// A lowp sampler can discard the extra precision of the 10-bit cache.
-uniform highp sampler2D uBackdrop;
+uniform sampler2D uBackdrop;
+uniform sampler2D uAmbient;
+uniform bool uAmbientEnabled;
+uniform float uBackdropScale;
 uniform highp vec2 uTexel;
 uniform float uSoftness;
 uniform bool uFilter;
 uniform bool uCoverage;
 uniform vec3 uTuning;
-uniform highp vec3 uBackground;
-uniform vec3 uWave;
-uniform bool uColorEnabled;
-uniform bool uBackdropEnabled;
-// The decorative overlay must be applied before the final display dither.
-uniform bool uAmbientEnabled;
-uniform highp vec3 uColorStart;
-uniform highp vec3 uColorEnd;
-uniform highp vec2 uColorDir;
-uniform highp vec2 uColorRange;
-// Rows the wave can reach this frame, in UV, with the filter radius added.
 uniform highp vec2 uBand;
 in highp vec2 vUV;
-layout(location=0) out highp vec4 outColor;
+layout(location=0) out mediump vec4 outColor;
 float signalAt(highp vec2 uv) {
   vec4 c=texture(uScene,uv);
   return uCoverage ? c.a : dot(c.rgb,vec3(0.3,0.59,0.11));
@@ -88,53 +78,35 @@ highp vec2 fxaaUV() {
   float blend=max(edgeBlend,sub*sub*uTuning.z);
   return vUV+normalStep*blend;
 }
-// Match the legacy CSS overlay in unquantized colour: farthest-corner
-// ellipse at 57% 21%, a 5% white halo to 52%, and the 8%/0%/22% vignette.
-// Return (transmission, white contribution), in the canvas's Y-up UV space.
-highp vec2 ambientTerms(highp vec2 uv) {
-  highp float y=1.0-uv.y;
-  highp vec2 p=(vec2(uv.x,y)-vec2(0.57,0.21))/vec2(0.57,0.79);
-  highp float halo=0.05*max(0.0,1.0-length(p)/0.735391052434);
-  highp float shade=max(0.08*(1.0-y/0.55),0.22*(y-0.55)/0.45);
-  return vec2((1.0-shade)*(1.0-halo),halo);
+// Single screen-fixed hash. Do not let highp propagate into colour arithmetic.
+float displayNoise() {
+  highp float n=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))));
+  return (n-0.5)*(2.0/255.0);
 }
-// Fade noise within one display code of either endpoint. Exact black/white
-// must stay exact; clipping symmetric noise there would bias the colour.
-highp vec3 displayColour(highp vec3 rgb, highp float noise) {
+vec3 displayColour(vec3 rgb, float noise) {
   rgb=clamp(rgb,0.0,1.0);
-  if(uAmbientEnabled) {
-    highp vec2 ambient=ambientTerms(vUV);
-    rgb=rgb*ambient.x+ambient.y;
-  }
-  highp vec3 amount=min(vec3(1.0),255.0*min(rgb,vec3(1.0)-rgb));
+  vec3 amount=min(vec3(1.0),255.0*min(rgb,vec3(1.0)-rgb));
   return clamp(rgb+noise*amount,0.0,1.0);
 }
 void main() {
-  highp float vertical=smoothstep(0.0,1.0,1.0-vUV.y);
-  highp vec3 background=mix(uBackground*0.78,uBackground*1.05,vertical);
-  if(uBackdropEnabled) {
-    background=texture(uBackdrop,vUV).rgb;
-  } else if(uColorEnabled) {
-    highp float t=clamp((dot(vec2(vUV.x,1.0-vUV.y),uColorDir)-uColorRange.x)/max(uColorRange.y,0.000001),0.0,1.0);
-    background=mix(uColorStart,uColorEnd,t*t*(3.0-2.0*t));
+  vec3 background=texture(uBackdrop,vUV).rgb;
+  float noise=displayNoise();
+  bool extended=uBackdropScale>1.0;
+  vec2 ambient=vec2(1.0,0.0);
+  // Only over-range RGB controls need the undecorated cache representation.
+  // Ordinary palettes keep the one-read, already-decorated background path.
+  if(extended) {
+    background*=uBackdropScale;
+    ambient=texture(uAmbient,vUV).rg;
   }
-  // Screen-fixed triangular dither, at most one 8-bit code either way.
-  // The two thresholds are decorrelated spatially, not animated over time.
-  // Keep this arithmetic and final colour highp; leave the FXAA search mediump.
-  highp float n0=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))));
-  highp float n1=fract(52.9829189*fract(dot(gl_FragCoord.yx+vec2(19.0,47.0),vec2(0.06711056,0.00583715))));
-  highp float d=(n0+n1-1.0)/255.0;
-  // Outside the rows the sheet can reach there's nothing to filter, soften
-  // or roll off, so the backdrop goes straight out. That's over half the
-  // screen at this camera.
   if(vUV.y<uBand.x||vUV.y>uBand.y) {
-    outColor=vec4(displayColour(background,d),1.0);
+    vec3 displayBackground=extended?clamp(background,0.0,1.0)*ambient.x+vec3(ambient.y):background;
+    outColor=vec4(displayColour(displayBackground,noise),1.0);
     return;
   }
   highp vec2 uv=uFilter?fxaaUV():vUV;
   vec4 center=texture(uScene,uv);
   vec3 scene=center.rgb;
-  // Softness taps only where there is wave to soften.
   if(uSoftness>0.0&&center.a>0.0) {
     highp vec2 stepUV=uTexel*uSoftness;
     vec3 neighbors=texture(uScene,uv+vec2(stepUV.x,0)).rgb+
@@ -142,17 +114,23 @@ void main() {
       texture(uScene,uv-vec2(0,stepUV.y)).rgb;
     scene=mix(scene,neighbors*0.25,clamp(uSoftness/3.0,0.0,0.65));
   }
-  // Hue-preserving roll-off above a knee at the backdrop's own peak, so the
-  // backdrop passes through untouched and only the wave light stacked on it
-  // compresses instead of clipping to white. Done here in RGBA8 on purpose:
-  // half-float targets took the C5's Mali from 55% to 94% busy on their own.
-  // Particles add on top afterwards and may still clip; they're small.
-  highp vec3 c=background+scene;
-  highp float knee=min(0.9999,max(0.75,max(background.r,max(background.g,background.b))));
-  highp float peak=max(c.r,max(c.g,c.b));
+  if(!extended&&all(equal(scene,vec3(0.0)))) {
+    outColor=vec4(displayColour(background,noise),1.0);
+    return;
+  }
+  // Only wave-covered fragments need the cached transmission/halo. Recovering
+  // the undecorated base preserves the old tone-mapping order; darkening the
+  // background alone would make the wave and particles noticeably brighter.
+  if(!extended&&uAmbientEnabled) ambient=texture(uAmbient,vUV).rg;
+  vec3 base=extended?background:(background-vec3(ambient.y))/ambient.x;
+  vec3 c=base+scene;
+  // 0.9999 rounds to 1 in fp16; this representable knee keeps room nonzero.
+  float knee=min(0.9990234375,max(0.75,max(base.r,max(base.g,base.b))));
+  float peak=max(c.r,max(c.g,c.b));
   if(peak>knee) {
-    highp float room=1.0-knee;
+    float room=1.0-knee;
     c*=(knee+room*(1.0-exp(-(peak-knee)/room)))/max(peak,0.000001);
   }
-  outColor=vec4(displayColour(c,d),1.0);
+  c=clamp(c,0.0,1.0)*ambient.x+vec3(ambient.y);
+  outColor=vec4(displayColour(c,noise),1.0);
 }

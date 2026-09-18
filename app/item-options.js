@@ -8,12 +8,12 @@
     this.frame = 0; this.openTimer = null; this.opening = false; this.mainButtons = null; this.prepared = false;
     var self = this, doc = root.document;
     this.element = doc.createElement('div'); this.element.className = 'item-options';
-    this.element.innerHTML = '<div class="item-options-shade"></div><section class="item-options-panel" role="dialog" aria-modal="true" aria-labelledby="itemOptionsTitle" tabindex="-1">' +
-      '<button type="button" class="item-options-close" aria-label="Close item options">Back</button>' +
-      '<h2 class="item-options-heading" id="itemOptionsTitle"></h2><p class="item-options-caption"></p>' +
-      '<div class="item-options-actions"></div><div class="item-options-content"></div>' +
-      '<p class="item-options-status" role="status" aria-live="polite"></p></section>';
-    this.element.setAttribute('aria-hidden', 'true'); doc.body.appendChild(this.element);
+    this.element.innerHTML = '<div class="modal-backdrop item-options-shade"></div><section class="modal item-options-panel" role="dialog" aria-modal="true" aria-labelledby="itemOptionsTitle" tabindex="-1">' +
+      '<div class="modal-top"><button type="button" class="item-options-close" aria-label="Close item options">×</button></div>' +
+      '<h2 class="item-options-heading" id="itemOptionsTitle"></h2><p class="modal-intro item-options-caption"></p>' +
+      '<div class="item-options-scroll"><div class="item-options-actions"></div><div class="item-options-content"></div>' +
+      '<p class="modal-intro item-options-status" role="status" aria-live="polite"></p></div></section>';
+    this.element.setAttribute('aria-hidden', 'true'); this.element.hidden = true; doc.body.appendChild(this.element);
     this.panel = this.element.querySelector('section'); this.title = this.element.querySelector('h2');
     this.caption = this.element.querySelector('.item-options-caption');
     this.actions = this.element.querySelector('.item-options-actions');
@@ -22,7 +22,10 @@
     this.backButton = this.element.querySelector('.item-options-close');
     this.backButton.tabIndex = -1;
     this.panel.addEventListener('transitionend', function (e) {
-      if (e.target === self.panel && e.propertyName === 'transform') self.finishOpening();
+      // Ignore a late closing transitionend while a new opening is staged.
+      if (e.target !== self.panel || e.propertyName !== 'transform') return;
+      if (self.opened && self.element.classList.contains('shown')) self.finishOpening();
+      else if (!self.opened && self.element.classList.contains('closing')) self.finishClosing();
     });
     this.backButton.addEventListener('click', function () { self.back(); });
     this.element.querySelector('.item-options-shade').addEventListener('click', function () { self.close('back'); });
@@ -30,7 +33,7 @@
   ItemOptions.prototype.sound = function (name) { this.options.sound(name); };
   ItemOptions.prototype.button = function (label, action, handler, disabled) {
     var b = root.document.createElement('button'); b.type = 'button';
-    b.className = 'item-options-button'; b.textContent = label; b.dataset.action = action;
+    b.className = 'option item-options-button'; b.textContent = label; b.dataset.action = action;
     // aria-disabled keeps the explanation reachable using the remote.
     if (disabled) b.setAttribute('aria-disabled', 'true');
     var self = this;
@@ -68,7 +71,7 @@
     if (!this.prepared || !this.item || this.item.id !== item.id || this.item.title !== item.title || this.category !== category || this.view !== 'main') this.prepare(item, category);
     this.prepared = false; this.generation++; this.opened = true; this.opening = true;
     this.panel.querySelectorAll('button').forEach(function (b) { b.tabIndex = 0; });
-    this.options.onOpen(); this.element.classList.add('open'); this.element.setAttribute('aria-hidden', 'false');
+    this.options.onOpen(); this.element.hidden = false; this.element.classList.add('open'); this.element.setAttribute('aria-hidden', 'false');
     this.focus(); this.sound('option');
     var self = this, generation = this.generation;
     var reduced = root.document.body.classList.contains('reduced-motion') || (root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -113,7 +116,7 @@
     if (this.view !== 'main' || !this.mainButtons || this.mainButtons[0].parentNode !== this.actions) this.actions.textContent = '';
     this.content.textContent = ''; this.status.textContent = '';
     this.title.textContent = item.title; this.caption.textContent = this.category.title;
-    this.backButton.textContent = 'Back';
+    this.backButton.textContent = '×';
     if (this.view === 'main') {
       this.reason = item.action ? 'Inputs and launcher settings cannot be uninstalled.' :
         this.info ? this.info.removalReason : this.error || 'Checking whether this app can be deleted…';
@@ -196,10 +199,24 @@
     this.element.classList.remove('open', 'shown'); this.element.setAttribute('aria-hidden', 'true');
     this.panel.querySelectorAll('button').forEach(function (b) { b.tabIndex = -1; });
     var self = this;
-    if (reason !== 'lifecycle' && reason !== 'start' && !wasOpening) { this.element.classList.add('closing'); this.closeTimer = root.setTimeout(function () { self.element.classList.remove('closing'); }, 230); }
-    else this.element.classList.remove('closing');
+    var reduced = root.document.body.classList.contains('reduced-motion') || (root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    if (reason !== 'lifecycle' && reason !== 'start' && !wasOpening && !reduced) {
+      var generation = this.generation;
+      this.element.classList.add('closing');
+      this.closeTimer = root.setTimeout(function () {
+        if (!self.opened && generation === self.generation) self.finishClosing();
+      }, 230);
+    } else this.finishClosing();
     this.options.onClose(reason);
     if (reason === 'back') this.sound('cancel');
+  };
+  ItemOptions.prototype.finishClosing = function () {
+    if (this.opened) return;
+    root.clearTimeout(this.closeTimer); this.closeTimer = null;
+    this.element.classList.remove('closing');
+    // Keep reusable DOM, not persistent off-screen GPU surfaces. The next
+    // opening has the existing two-frame raster setup before its transform.
+    this.element.hidden = true;
   };
   ItemOptions.prototype.key = function (e) {
     var enter = e.key === 'Enter' || e.keyCode === 13;

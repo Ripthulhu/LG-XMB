@@ -153,7 +153,7 @@
     }
     return map;
   };
-  Renderer.prototype.texture = function (width, height, pixels, format, type, filter) {
+  Renderer.prototype.texture = function (width, height, pixels, format, type, filter, channels) {
     var gl = this.gl, t = this.resource('Texture');
     gl.bindTexture(gl.TEXTURE_2D, t);
     gl.texStorage2D(gl.TEXTURE_2D, 1, format, width, height);
@@ -162,7 +162,7 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     if (pixels)
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, type, pixels);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, channels || gl.RGBA, type, pixels);
     return t;
   };
   // Only the 2,048-pixel colour intermediate uses FP16. Full-size targets
@@ -340,6 +340,9 @@
   };
   Renderer.prototype.allocate = function (w, h, samples, format) {
     var gl = this.gl, internalFormat = format || gl.RGBA8;
+    if (internalFormat !== gl.RGBA8 && internalFormat !== gl.RGB10_A2 &&
+        !(internalFormat === gl.RGBA16F && w === 64 && h === 32 && !samples))
+      throw new Error('Full-size floating-point render targets are not supported');
     var t = { width: w, height: h, samples: samples, format: internalFormat }, ok = false;
     try {
       t.texture = gl.createTexture();
@@ -471,10 +474,11 @@
     gl.uniform4fv(u.uModelviewProjection, rows);
     gl.uniform4fv(u.uColor, this.colorVector);
     gl.uniform1f(u.uGamma, brightness);
-    // The compositor has already added the ambient halo; additive particles
-    // need just its transmission to retain the old CSS-layer appearance.
+    // A cached spatial lookup in the vertex shader, not per-fragment math.
     gl.uniform1i(u.uAmbientEnabled, this.monthlyActive ? 0 : 1);
-    gl.uniform2f(u.uAmbientInvSize, 1 / this.outputWidth, 1 / this.outputHeight);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.ambientTexture || this.fresnelTexture);
+    gl.uniform1i(u.uAmbient, 2);
     gl.uniform1f(u.uIridescentExponent, ref.particleMaterial['iridescent exp']);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.iridescenceTexture);
@@ -487,11 +491,21 @@
     var clock = root.LGXMBPS3BackgroundClock, gl = this.gl;
     if (!clock || !this.monthlyTexture)
       return false;
-    var coordinates = monthly.auto ? clock.fromLocalDate(new Date()) : clock.calendar(monthly.month, 1, monthly.period === 'night' ? 0 : 12);
+    // These controls have whole-second precision. Do not allocate Date,
+    // coordinate/uniform objects and JSON strings sixty times per second.
+    var automatic = !!monthly.auto, second = automatic ? Math.floor(Date.now() / 1000) : 0;
+    if (this.monthlyKey && this.monthlyRequestAuto === automatic &&
+        (automatic ? this.monthlyRequestSecond === second :
+         this.monthlyRequestMonth === monthly.month && this.monthlyRequestPeriod === monthly.period)) return true;
+    var coordinates = automatic ? clock.fromLocalDate(new Date(second * 1000)) : clock.calendar(monthly.month, 1, monthly.period === 'night' ? 0 : 12);
     // Day/night controls as retained in the RPCS3 dump's background object,
     // not the menu constructor defaults: night blend 0.5, dawn to 05:10,
     // dusk 18:30 to 20:20, day spread 2.68. The defaults left dawn black.
     var u = clock.uniforms(coordinates, RETAINED_DAY_NIGHT, 1), key = JSON.stringify(u);
+    this.monthlyRequestAuto = automatic;
+    this.monthlyRequestSecond = second;
+    this.monthlyRequestMonth = monthly.month;
+    this.monthlyRequestPeriod = monthly.period;
     if (key === this.monthlyKey)
       return true;
     this.monthlyKey = key;
@@ -545,31 +559,90 @@
     this.backdropFormat = target.format;
     return target;
   };
-  Renderer.prototype.backdropPass = function (w, h) {
-    var gl = this.gl, key = this.monthlyKey + '@' + w + 'x' + h;
+  // Read-only, bilinear transmission/halo lookup. Core WebGL 2 supports
+  // RG16F sampling without a floating-point colour-buffer extension.
+  // 8 KiB, uploaded once; no per-frame ellipse math in overlapping sprites.
+  Renderer.prototype.prepareAmbient = function () {
+    if (this.ambientTexture) return;
+    var data = new Float32Array(64 * 32 * 2), gl = this.gl;
+    for (var y = 0; y < 32; y++) {
+      var top = 1 - (y + .5) / 32;
+      var py = (top - .21) / .79;
+      var shade = Math.max(.08 * (1 - top / .55), .22 * (top - .55) / .45);
+      for (var x = 0; x < 64; x++) {
+        var px = ((x + .5) / 64 - .57) / .57;
+        var halo = .05 * Math.max(0, 1 - Math.sqrt(px * px + py * py) / .735391052434);
+        var at = (y * 64 + x) * 2;
+        data[at] = (1 - shade) * (1 - halo);
+        data[at + 1] = halo;
+      }
+    }
+    this.ambientTexture = this.texture(64, 32, data, gl.RG16F, gl.FLOAT, gl.LINEAR, gl.RG);
+    this.uploadedBytes += data.byteLength;
+  };
+  function sameBackgroundVector(a, b) {
+    if (!a || !b) return a === b;
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  // Every colour source now uses the same cache. Comparing a few controls is
+  // cheap; copy/serialize them only when they change, not on every draw.
+  Renderer.prototype.backdropPass = function (w, h, monthly, background, palette) {
+    var gl = this.gl, colors = !monthly && palette && palette.start ? palette : null;
+    var previous = this.backdropInputs, invalid = !previous || previous.monthly !== monthly;
+    if (monthly) invalid = invalid || previous.monthlyKey !== this.monthlyKey;
+    else invalid = invalid || !sameBackgroundVector(previous.background, background) ||
+      !!previous.colors !== !!colors || (colors && (!sameBackgroundVector(previous.colors.start, colors.start) ||
+      !sameBackgroundVector(previous.colors.end, colors.end) || !sameBackgroundVector(previous.colors.dir, colors.dir) ||
+      !sameBackgroundVector(previous.colors.range, colors.range)));
     if (this.backdrop && (this.backdrop.width !== w || this.backdrop.height !== h)) {
       this.releaseTarget(this.backdrop);
       this.backdrop = null;
     }
     if (!this.backdrop) {
       this.backdrop = this.allocateBackdrop(w, h);
-      this.backdropKey = '';
       this.allocations++;
+      invalid = true;
     }
-    if (key === this.backdropKey)
-      return;
-    this.backdropKey = key;
+    if (!invalid) return;
+    var peak = 1;
+    if (!monthly) for (var channel = 0; channel < 3; channel++)
+      peak = Math.max(peak, colors ? colors.start[channel] : background[channel] * 1.05, colors ? colors.end[channel] : 0);
+    this.backdropScale = peak;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.backdrop.framebuffer);
     gl.viewport(0, 0, w, h);
     gl.disable(gl.BLEND);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.STENCIL_TEST);
+    gl.disable(gl.CULL_FACE);
+    gl.colorMask(true, true, true, true);
     gl.useProgram(this.backdropProgram);
     gl.bindVertexArray(this.fullscreenVAO);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.monthlyTexture);
-    gl.uniform1i(this.uniforms.backdrop.uMonthly, 0);
-    gl.uniform1f(this.uniforms.backdrop.uCacheLevels, this.backdrop.format === gl.RGB10_A2 ? 1023 : 255);
+    // Keep the sampler complete even on a theme-only installation. Never bind
+    // the destination texture as its own input (a WebGL feedback loop).
+    gl.bindTexture(gl.TEXTURE_2D, this.monthlyTexture || this.fresnelTexture);
+    var u = this.uniforms.backdrop;
+    gl.uniform1i(u.uMonthly, 0);
+    gl.uniform1i(u.uMonthlyEnabled, monthly ? 1 : 0);
+    gl.uniform1f(u.uBackdropScale, this.backdropScale);
+    gl.uniform3fv(u.uBackground, background);
+    gl.uniform1i(u.uColorEnabled, colors ? 1 : 0);
+    if (colors) {
+      gl.uniform3fv(u.uColorStart, colors.start);
+      gl.uniform3fv(u.uColorEnd, colors.end);
+      gl.uniform2fv(u.uColorDir, colors.dir);
+      gl.uniform2fv(u.uColorRange, colors.range);
+    }
+    gl.uniform1f(u.uCacheLevels, this.backdrop.format === gl.RGB10_A2 ? 1023 : 255);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.backdropInputs = {monthly: monthly, monthlyKey: this.monthlyKey,
+      background: background.slice(), colors: colors ? {start: colors.start.slice(), end: colors.end.slice(),
+        dir: colors.dir.slice(), range: colors.range.slice()} : null};
+    this.backdropRenders = (this.backdropRenders || 0) + 1;
   };
   Renderer.prototype.draw = function (w, h, wave, brightness, background, palette) {
     if (!this.ready || this.dead)
@@ -578,8 +651,8 @@
     this.resize(w, h);
     var monthly = !!(palette && palette.monthly && this.monthlyPass(palette.monthly));
     this.monthlyActive = monthly;
-    if (monthly)
-      this.backdropPass(w, h);
+    if (!monthly) this.prepareAmbient();
+    this.backdropPass(w, h, monthly, background, palette);
     var band = this.band(h);
     this.outputWidth = w; this.outputHeight = h;
     var gl = this.gl, t = this.target, p = this.simulation.particles;
@@ -610,12 +683,15 @@
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, t.texture);
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, monthly ? this.backdrop.texture : t.texture);
+    gl.bindTexture(gl.TEXTURE_2D, this.backdrop.texture);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.ambientTexture || this.fresnelTexture);
     gl.activeTexture(gl.TEXTURE0);
     var u = this.uniforms.composite;
     gl.uniform1i(u.uScene, 0);
     gl.uniform1i(u.uBackdrop, 1);
-    gl.uniform1i(u.uBackdropEnabled, monthly ? 1 : 0);
+    gl.uniform1i(u.uAmbient, 2);
+    gl.uniform1f(u.uBackdropScale, this.backdropScale);
     gl.uniform1i(u.uAmbientEnabled, monthly ? 0 : 1);
     gl.uniform2f(u.uBand, band[0], band[1]);
     gl.uniform2f(u.uTexel, 1 / w, 1 / h);
@@ -623,15 +699,6 @@
     gl.uniform1i(u.uCoverage, this.settings.postprocess === 'wave' ? 1 : 0);
     gl.uniform1f(u.uSoftness, this.settings.softness);
     gl.uniform1i(u.uFilter, this.settings.postprocess !== 'off' ? 1 : 0);
-    gl.uniform3fv(u.uBackground, background);
-    gl.uniform3fv(u.uWave, wave);
-    gl.uniform1i(u.uColorEnabled, palette && palette.start ? 1 : 0);
-    if (palette && palette.start) {
-      gl.uniform3fv(u.uColorStart, palette.start);
-      gl.uniform3fv(u.uColorEnd, palette.end);
-      gl.uniform2fv(u.uColorDir, palette.dir);
-      gl.uniform2fv(u.uColorRange, palette.range);
-    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     // Filtering belongs to the wave, never the launcher's text or tiny sparkles.
     gl.enable(gl.BLEND);
@@ -668,8 +735,10 @@
         intermediate: this.monthlyTarget ? (this.monthlyTarget.format === this.gl.RGBA16F ? 'RGBA16F' : 'RGBA8') : null,
         cache: this.backdrop ? (this.backdrop.format === this.gl.RGB10_A2 ? 'RGB10_A2' : 'RGBA8') : null,
         fallback: this.backdropFallback || null, cacheBytes: this.backdrop ? this.backdrop.width * this.backdrop.height * 4 : 0,
-        dither: 'screen-fixed triangular, +/-1 display code', ambientOverlay: false,
-        ambientStage: this.monthlyActive ? 'none' : 'pre-dither', pipelineRevision: 'ambient-before-dither-1' },
+        dither: 'screen-fixed single hash, +/-1 display code', ambientOverlay: false,
+        ambientStage: this.monthlyActive ? 'none' : 'cached', pipelineRevision: 'cached-colour-mediump-1',
+        backdropRenders: this.backdropRenders || 0, ambientBytes: this.ambientTexture ? 8192 : 0,
+        compositePrecision: 'mediump colour and output; highp coordinates and hash' },
       particleCount: this.lastCount, particleCapacity: p.capacity, particlesFallback: null,
       particleRespawnPolicy: p.emitter ? 'recovered host emitter: births on the moving sheet' : 'captured-distribution recycling',
       particleBirths: p.emitter ? p.emitter.births : 0, particleBirthsRefused: p.emitter ? p.emitter.refused : 0,
@@ -694,6 +763,8 @@
     this.monthlyTarget = null;
     this.monthlyTexture = null;
     this.monthlyFbo = null;
+    this.ambientTexture = null;
+    this.backdropInputs = null;
     this.objects = [];
     this.programs = [];
   };

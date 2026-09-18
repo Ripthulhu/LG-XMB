@@ -14,12 +14,13 @@ const monthly = fs.readFileSync(path.join(root, 'shaders/monthlyBackground.frag'
 const shaders = require(path.join(root, 'app/ps3-native-shaders.js'));
 // These production methods are independent of the simulation and its private
 // seed pack. Extract their actual bodies rather than reimplementing them here.
+const compareVectors = source.match(/  function sameBackgroundVector\([\s\S]*?\n  }/)[0];
 function method(name) {
   const start = source.indexOf('  Renderer.prototype.' + name + ' = function (');
   assert.ok(start >= 0, name + ' is present');
   const expression = source.indexOf('function (', start), end = source.indexOf('\n  };', expression);
   assert.ok(end > expression, name + ' has a body');
-  return Function('return (' + source.slice(expression, end + 4) + ');')();
+  return Function(compareVectors + '\nreturn (' + source.slice(expression, end + 4) + ');')();
 }
 function makeGL(options = {}) {
   let id = 0, texture = null, framebuffer = null, pending = 0;
@@ -57,7 +58,7 @@ function makeGL(options = {}) {
     },
     getRenderbufferParameter: () => counts.samples,
     framebufferRenderbuffer: () => {},
-    viewport: () => {}, disable: () => {}, useProgram: () => {},
+    viewport: () => {}, disable: () => {}, colorMask: () => {}, uniform3fv: () => {}, uniform2fv: () => {}, useProgram: () => {},
     bindVertexArray: () => {}, activeTexture: () => {}, uniform1i: () => {}, uniform1f: () => {},
     drawArrays: () => counts.draws++
   };
@@ -141,18 +142,18 @@ test('recreating the tiny target releases its predecessor', () => {
 });
 test('unchanged full-size cache redraws do not allocate or draw', () => {
   const {r, gl, counts} = renderer({extension: 'EXT_color_buffer_float'});
-  r.prepareMonthlyTarget(); r.monthlyKey = 'fixed-preset'; r.backdropPass(1920, 1080);
+  r.prepareMonthlyTarget(); r.monthlyKey = 'fixed-preset'; r.backdropPass(1920, 1080, true, [0,0,0], null);
   const allocationCount = counts.allocations.length, extensionCalls = counts.extensionCalls;
-  for (let n = 0; n < 600; n++) r.backdropPass(1920, 1080);
+  for (let n = 0; n < 600; n++) r.backdropPass(1920, 1080, true, [0,0,0], null);
   assert.equal(counts.draws, 1); assert.equal(counts.allocations.length, allocationCount);
   assert.equal(counts.extensionCalls, extensionCalls);
   assert.equal(r.backdrop.format, gl.RGB10_A2);
 });
 test('clock change or resize refreshes the cache once', () => {
   const {r, counts} = renderer(); r.prepareMonthlyTarget();
-  r.monthlyKey = 'a'; r.backdropPass(1280, 720); r.monthlyKey = 'b'; r.backdropPass(1280, 720);
+  r.monthlyKey = 'a'; r.backdropPass(1280, 720, true, [0,0,0], null); r.monthlyKey = 'b'; r.backdropPass(1280, 720, true, [0,0,0], null);
   assert.equal(counts.draws, 2); assert.equal(counts.allocations.length, 2);
-  r.backdropPass(1920, 1080); r.backdropPass(1920, 1080);
+  r.backdropPass(1920, 1080, true, [0,0,0], null); r.backdropPass(1920, 1080, true, [0,0,0], null);
   assert.equal(counts.draws, 3); assert.equal(counts.allocations.length, 3);
 });
 test('destroy releases the tiny target exactly once', () => {

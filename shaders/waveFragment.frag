@@ -25,6 +25,8 @@ void main() {
   // Deliberate port edge envelope; original v8 coordinate stream still needs capture.
   float edge=smoothstep(0.0,0.055,vUV.y)*smoothstep(0.0,0.055,1.0-vUV.y);
   float light=density*dot(lut,uMaterial.xy);
-  float coverage=(1.0-exp(-light*5.0))*edge;
+  // User-selected Wave Lab ceiling; port tuning, not a recovered Sony constant.
+  // Cap each sheet before edge fading and additive accumulation.
+  float coverage=min(1.0-exp(-light*5.0),0.30)*edge;
   outColor=vec4(uWave*coverage*uBrightness,coverage);
 }

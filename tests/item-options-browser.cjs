@@ -69,7 +69,7 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
   await p.waitForFunction(()=>C5App.getState().itemOptions.removable);
   assert.equal(await p.locator('.item-options-button').count(),4);assert.equal(await p.locator('.item-options-shade').isVisible(),true);
   assert.equal(await p.evaluate(()=>document.activeElement.dataset.action),'start');
-  await p.waitForTimeout(250);const box=await p.locator('.item-options-panel').boundingBox();assert.ok(Math.abs(box.x+box.width-size.width)<2);assert.equal(box.height,size.height);
+  await p.waitForTimeout(250);const box=await p.locator('.item-options-panel').boundingBox();assert.ok(Math.abs(box.x+box.width-size.width*.94)<2);assert.ok(Math.abs(box.height-size.height*.82)<2);
   await p.screenshot({path:path.join(out,'options-'+size.width+'.png')});checks.push(size.width+': hold opens right panel, consumes repeats/release, keeps target and fits viewport');
   await p.keyboard.press('ArrowDown');await p.keyboard.press('ArrowDown');await p.keyboard.press('Enter');assert.equal((await state(p)).itemOptions.view,'info');assert.match(await p.locator('.item-options-info').innerText(),/2.4.0/);assert.equal(await p.locator('.item-options-info img').count(),0);
   await p.keyboard.press('Escape');assert.equal((await state(p)).itemOptions.view,'main');
