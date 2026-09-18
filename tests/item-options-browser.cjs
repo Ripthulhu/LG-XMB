@@ -43,7 +43,7 @@ async function load(p){
    else throw Error('Unexpected call '+uri);
   };};
  });
- for(const name of ['menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','item-options.js','system-time.js','date-time-settings.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
+ for(const name of ['menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.waitForFunction(()=>window.C5App);
  await p.evaluate(()=>{
   catalogHarness.apps({preview:false,apps:[{id:'org.test.two',title:'Beta Tools'},{id:'org.test.one',title:'Alpha Player'},{id:'cdp-30',title:'Plex'}]});
@@ -67,7 +67,7 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
   for(let i=0;i<4;i++)await p.keyboard.down('Enter');
   await p.keyboard.up('Enter');assert.equal(await p.evaluate(()=>catalogHarness.launches.length),before);
   await p.waitForFunction(()=>C5App.getState().itemOptions.removable);
-  assert.equal(await p.locator('.item-options-button').count(),4);assert.equal(await p.locator('.item-options-shade').isVisible(),true);
+  assert.equal(await p.locator('.item-options-button').count(),6);assert.equal(await p.locator('.item-options-shade').isVisible(),true);
   assert.equal(await p.evaluate(()=>document.activeElement.dataset.action),'start');
   await p.waitForTimeout(250);const box=await p.locator('.item-options-panel').boundingBox();assert.ok(Math.abs(box.x+box.width-size.width*.94)<2);assert.ok(Math.abs(box.height-size.height*.82)<2);
   await p.screenshot({path:path.join(out,'options-'+size.width+'.png')});checks.push(size.width+': hold opens right panel, consumes repeats/release, keeps target and fits viewport');
@@ -75,7 +75,7 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
   await p.keyboard.press('Escape');assert.equal((await state(p)).itemOptions.view,'main');
   for(let i=0;i<12;i++)await p.keyboard.press('Tab');assert.equal(await p.evaluate(()=>document.querySelector('.item-options-panel').contains(document.activeElement)),true);checks.push(size.width+': Information is real metadata; focus and Back stay within panel');
   await p.locator('[data-action=sort]').click();await p.locator('[data-action=sort-az]').click();
-  assert.equal((await state(p)).item,'org.test.one');assert.deepEqual(await p.evaluate(()=>C5Catalog.find(c=>c.id==='apps').items.map(i=>i.title)),['Alpha Player','Beta Tools','Home Hub']);
+  assert.equal((await state(p)).item,'org.test.one');assert.deepEqual(await p.evaluate(()=>C5Catalog.find(c=>c.id==='apps').items.map(i=>i.title)),['Alpha Player','Beta Tools','Home Hub','Plex']);
   await p.keyboard.press('Escape');await navigate(p,'tv','com.webos.app.hdmi2');await p.keyboard.press('F2');await p.waitForFunction(()=>!C5App.getState().itemOptions.opening);assert.equal((await state(p)).itemOptions.removable,false);
   assert.equal(await p.locator('[data-action=delete]').getAttribute('aria-disabled'),'true');await p.locator('[data-action=delete]').evaluate(b=>b.click());assert.equal(await p.evaluate(()=>optionsHarness.removes.length),0);checks.push(size.width+': sorting remembers selected app; HDMI delete remains unavailable');
   await p.keyboard.press('Escape');await navigate(p,'network','org.webosbrew.hbchannel');await p.keyboard.press('F2');await p.waitForFunction(()=>!C5App.getState().itemOptions.opening);await p.waitForTimeout(30);assert.equal((await state(p)).itemOptions.removable,false);await p.keyboard.press('Escape');checks.push(size.width+': recovery Homebrew Channel is protected');
@@ -89,7 +89,7 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
   await finishRemoval(p,false);assert.equal((await state(p)).itemOptions.open,true);assert.match(await p.locator('.item-options-status').innerText(),/locked/);assert.ok(await p.evaluate(()=>C5Catalog.find(c=>c.id==='apps').items.some(i=>i.id==='org.test.one')));checks.push(size.width+': acknowledgements do not remove items; failed uninstall retains app');
   await p.locator('[data-action=delete]').click();await p.locator('[data-action=confirm-delete]').click();await p.waitForFunction(()=>optionsHarness.removes.length===2);await finishRemoval(p,true);
   assert.equal((await state(p)).itemOptions.open,false);assert.equal(await p.evaluate(()=>C5Catalog.some(c=>c.items.some(i=>i.id==='org.test.one'))),false);assert.equal((await state(p)).item,'org.test.two');checks.push(size.width+': terminal success removes item and selects its neighbour');
-  await navigate(p,'video','cdp-30');await p.keyboard.press('F2');await p.waitForFunction(()=>!C5App.getState().itemOptions.opening);await p.waitForFunction(()=>C5App.getState().itemOptions.removable);await p.locator('[data-action=delete]').click();await p.locator('[data-action=confirm-delete]').click();await p.waitForFunction(()=>optionsHarness.removes.length===3);await p.evaluate(()=>window.dispatchEvent(new Event('pagehide')));await finishRemoval(p,true);assert.equal(await p.evaluate(()=>C5Catalog.some(c=>c.items.some(i=>i.id==='cdp-30'))),false);await p.evaluate(()=>window.dispatchEvent(new Event('pageshow')));checks.push(size.width+': background completion removes every duplicate Plex shortcut without reviving panel');
+  await navigate(p,'apps','cdp-30');await p.keyboard.press('F2');await p.waitForFunction(()=>!C5App.getState().itemOptions.opening);await p.waitForFunction(()=>C5App.getState().itemOptions.removable);await p.locator('[data-action=delete]').click();await p.locator('[data-action=confirm-delete]').click();await p.waitForFunction(()=>optionsHarness.removes.length===3);await p.evaluate(()=>window.dispatchEvent(new Event('pagehide')));await finishRemoval(p,true);assert.equal(await p.evaluate(()=>C5Catalog.some(c=>c.items.some(i=>i.id==='cdp-30'))),false);await p.evaluate(()=>window.dispatchEvent(new Event('pageshow')));checks.push(size.width+': background completion removes the discovered app shortcut without reviving panel');
   await navigate(p,'apps','org.test.two');await p.waitForTimeout(450);const row=p.locator('#items>.rows:not(.parked) [data-item="org.test.two"]');const rect=await row.boundingBox();await p.mouse.move(rect.x+20,rect.y+rect.height/2);await p.mouse.down();await p.waitForTimeout(700);await p.mouse.up();assert.equal((await state(p)).itemOptions.open,true);await p.waitForTimeout(40);assert.equal((await state(p)).itemOptions.open,true);checks.push(size.width+': pointer hold consumes release click rather than starting app or dismissing menu');
   await p.keyboard.press('Escape');await p.waitForTimeout(250);await row.click({button:'right'});assert.equal((await state(p)).itemOptions.open,true);await p.keyboard.press('Escape');
   const ids=await p.locator('[id]').evaluateAll(nodes=>nodes.map(n=>n.id));assert.equal(new Set(ids).size,ids.length);checks.push(size.width+': right click support and unique accessibility IDs after reorder/delete');

@@ -1,0 +1,171 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+(function (root) {
+  'use strict';
+  var KEY = 'lg-xmb-app-categories-v1';
+  var DESTINATIONS = ['photo', 'music', 'video', 'tv', 'apps', 'browser', 'network'];
+  function validId(id) { return typeof id === 'string' && id.length <= 128 && /^[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*$/.test(id); }
+  function self(id) { return id === 'org.local.openxmb.c5' || id === 'com.webos.app.home'; }
+  function title(value, fallback) { return typeof value === 'string' && value.trim() ? value.replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '').slice(0, 120) || fallback : fallback; }
+  function AppCategories(categories, order, storage) {
+    this.categories = categories; this.order = order; this.storage = storage;
+    this.base = categories.map(function (c) { return c.items.filter(function (i) { return i.action !== 'empty'; }).slice(); });
+    this.inventory = new Map(); this.assignments = Object.create(null); this.waitForAbsence = new Set();
+    this.empties = Object.create(null);
+    var saved;
+    try { var raw = storage.getItem(KEY); if (raw && raw.length <= 262144) saved = JSON.parse(raw); } catch (ignore) {}
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      Object.keys(saved).slice(0, 1000).forEach(function (id) {
+        var destinations = this.normalize(saved[id]);
+        if (validId(id) && !self(id) && destinations) this.assignments[id] = destinations;
+      }, this);
+    }
+  }
+  AppCategories.prototype.destination = function (id) {
+    return DESTINATIONS.indexOf(id) >= 0 && this.categories.some(function (c) { return c.id === id; });
+  };
+  AppCategories.prototype.canAssign = function (item) {
+    return !!item && !item.action && validId(item.id) && !self(item.id);
+  };
+  AppCategories.prototype.choices = function () {
+    return this.categories.filter(function (c) { return this.destination(c.id); }, this).map(function (c) { return {id: c.id, title: c.title}; });
+  };
+  // Accept old scalar assignments without writing storage during startup.
+  AppCategories.prototype.normalize = function (value) {
+    var ids = typeof value === 'string' ? [value] : value;
+    if (!Array.isArray(ids) || !ids.length || ids.length > DESTINATIONS.length ||
+        !ids.every(function (id) { return this.destination(id); }, this)) return null;
+    return this.choices().map(function (c) { return c.id; }).filter(function (id) { return ids.indexOf(id) >= 0; });
+  };
+  AppCategories.prototype.get = function (id) { return this.assignments[id] ? this.assignments[id].slice() : 'default'; };
+  AppCategories.prototype.defaultLocations = function (id) {
+    var locations = this.categories.filter(function (c, ci) {
+      return this.base[ci].some(function (item) { return item.id === id && !item.action; });
+    }, this).map(function (c) { return c.id; });
+    return locations.length ? locations : (this.destination('apps') ? ['apps'] : []);
+  };
+  AppCategories.prototype.locations = function (id) {
+    return this.assignments[id] ? this.assignments[id].slice() : this.defaultLocations(id);
+  };
+  AppCategories.prototype.snapshot = function () {
+    var result = Object.create(null);
+    Object.keys(this.assignments).forEach(function (id) { result[id] = this.assignments[id].slice(); }, this);
+    return result;
+  };
+  AppCategories.prototype.persistRemoved = function () {
+    try { this.storage.setItem('lg-xmb-deleted-apps-v1', JSON.stringify(Array.from(this.order.removed))); } catch (ignore) {}
+  };
+  AppCategories.prototype.reconcile = function (apps, selections) {
+    // This method accepts a COMPLETE, successful visible-app snapshot, never
+    // a native delta/acknowledgement or a failed enumeration interpreted as [].
+    if (!Array.isArray(apps) || apps.length > 1000) throw new Error('Invalid application list');
+    var next = new Map(), metadata = false, removedChanged = false;
+    apps.forEach(function (app) {
+      if (!app || !validId(app.id) || self(app.id) || next.has(app.id)) return;
+      var item = this.inventory.get(app.id), name = title(app.title, app.id);
+      if (!item) item = {id: app.id, title: name, icon: 'apps', type: 'ON YOUR TV', description: 'Open ' + name + '.', discovered: true};
+      else if (item.title !== name) { item.title = name; item.description = 'Open ' + name + '.'; metadata = true; }
+      next.set(app.id, item);
+    }, this);
+    // A successful uninstall may precede the platform's list update. Do not
+    // resurrect it from that stale snapshot. Once absent, a later presence is
+    // a reinstall and its user's category is still available.
+    this.waitForAbsence.forEach(function (id) { if (!next.has(id)) this.waitForAbsence.delete(id); }, this);
+    next.forEach(function (_, id) {
+      if (this.order.removed.has(id) && !this.waitForAbsence.has(id)) {
+        this.order.removed.delete(id); removedChanged = true;
+      }
+    }, this);
+    if (removedChanged) this.persistRemoved();
+    this.inventory = next;
+    return this.rebuild(selections) || metadata;
+  };
+  AppCategories.prototype.rebuild = function (selections) {
+    var before = this.categories.map(function (c, ci) { return {items: c.items, index: selections[ci], id: c.items[selections[ci]] && c.items[selections[ci]].id}; });
+    var lists = this.categories.map(function () { return []; }), byId = new Map(), seen = new Set(), changed = false;
+    // The DOM caches buttons by item object. Each category needs its own row,
+    // or appending a shared button to Video steals it from Music. Reuse rows
+    // within their category so unchanged inventory reads do not repaint them.
+    var rows = before.map(function (c) { return new Map(c.items.map(function (item) { return [item.id, item]; })); });
+    var defaults = this.base.map(function (items) { return new Map(items.map(function (item) { return [item.id, item]; })); });
+    var added = lists.map(function () { return new Set(); });
+    function put(ci, source) {
+      if (added[ci].has(source.id)) return;
+      added[ci].add(source.id);
+      if (source.action) { lists[ci].push(source); return; }
+      var template = defaults[ci].get(source.id) || source, item = rows[ci].get(source.id);
+      if (!item || item.action) item = defaults[ci].get(source.id) || Object.assign({}, template);
+      else Object.keys(template).forEach(function (key) {
+        if (item[key] !== template[key]) { item[key] = template[key]; changed = true; }
+      });
+      lists[ci].push(item);
+    }
+    this.base.forEach(function (items, ci) {
+      items.forEach(function (item) {
+        if (item.action) { put(ci, item); return; }
+        if (!byId.has(item.id)) byId.set(item.id, item);
+        seen.add(item.id);
+        if (this.order.removed.has(item.id) || this.assignments[item.id]) return;
+        put(ci, item);
+      }, this);
+    }, this);
+    this.inventory.forEach(function (item, id) {
+      if (!byId.has(id)) byId.set(id, item);
+      if (seen.has(id) || this.order.removed.has(id) || this.assignments[id]) return;
+      var ci = this.categories.findIndex(function (c) { return c.id === 'apps'; });
+      if (ci >= 0) put(ci, item);
+    }, this);
+    Object.keys(this.assignments).forEach(function (id) {
+      var item = byId.get(id);
+      if (!item || !this.canAssign(item) || this.order.removed.has(id)) return;
+      this.assignments[id].forEach(function (destination) {
+        var ci = this.categories.findIndex(function (c) { return c.id === destination; });
+        if (ci >= 0) put(ci, item);
+      }, this);
+    }, this);
+    this.categories.forEach(function (c, ci) {
+      if (!lists[ci].length) {
+        if (!this.empties[c.id]) this.empties[c.id] = {id: 'lg-xmb:empty:' + c.id, title: 'No apps', icon: c.icon,
+          type: c.title.toUpperCase(), description: 'Assign an app here using its options menu, or install one from Network.', action: 'empty'};
+        lists[ci].push(this.empties[c.id]);
+      }
+      c.items = lists[ci];
+      // Only keep real live/default rows in the sorting history. The DOM uses
+      // object identity, so surviving rows can be moved without recreation.
+      var retained = new Set(this.base[ci].concat(c.items));
+      this.order.order[c.id] = this.order.order[c.id].filter(function (item) { return item.action !== 'empty' && retained.has(item); });
+      this.order.apply(c, before[ci].id);
+      var at = c.items.findIndex(function (i) { return i.id === before[ci].id; });
+      selections[ci] = at >= 0 ? at : Math.max(0, Math.min(before[ci].index || 0, c.items.length - 1));
+      if (c.items.length !== before[ci].items.length || c.items.some(function (item, i) { return item !== before[ci].items[i]; })) changed = true;
+      else c.items = before[ci].items;
+    }, this);
+    return changed;
+  };
+  AppCategories.prototype.assign = function (item, value, selections, preferredCategory) {
+    var destinations = value === 'default' ? null : this.normalize(value);
+    if (!this.canAssign(item) || (value !== 'default' && !destinations))
+      throw new Error('Choose at least one available category.');
+    var found = this.categories.some(function (c) { return c.items.some(function (i) { return i.id === item.id && !i.action; }); });
+    if (!found) throw new Error('This app is no longer in the menu.');
+    var next = Object.assign(Object.create(null), this.assignments);
+    if (value === 'default') delete next[item.id]; else next[item.id] = destinations;
+    if (Object.keys(next).length > 1000) throw new Error('Too many saved app categories.');
+    // Persist the complete choice before moving any shortcuts. A refused save
+    // leaves the menu, selection and the previous assignment unchanged.
+    this.storage.setItem(KEY, JSON.stringify(next)); this.assignments = next;
+    this.rebuild(selections);
+    var matches = this.categories.map(function (c, ci) {
+      return c.items.some(function (i) { return i.id === item.id; }) ? ci : -1;
+    }).filter(function (ci) { return ci >= 0; });
+    var destination = matches.find(function (ci) { return this.categories[ci].id === preferredCategory; }, this);
+    if (destination === undefined) destination = matches.length ? matches[0] : -1;
+    if (destination >= 0) selections[destination] = this.categories[destination].items.findIndex(function (i) { return i.id === item.id; });
+    return destination;
+  };
+  AppCategories.prototype.deleted = function (id, selections) {
+    this.waitForAbsence.add(id); this.order.removed.add(id); this.persistRemoved();
+    this.inventory.delete(id); return this.rebuild(selections);
+  };
+  root.LGXMBAppCategories = AppCategories;
+  if (typeof module === 'object' && module.exports) module.exports = AppCategories;
+})(typeof window !== 'undefined' ? window : globalThis);

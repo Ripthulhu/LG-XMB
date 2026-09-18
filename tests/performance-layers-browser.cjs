@@ -2,7 +2,7 @@
 // Real DOM/layer-tree checks. No TV, native uninstall or renderer timing claim.
 'use strict';
 const assert=require('node:assert/strict'), fs=require('node:fs'), path=require('node:path');
-const {chromium}=require('playwright');
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE_PATH||'playwright');
 const base=path.resolve(__dirname,'..'), out=path.join(base,'artifacts/performance-layers');
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_EXECUTABLE_PATH?
@@ -42,7 +42,7 @@ const base=path.resolve(__dirname,'..'), out=path.join(base,'artifacts/performan
   for(let cycle=0;cycle<3;cycle++){
    await page.evaluate(()=>options.open(item,category));await page.waitForFunction(()=>!options.opening);
    const style=await page.locator('.item-options-panel').evaluate(el=>({will:getComputedStyle(el).willChange,transform:getComputedStyle(el).transitionProperty}));
-   assert.deepEqual(style,{will:'auto',transform:'transform'});
+   assert.deepEqual(style,{will:'auto',transform:'none'});
    const text=await page.evaluate(()=>{
     const nodes=[...document.querySelectorAll('.category-label,.item-text,.detail h1,.detail p,#time,.item-options-heading,.item-options-button')];
     return nodes.filter(n=>n.getClientRects().length).map(n=>{let p=n,bad=[];while(p){if(getComputedStyle(p).opacity!=='1')bad.push(p.className||p.id);p=p.parentElement;}return {text:n.textContent,bad};});
@@ -50,9 +50,9 @@ const base=path.resolve(__dirname,'..'), out=path.join(base,'artifacts/performan
    assert.ok(text.length>=7);assert.deepEqual(text.filter(t=>t.bad.length),[],'text and its ancestors have no opacity layers');
    await page.evaluate(()=>options.close('back'));await closed();
   }
-  checks.push(width+': three open/close cycles release layers, preserve transform-only motion and avoid text opacity');
+  checks.push(width+': three open/close cycles release layers, avoid all menu motion and avoid text opacity');
   await page.evaluate(()=>{options.open(item,category);options.close('lifecycle');});await closed();
-  assert.equal(await page.evaluate(()=>options.opening),false);checks.push(width+': instant lifecycle close drops layers and queued opening frames');
+  assert.equal(await page.evaluate(()=>options.opening),false);checks.push(width+': instant lifecycle close drops layers without queued opening frames');
   await page.evaluate(()=>options.open(item,category));await page.waitForFunction(()=>!options.opening);
   await page.evaluate(()=>options.close('back'));await page.waitForTimeout(20);await page.evaluate(()=>options.open(item,category));
   await page.waitForFunction(()=>!options.opening);await page.waitForTimeout(300);

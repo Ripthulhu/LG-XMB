@@ -34,15 +34,27 @@ var music=new LGXMBBackgroundMusic({enabled:preferences.musicEnabled,volume:pref
 var detailItemId=null,detailIcon=null,renderedCategory=-1,launchGeneration=0,pageActive=!document.hidden,musicAway=false,lastReturnAt=-Infinity;
 document.querySelector('.input-preview-symbol').innerHTML=C5Icon('hdmi');
 document.querySelector('.thumbnail-symbol').innerHTML=C5Icon('hdmi');
-var inputLabelRead=null,appListGeneration=0,appListRead=null;
+var inputLabelRead=null;
 var menuOrder=new LGXMBMenuOrder(categories,{getItem:function(k){return localStorage.getItem(k);},setItem:function(k,v){localStorage.setItem(k,v);}}), hold=new LGXMBHoldGesture(), pointerHold=null, suppressHoldClick=false;
+var appCategories=new LGXMBAppCategories(categories,menuOrder,{getItem:function(k){return localStorage.getItem(k);},setItem:function(k,v){localStorage.setItem(k,v);}});
+var appRefresh=new LGXMBAppRefresh({read:function(){return C5TV.listApps();},
+  canApply:function(){return pageActive&&!document.hidden&&!busy&&!musicAway&&!modalOpen&&!hold.state&&!waveOnly&&!itemOptions.removal&&(lastDirection===0||performance.now()-lastDirection>=500);},
+  apply:function(apps){var changed=appCategories.reconcile(apps,selections);if(changed){categoryTransition.cancel();buildItems();render();}return changed;}
+});
 var itemOptions=new LGXMBItemOptions({manager:LGXMBAppManager,sound:tick,
+  canAssign:function(item){return appCategories.canAssign(item);},
+  getCategories:function(){return appCategories.choices();},
+  getCategory:function(id){return appCategories.get(id);},
+  getCategoryLocations:function(id){return appCategories.locations(id);},
+  getDefaultCategories:function(id){return appCategories.defaultLocations(id);},
+  onCategory:function(item,id){var ci=appCategories.assign(item,id,selections,categories[selectedCategory].id);categoryTransition.cancel();if(ci>=0)selectedCategory=ci;},
+  onRefresh:function(){appRefresh.refresh();},
   getSort:function(id){return menuOrder.modes[id];},
   onOpen:function(){document.body.classList.add('item-options-visible');categoryTransition.cancel();clearToast();clearTimeout(detailTimer);detailTimer=0;modalOpen=true;modalType='item-options';document.querySelector('.screen').setAttribute('aria-hidden','true');syncInputPreview();},
   onClose:function(reason){document.body.classList.remove('item-options-visible');modalOpen=false;modalType='';document.querySelector('.screen').removeAttribute('aria-hidden');if(reason!=='lifecycle'&&pageActive&&!document.hidden){$('items').focus();if(reason!=='start'){buildItems();render();}}},
   onStart:function(item){if(currentItem().id===item.id)activate();},
   onSort:function(cat,mode,id){var ci=categories.indexOf(cat);selections[ci]=menuOrder.set(cat,mode,id);buildItems();render();},
-  onDeleted:function(id,title){appListGeneration++;menuOrder.remove(id,selections);buildItems();if(pageActive&&!document.hidden){render();toast(title+' was deleted.');}}
+  onDeleted:function(id,title){appRefresh.invalidate();appCategories.deleted(id,selections);buildItems();if(pageActive&&!document.hidden){render();toast(title+' was deleted.');}}
 });
 var dateTimeSettings=new LGXMBDateTimeSettings({api:LGXMBSystemTime,sound:tick,closeButton:$('closeModal'),onApplied:function(){updateClock();seasonal();wave.setTheme(Object.assign({},themes[preferences.theme],{colors:preferences.waveColors}));}});
 function openItemOptions(){if(busy||modalOpen||waveOnly||!pageActive||document.hidden)return;if(itemOptions.removal){toast('App deletion is still in progress.');return;}itemOptions.open(currentItem(),categories[selectedCategory]);}
@@ -479,39 +491,17 @@ function cancelInputLabels(){
     try{read.cancel();}catch(ignore){}
   }
 }
-function restorePage(refreshStill){if(document.hidden)return;var now=performance.now(),wasActive=pageActive,before=thumbnail.getState();pageActive=true;sounds.setActive(true);musicAway=false;wave.setPaused(false);renderDetail();if(refreshStill&&wasActive&&now-lastReturnAt>=250&&preferences.previewMode==='cached'&&before.port===currentPort()&&before.port!==null&&before.status!=='loading')thumbnail.refresh();lastReturnAt=now;updateClock();restoreFocus();if(!wasActive||refreshStill){refreshInputLabels();discoverApps();}}
-function suspendPage(){if(modalType==='datetime'){dateTimeSettings.close();modalOpen=false;modalType='';$('modalBackdrop').hidden=true;document.querySelector('.screen').removeAttribute('aria-hidden');}cancelHold();itemOptions.close('lifecycle');categoryTransition.cancel();var wasActive=pageActive;pageActive=false;sounds.setActive(false);music.setContext(false,false);cancelInputLabels();invalidateLaunch();clearToast();clearTimeout(announceTimer);if(wasActive){stopInputPreview();thumbnail.setPaused(true);wave.setPaused(true);}}
+function restorePage(refreshStill){if(document.hidden)return;var now=performance.now(),wasActive=pageActive,before=thumbnail.getState();pageActive=true;sounds.setActive(true);musicAway=false;wave.setPaused(false);renderDetail();if(refreshStill&&wasActive&&now-lastReturnAt>=250&&preferences.previewMode==='cached'&&before.port===currentPort()&&before.port!==null&&before.status!=='loading')thumbnail.refresh();lastReturnAt=now;updateClock();restoreFocus();if(!wasActive||refreshStill)refreshInputLabels();if(C5TV.isTV())appRefresh.resume();}
+function suspendPage(){appRefresh.pause();if(modalType==='datetime'){dateTimeSettings.close();modalOpen=false;modalType='';$('modalBackdrop').hidden=true;document.querySelector('.screen').removeAttribute('aria-hidden');}cancelHold();itemOptions.close('lifecycle');categoryTransition.cancel();var wasActive=pageActive;pageActive=false;sounds.setActive(false);music.setContext(false,false);cancelInputLabels();invalidateLaunch();clearToast();clearTimeout(announceTimer);if(wasActive){stopInputPreview();thumbnail.setPaused(true);wave.setPaused(true);}}
 function handleRelaunch(){cancelHold();if(itemOptions.opened)itemOptions.close('lifecycle');setWaveOnly(false);categoryTransition.cancel();invalidateLaunch();clearToast();if(modalOpen)closeModal(true);restorePage(true);}
 // handlesRelaunch stays false: webOS brings the app forward automatically.
 // A Home press while already visible still needs to leave any open dialog.
 document.addEventListener('webOSRelaunch',handleRelaunch,true);
-async function discoverApps(){
-  if(appListRead)return;
-  var generation=appListGeneration,read;
-  try{
-    read=C5TV.listApps();appListRead=read;var result=await read;
-    if(result.preview||generation!==appListGeneration)return;
-    var selected=categories.map(function(c,ci){return c.items[selections[ci]]&&c.items[selections[ci]].id;});
-    menuOrder.reconcile(result.apps);
-    var appCategory=categories.find(function(c){return c.id==='apps';});
-    var installed=new Set(result.apps.map(function(a){return a.id;}));
-    appCategory.items=appCategory.items.filter(function(item){return !item.discovered||installed.has(item.id);});
-    var known=new Set(categories.reduce(function(all,c){return all.concat(c.items.map(function(i){return i.id;}));},[]));
-    result.apps.forEach(function(app){
-      if(known.has(app.id)||app.id==='org.local.openxmb.c5'||app.id==='com.webos.app.home'||menuOrder.removed.has(app.id))return;
-      appCategory.items=appCategory.items.filter(function(i){return i.action!=='empty';});
-      appCategory.items.push({id:app.id,title:app.title,icon:'apps',type:'ON YOUR TV',description:'Open '+app.title+'.',discovered:true});known.add(app.id);
-    });
-    categories.forEach(function(c,ci){selections[ci]=menuOrder.apply(c,selected[ci]);});
-    if(!itemOptions.opened&&pageActive&&!document.hidden){categoryTransition.cancel();buildItems();render();}
-  }catch(error){/* Curated shortcuts remain usable if enumeration is not permitted. */}
-  finally{if(appListRead===read)appListRead=null;}
-}
-menuOrder.removed.forEach(function(id){menuOrder.remove(id,selections);});
+appCategories.rebuild(selections);
 categories.forEach(function(c,ci){selections[ci]=menuOrder.apply(c,c.items[selections[ci]]&&c.items[selections[ci]].id);});
-buildCategories();buildItems();applyPreferences();render();sounds.prepare();updateClock();var clockTimer=setInterval(updateClock,10000);$('items').focus();discoverApps();refreshInputLabels();startHelper();
+buildCategories();buildItems();applyPreferences();render();sounds.prepare();updateClock();var clockTimer=setInterval(updateClock,10000);$('items').focus();if(C5TV.isTV())appRefresh.resume();refreshInputLabels();startHelper();
 document.addEventListener('visibilitychange',function(){if(document.hidden){suspendPage();}else restorePage(false);});
 window.addEventListener('resize',function(){cancelHold();categoryTransition.cancel();});
-window.addEventListener('pagehide',suspendPage);window.addEventListener('pageshow',function(){restorePage(false);});window.addEventListener('beforeunload',function(){clearInterval(clockTimer);suspendPage();categoryTransition.destroy();itemOptions.destroy();sounds.destroy();music.destroy();thumbnail.destroy();inputPreview.destroy();wave.destroy();});
-window.C5App={getState:function(){return{category:categories[selectedCategory].id,item:currentItem().id,modal:modalOpen?modalType:null,remote:modalOpen&&modalType==='remote'?C5RemoteSettings.getState():null,preferences:Object.assign({},preferences),busy:busy,itemOptions:itemOptions.getState(),detailPending:detailTimer!==0,detailItem:detailItemId,music:music.getState(),sounds:sounds.getState(),thumbnail:thumbnail.getState(),inputPreview:inputPreview.getState(),waveOnly:waveOnly,waveMode:wave.mode,waveError:wave.error||null,waveDiagnostics:wave.getDiagnostics()};}};
+window.addEventListener('pagehide',suspendPage);window.addEventListener('pageshow',function(){restorePage(false);});window.addEventListener('beforeunload',function(){clearInterval(clockTimer);suspendPage();appRefresh.destroy();categoryTransition.destroy();itemOptions.destroy();sounds.destroy();music.destroy();thumbnail.destroy();inputPreview.destroy();wave.destroy();});
+window.C5App={getState:function(){return{category:categories[selectedCategory].id,item:currentItem().id,modal:modalOpen?modalType:null,remote:modalOpen&&modalType==='remote'?C5RemoteSettings.getState():null,preferences:Object.assign({},preferences),busy:busy,appRefresh:appRefresh.getState(),appCategories:appCategories.snapshot(),itemOptions:itemOptions.getState(),detailPending:detailTimer!==0,detailItem:detailItemId,music:music.getState(),sounds:sounds.getState(),thumbnail:thumbnail.getState(),inputPreview:inputPreview.getState(),waveOnly:waveOnly,waveMode:wave.mode,waveError:wave.error||null,waveDiagnostics:wave.getDiagnostics()};}};
 })();

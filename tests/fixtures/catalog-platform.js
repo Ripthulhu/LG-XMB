@@ -27,9 +27,12 @@
   window.LGXMBWaveColors = {normalize:v=>v||{},resolve:()=>null};
   window.C5RemoteSettings = {close(){},open(){},getState(){return {};}};
   window.LGXMBWaveColorSettings = {open(){},key(){}};
+  let appReply = null, appValue = null, appError = null;
+  h.apps = value => {appValue=value;appError=null;if(appReply){const r=appReply;appReply=null;r.resolve(value);}};
+  h.appsFail = error => {appError=error;if(appReply){const r=appReply;appReply=null;r.reject(error);}};
   window.C5TV = {
     isTV:()=>true,
-    listApps:()=>new Promise((resolve,reject)=>{h.apps=resolve;h.appsFail=reject;}),
+    listApps:()=>{let rejectRead;const p=new Promise((resolve,reject)=>{rejectRead=reject;if(appError)reject(appError);else if(appValue)resolve(appValue);else appReply={resolve,reject};});p.cancel=()=>{appReply=null;rejectRead(Error('Cancelled'));};return p;},
     listInputLabels:()=>new Promise((resolve,reject)=>{h.labels=resolve;h.labelsFail=reject;}),
     launch:async id=>{h.launches.push(id);if(h.failLaunch)throw new Error('Unavailable on this TV.');return {preview:true};},
     openInput:async id=>{h.inputLaunches.push(id);return {preview:true};},

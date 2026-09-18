@@ -162,11 +162,12 @@
       result.apps = [];
       return Promise.resolve(result);
     }
-    return request('listApps', {}).then(function (response) {
-      if (!Array.isArray(response.apps)) throw error('INVALID_RESPONSE', 'The TV did not return an application list.');
+    var read = request('listApps', {});
+    var result = read.then(function (response) {
+      if (!Array.isArray(response.apps) || response.apps.length > 1000) throw error('INVALID_RESPONSE', 'The TV did not return an application list.');
       var seen = Object.create(null);
       var apps = [];
-      response.apps.slice(0, 1000).forEach(function (app) {
+      response.apps.forEach(function (app) {
         if (!app || !validId(app.id) || seen[app.id] || app.visible !== true) return;
         seen[app.id] = true;
         apps.push({ id: app.id, title: text(app.title, 120) || app.id,
@@ -174,6 +175,8 @@
       });
       return { ok: true, preview: false, apps: apps };
     });
+    result.cancel = function () { read.cancel(); };
+    return result;
   }
 
   function listInputLabels() {

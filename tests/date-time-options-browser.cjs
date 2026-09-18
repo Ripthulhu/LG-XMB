@@ -23,7 +23,7 @@ async function load(p){
    else throw Error('Unexpected native call '+uri);
   };};
  });
- for(const f of ['menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','item-options.js','system-time.js','date-time-settings.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
+ for(const f of ['menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
  await p.evaluate(()=>{const C=LGXMBItemOptions;window.LGXMBItemOptions=function(o){return window.testOptions=new C(o);};});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'app/app.js'),'utf8')});
  await p.waitForFunction(()=>window.C5App);
@@ -65,12 +65,12 @@ async function navigate(p,category,id){
   await p.evaluate(()=>{timeTest.delayReads=false;});await p.keyboard.press('Enter');await p.evaluate(()=>window.dispatchEvent(new Event('pagehide')));assert.equal((await state(p)).modal,null);await p.evaluate(()=>window.dispatchEvent(new Event('pageshow')));checks.push(width+': standby/pagehide cancels editor and does not send a write');
   await navigate(p,'apps','org.test.one');const launches=await p.evaluate(()=>catalogHarness.launches.length);
   await p.keyboard.down('Enter');await p.waitForTimeout(180);
-  assert.equal((await state(p)).itemOptions.open,false);assert.equal(await p.locator('.item-options-button').count(),4);
+  assert.equal((await state(p)).itemOptions.open,false);assert.equal(await p.locator('.item-options-button').count(),6);
   const pre=await p.evaluate(()=>{window.mainNodes=[...document.querySelectorAll('.item-options-actions>button')];return timeTest.calls.filter(c=>c.uri.endsWith('/getAppInfo')).length;});
-  await p.waitForFunction(()=>C5App.getState().itemOptions.open);assert.equal((await state(p)).itemOptions.opening,true);await p.keyboard.up('Enter');
-  assert.equal(await p.evaluate(()=>catalogHarness.launches.length),launches);assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getAppInfo')).length),pre);
+  await p.waitForFunction(()=>C5App.getState().itemOptions.open);assert.equal((await state(p)).itemOptions.opening,false);await p.keyboard.up('Enter');
+  assert.equal(await p.evaluate(()=>catalogHarness.launches.length),launches);assert.ok(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getAppInfo')).length)<=pre+1);
   await p.waitForFunction(()=>!C5App.getState().itemOptions.opening&&C5App.getState().itemOptions.removable);
-  assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getAppInfo')).length),pre+1);checks.push(width+': prewarm during hold; no launch or metadata call during slide');
+  assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getAppInfo')).length),pre+1);checks.push(width+': prewarm during hold; one metadata request after instant open');
   const style=await p.locator('.item-options-panel').evaluate(el=>{
     const s=getComputedStyle(el),settings=getComputedStyle(document.getElementById('modal'));
     const props=['backgroundColor','borderLeftColor','borderLeftWidth','width','height','marginRight','paddingLeft'];
@@ -78,12 +78,12 @@ async function navigate(p,category,id){
     return {actual:pick(s),settings:pick(settings),shadow:s.boxShadow,contain:s.contain,will:s.willChange,transition:s.transitionProperty};
   });
   for(const key of ['width','height','marginRight','paddingLeft']){assert.ok(Math.abs(parseFloat(style.actual[key])-parseFloat(style.settings[key]))<.02,key+' matches settings');delete style.actual[key];delete style.settings[key];}
-  assert.deepEqual(style.actual,style.settings);assert.equal(style.actual.backgroundColor,'rgba(0, 0, 0, 0)');assert.equal(style.shadow,'none');assert.match(style.contain,/paint|content/);assert.equal(style.transition,'transform');assert.equal(style.will,'auto');
-  const box=await p.locator('.item-options-panel').boundingBox();assert.ok(Math.abs(box.x+box.width-width*.94)<2);assert.ok(Math.abs(box.height-width*9/16*.82)<2);await p.screenshot({path:path.join(out,'options-'+width+'.png')});checks.push(width+': shared settings styling with contained transform-only slide');
+  assert.deepEqual(style.actual,style.settings);assert.equal(style.actual.backgroundColor,'rgba(0, 0, 0, 0)');assert.equal(style.shadow,'none');assert.match(style.contain,/paint|content/);assert.equal(style.transition,'none');assert.equal(style.will,'auto');
+  const box=await p.locator('.item-options-panel').boundingBox();assert.ok(Math.abs(box.x+box.width-width*.94)<2);assert.ok(Math.abs(box.height-width*9/16*.82)<2);await p.screenshot({path:path.join(out,'options-'+width+'.png')});checks.push(width+': shared settings styling without animation');
   await p.keyboard.press('Escape');await p.waitForTimeout(280);await p.keyboard.press('F2');await p.waitForFunction(()=>!C5App.getState().itemOptions.opening);
   assert.equal(await p.evaluate(()=>[...document.querySelectorAll('.item-options-actions>button')].every((b,i)=>b===mainNodes[i])),true);checks.push(width+': action nodes reused on repeat opening');
-  await p.keyboard.press('Escape');await p.keyboard.press('F2');await p.keyboard.press('Escape');await p.waitForTimeout(350);assert.equal((await state(p)).itemOptions.open,false);assert.equal(await p.locator('.item-options').getAttribute('aria-hidden'),'true');checks.push(width+': closing before slide invalidates frames and deferred metadata');
-  await p.emulateMedia({reducedMotion:'reduce'});await p.keyboard.press('F2');assert.equal((await state(p)).itemOptions.opening,false);assert.equal(await p.locator('.item-options-panel').evaluate(el=>getComputedStyle(el).transitionDuration),'0s');checks.push(width+': reduced motion opens without staged slide');
+  await p.keyboard.press('Escape');await p.keyboard.press('F2');await p.keyboard.press('Escape');await p.waitForTimeout(350);assert.equal((await state(p)).itemOptions.open,false);assert.equal(await p.locator('.item-options').getAttribute('aria-hidden'),'true');checks.push(width+': instant closing invalidates deferred metadata');
+  await p.emulateMedia({reducedMotion:'reduce'});await p.keyboard.press('F2');assert.equal((await state(p)).itemOptions.opening,false);assert.equal(await p.locator('.item-options-panel').evaluate(el=>getComputedStyle(el).transitionDuration),'0s');checks.push(width+': all modes open without a staged slide');
   await p.keyboard.press('Escape');await p.keyboard.press('Enter');await p.waitForFunction(n=>catalogHarness.launches.length===n+1,launches);checks.push(width+': short OK still launches once on release');
  }finally{await context.close();}
  }

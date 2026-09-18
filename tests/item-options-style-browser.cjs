@@ -111,10 +111,10 @@ async function collectTrace(cdp) {
           styleOptions.panel.dispatchEvent(new TransitionEvent('transitionend',{propertyName:'transform'}));
           return {opening:styleOptions.opening,shown:styleOptions.element.classList.contains('shown'),reads:styleCalls.metadata-before};
         });
-        assert.deepEqual(closingEvent,{opening:true,shown:false,reads:0});
+        assert.deepEqual(closingEvent,{opening:false,shown:false,reads:0});
         await page.waitForFunction(()=>!styleOptions.opening&&styleOptions.info);
         await page.evaluate(()=>styleOptions.close('lifecycle'));
-        checks.push(`${width}: late closing event cannot cancel a staged reopen`);
+        checks.push(`${width}: a stale transition event has no effect on instant open`);
         await page.emulateMedia({reducedMotion:'reduce'});
         await page.evaluate(()=>styleOptions.open(styleItem,styleCategory));
         assert.equal(await page.evaluate(()=>styleOptions.opening),false);
@@ -128,15 +128,11 @@ async function collectTrace(cdp) {
           await page.waitForFunction(()=>!styleOptions.opening&&styleOptions.info);
           const trace=await collectTrace(cdp), events=trace.traceEvents;
           const start=events.find(e=>e.name==='style-transitionstart'),end=events.find(e=>e.name==='style-transitionend');
-          assert.ok(start&&end,'transition marks present');
-          const during=events.filter(e=>e.ts>start.ts&&e.ts<end.ts&&e.pid===start.pid&&e.tid===start.tid);
-          const counts=Object.fromEntries(['Layout','Paint'].map(name=>[name,during.filter(e=>e.name===name&&e.ph==='X').length]));
-          const meta=events.find(e=>e.name==='style-metadata');
-          assert.ok(meta&&meta.ts>=end.ts-1000,'metadata is deferred until finish');
-          traces.push({viewport:`${width}x${height}`,slideMs:(end.ts-start.ts)/1000,duringSlide:counts,scope:'isolated DOM panel; no WebGL or TV'});
-          fs.writeFileSync(path.join(out,`opening-${width}.trace.json`),JSON.stringify(trace));
-          // Paint/layout counts are measurements, not timing-sensitive pass criteria.
-          checks.push(`${width}: slide trace collected; metadata not requested during movement`);
+          assert.equal(start,undefined,'no opening transition is scheduled');
+          assert.equal(end,undefined,'no closing transition is scheduled');
+          assert.equal(await page.locator('.item-options-panel').evaluate(e=>getComputedStyle(e).transform),'none');
+          traces.push({viewport:`${width}x${height}`,slideMs:0,scope:'instant DOM panel; no WebGL or TV'});
+          checks.push(`${width}: no transition marks or transform on instant panel`);
           await cdp.detach();
         }
       } finally {await page.close();}
