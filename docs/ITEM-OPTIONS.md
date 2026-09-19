@@ -19,7 +19,8 @@ the panel without waiting for the hold timer.
 
 Use Up and Down to select an action, OK to confirm, and Back or Left to return.
 Back closes a submenu before closing the panel. Live previews stop while the
-panel is open. The background animation continues.
+panel is open. The background animation continues. In Information, Up and Down
+scroll the text, including long descriptions; Back returns to the actions.
 
 Sort order is saved per category. Removing an app removes its shortcuts from
 all categories, including both Plex entries. An empty category shows a
@@ -72,6 +73,7 @@ choices then might not survive a restart.
 ```sh
 node --test tests/item-options.test.cjs tests/catalog.test.cjs
 node tests/item-options-browser.cjs
+node tests/item-information-scroll-browser.cjs
 node tests/item-options-style-browser.cjs
 ```
 

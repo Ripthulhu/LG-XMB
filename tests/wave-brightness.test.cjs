@@ -62,7 +62,7 @@ test('menu offers Low/Medium/High, applies each gain and saves stable keys', () 
     ui: {row: () => ({}), choiceGroup(label, choices, selected, callback) {
       if (label === 'Brightness') { settings = {label, choices, selected}; handler = callback; }
     }},
-    wave: {getDiagnostics: () => ({surface: {msaaSupported: [4]}})},
+    wave: {},
     applyPreferences() { applied = gain(preferences.waveBrightness); }, save() { saves++; }
   });
   panel.open();

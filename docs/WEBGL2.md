@@ -12,7 +12,7 @@ IPK. There's no separate renderer installer or preview archive to apply.
 ## Settings
 
 Open **Settings → Appearance**. The launcher defaults to 60 fps, 1.5× supersampling,
-Original mesh detail, Subtle edge softness and Strong Wave FXAA. MSAA is off;
+Original mesh detail, Subtle edge softness and Strong FXAA;
 particles are on at Medium density.
 
 | Control | Behaviour |
@@ -21,20 +21,20 @@ particles are on at Medium density.
 | Speed | Change simulation speed independently of the draw rate |
 | Brightness | Low, Medium and High apply gains of 0.3, 0.6 and 1 |
 | Frame rate | Target 30 or 60 draws per second |
-| MSAA | Off, or supported 2×/4× wave-surface sampling |
 | Supersampling | Render the wave surface at 1×, 1.25×, 1.5× or 2× output size |
 | Mesh detail | Reduced uses 64 × 64 samples; Original uses 128 × 128 |
-| Edge softness | Apply a separate wave-edge filter |
+| Edge softness | Sharp, Subtle (the former Soft amount), or Soft (wider, stronger smoothing) |
 | Particles | Enable or disable particle drawing and simulation |
 | Particle density | Limit the population to 1,000, 2,000 or 4,000 |
-| Post-process antialiasing | Off, FXAA or coverage-guided Wave FXAA |
+| Post-process antialiasing | Off or coverage-guided FXAA |
 | Smoothing strength | Select the post-process filter thresholds |
 
-`Original (legacy)` is the same mesh as Original. It remains for the stored
-`fine` preference; it doesn't add detail. The brightness keys also retain their
-older names for saved settings: `dim` is Low, `low` is Medium and `normal` is High.
+Stored `fine` mesh settings migrate to Original. Both previous FXAA modes use
+the coverage-guided filter, now labelled FXAA. MSAA settings are discarded.
+The brightness keys retain their older names for saved settings: `dim` is Low,
+`low` is Medium and `normal` is High.
 
-MSAA and supersampling affect the wave surface. The composite filter doesn't
+Supersampling affects the wave surface. The composite filter doesn't
 filter menu text or particles. Particles and glare are drawn afterwards at output
 resolution. Renderer diagnostics are available through `C5App.getState()`.
 

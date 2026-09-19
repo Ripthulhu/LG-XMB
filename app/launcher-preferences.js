@@ -12,10 +12,9 @@
     waveSpeed: 'normal',
     waveBrightness: 'normal',
     backBehavior: 'stay',
-    waveMSAA: 0,
     waveSampling: 1.5,
     waveDetail: 'high',
-    waveSoftness: 0.75,
+    waveSoftness: 1.5,
     wavePostprocess: 'wave',
     waveSmoothing: 'strong',
     musicEnabled: false,
@@ -72,7 +71,6 @@
     } catch (ignore) {}
     // Load quality settings separately from appearance and TV preferences.
     if (saved && typeof saved === 'object') {
-      if ([0, 2, 4].indexOf(saved.waveMSAA) !== -1) preferences.waveMSAA = saved.waveMSAA;
       if ([30, 60].indexOf(saved.waveFrameRate) !== -1)
         preferences.waveFrameRate = saved.waveFrameRate;
       if (typeof saved.waveParticles === 'boolean') preferences.waveParticles = saved.waveParticles;
@@ -85,11 +83,14 @@
         preferences.musicVolume = saved.musicVolume;
       if ([1, 1.25, 1.5, 2].indexOf(saved.waveSampling) !== -1)
         preferences.waveSampling = saved.waveSampling;
-      if (['standard', 'high', 'fine'].indexOf(saved.waveDetail) !== -1)
+      if (['standard', 'high'].indexOf(saved.waveDetail) !== -1)
         preferences.waveDetail = saved.waveDetail;
-      if ([0, 0.75, 1.5].indexOf(saved.waveSoftness) !== -1)
+      // The former Soft amount is now the middle setting.
+      if (saved.waveSoftness === 0.75) preferences.waveSoftness = 1.5;
+      else if ([0, 1.5, 3].indexOf(saved.waveSoftness) !== -1)
         preferences.waveSoftness = saved.waveSoftness;
-      if (['off', 'fxaa', 'wave'].indexOf(saved.wavePostprocess) !== -1)
+      if (saved.wavePostprocess === 'fxaa') preferences.wavePostprocess = 'wave';
+      else if (['off', 'wave'].indexOf(saved.wavePostprocess) !== -1)
         preferences.wavePostprocess = saved.wavePostprocess;
       if (['gentle', 'normal', 'strong'].indexOf(saved.waveSmoothing) !== -1)
         preferences.waveSmoothing = saved.waveSmoothing;
@@ -143,7 +144,6 @@
   function waveQuality(preferences) {
     return {
       frameRate: preferences.waveFrameRate,
-      msaa: preferences.waveMSAA,
       sampling: preferences.waveSampling,
       detail: preferences.waveDetail,
       softness: preferences.waveSoftness,

@@ -8,8 +8,8 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const repo = fs.existsSync(path.join(root, 'app')) ? root : path.resolve(root, '..');
 const source = fs.readFileSync(path.join(repo, 'app/ps3-native-renderer.js'), 'utf8');
-const backdrop = fs.readFileSync(path.join(repo, 'shaders/backdropFragment.frag'), 'utf8');
-const composite = fs.readFileSync(path.join(repo, 'shaders/compositeFragment.frag'), 'utf8');
+const backdrop = fs.readFileSync(path.join(repo, 'shaders/backdropFragment.frag'), 'utf8').replace(/\r\n/g, '\n');
+const composite = fs.readFileSync(path.join(repo, 'shaders/compositeFragment.frag'), 'utf8').replace(/\r\n/g, '\n');
 const css = fs.readFileSync(path.join(repo, 'app/style.css'), 'utf8');
 const shaders = require(path.join(repo, 'app/ps3-native-shaders.js'));
 const compareVectors = source.match(/  function sameBackgroundVector\([\s\S]*?\n  }/)[0];
@@ -149,7 +149,7 @@ test('10-bit backdrop remains 32 bits per texel, with no float or MSAA target', 
     log.uniforms.filter((x) => x[0] === 'levels'),
     [['levels', 1023]]
   );
-  assert.equal(r.backdrop.samples, 0);
+  assert.equal('samples' in r.backdrop, false);
   assert.equal(1920 * 1080 * 4, 8294400);
 });
 test('repeated frames allocate/draw the cached background only once', () => {
@@ -195,7 +195,7 @@ test('failure of both backdrop formats is not mistaken for a rendered PS3 frame'
 });
 test('only cache RGB loses alpha precision; wave and particle targets are unaffected', () => {
   const { r, gl, log } = makeRenderer();
-  const t = r.allocate(1280, 720, 0);
+  const t = r.allocate(1280, 720);
   assert.equal(t.format, gl.RGBA8);
   assert.equal((backdrop.match(/texture\(/g) || []).length, 4);
   assert.match(backdrop, /outColor=vec4\(clamp\(\(code\+0\.25\)\/uCacheLevels,0\.0,1\.0\),1\.0\)/);

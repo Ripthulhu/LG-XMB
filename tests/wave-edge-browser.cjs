@@ -55,8 +55,8 @@ const scripts=['wave-colors','ps3-background-clock','ps3-background-data','ps3-n
           await page.screenshot({path:path.join(root,'artifacts',`wave-edge-${variant}-${seconds}-${light?'light':'dark'}.png`)});
         }
       }
-      for(const detail of ['standard','high'])for(const postprocess of ['off','wave','fxaa']) {
-        const state=await page.evaluate(q=>{demo.setQuality(q);demo.draw();return {mode:demo.mode,error:demo.gl.getError(),diagnostics:demo.getDiagnostics().surface};},{detail,postprocess,softness:1.5});
+      for(const detail of ['standard','high'])for(const postprocess of ['off','wave'])for(const softness of [0,1.5,3]) {
+        const state=await page.evaluate(q=>{demo.setQuality(q);demo.draw();return {mode:demo.mode,error:demo.gl.getError(),diagnostics:demo.getDiagnostics().surface};},{detail,postprocess,softness});
         assert.equal(state.mode,'webgl');assert.equal(state.error,0);
       }
       await page.close();

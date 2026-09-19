@@ -107,21 +107,11 @@
       '<circle cx="6" cy="40" r="2"/>',
 
     // Settings and controls.
-    palette:
-      '<path d="m30 5 5-3 10 10-3 5-16 15-10-10z' +
-      'M14 25l9 9c-2 8-9 10-20 8 6-4 1-13 11-17z"/>' +
-      '<path d="m30 10 8 8-4 4-8-8z"/>',
     motion:
       '<path d="' +
       'M4 13h14v3H4zm-2 9h12v3H2zm3 9h13v3H5z' +
       'M30 7a17 17 0 1 0 0 34 17 17 0 0 0 0-34zm0 4a13 13 0 1 1 0 26 13 13 0 0 1 0-26z"/>' +
       '<path d="m26 16 11 8-11 8z"/>',
-    sound:
-      '<path d="' +
-      'M5 18h9L27 7v34L14 30H5z"/>' +
-      '<path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" d="' +
-      'M33 16a12 12 0 0 1 0 16' +
-      'M38 10a20 20 0 0 1 0 28"/>',
     info:
       '<path d="' +
       'M24 4a20 20 0 1 0 0 40 20 20 0 0 0 0-40zm0 4a16 16 0 1 1 0 32 16 16 0 0 1 0-32z"/>' +
@@ -133,9 +123,80 @@
       '<path d="' +
       'M18 3h12a4 4 0 0 1 4 4v34a4 4 0 0 1-4 4H18a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zm6 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 7a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm-6 19v3h4v-3zm8 0v3h4v-3z"/>' +
       '<circle cx="24" cy="22" r="3"/>' +
-      '</g>',
-    clock: '<path d="' + 'M24 4a20 20 0 1 0 0 40 20 20 0 0 0 0-40zm-2 5h4v19l-13-8 2-4 7 4z"/>'
+      '</g>'
   };
+
+  // Settings icons share one badge. Its path is kept in the reference's
+  // coordinates; only this helper normalises it into the 48 x 48 icon viewBox.
+  var settingsBadgePath =
+    '<path d="M211.5 84.5a127.5 127.5 0 1 0 0 255 127.5 127.5 0 0 0 0-255z' +
+    'M268 130c-21-10-44-3-61 14-17 17-19 36-13 58l-66 66q-4 4 0 8l24 25q4 4 8 0l67-67q2-3 6-1c20 10 39 3 55-12 17-16 19-40 11-60l-42 39q-15-10-27-25z"/>';
+  var settingsBadgeLayout = { x: 11, y: 11, radius: 9 };
+
+  // Artwork and placement live together. `transform` places the body inside
+  // the viewBox; `badge` can move the wrench, but all badges share one radius.
+  // Reuse a paths entry for a settings variant of an existing plain icon.
+  var settingsIcons = {
+    appearance: {
+      body:
+        '<path d="M161 225h628q6 0 6 6v314q0 6-6 6H161q-6 0-6-6V231q0-6 6-6z' +
+        'M204 270q-4 0-4 4v169q0 4 4 5c28 9 61 12 95 12 147 0 246-159 446-99q5 2 5-4v-83q0-4-4-4z"/>',
+      transform: 'translate(2 10) scale(.0561941) translate(-12 -54)',
+      // The landscape frame is wider and lower; its badge overlaps the corner.
+      badge: { x: 9.220281, y: 17.192514 }
+    },
+    sound: {
+      body:
+        '<path d="M213 304h81l105-93q13-10 13 5v334q0 13-11 5L294 462h-81q-5 0-5-5V309q0-5 5-5z"/>' +
+        '<path fill="none" stroke="currentColor" stroke-width="38" stroke-linecap="round" d="M483 311c36 43 36 100 0 143M541 254c68 74 68 184 0 258"/>',
+      transform: 'translate(17.5 18.5) scale(.0703518) translate(-208 -208)'
+    },
+    previewsettings: {
+      body: paths.hdmi,
+      transform: 'translate(10 15.4) scale(.82)'
+    },
+    remotesettings: {
+      body: paths.remote,
+      transform: 'translate(14 12) scale(.7)'
+    },
+    clock: {
+      body:
+        '<path d="M489 300a207 207 0 1 0 0 414 207 207 0 0 0 0-414z' +
+        'M467 342h44v210h-43l-101-70 26-37 74 52z"/>',
+      transform: 'translate(16 16) scale(.0724638) translate(-282 -300)'
+    },
+    tvsettings: {
+      body:
+        '<path d="M298 304c123-27 246-27 370 0 12 2 15 9 18 18 38 88 38 182 0 270-5 13-10 14-18 17-124 27-247 27-370 0-13-3-16-8-19-17-37-88-37-182 0-270 6-15 10-16 19-18z' +
+        'M321 350c108-22 216-22 324 0 26 70 26 142 0 212-108 22-216 22-324 0-26-70-26-142 0-212z"/>',
+      transform: 'translate(13 20) scale(.0712) translate(-251 -284)'
+    }
+  };
+
+  function settingsIcon(definition) {
+    var badge = definition.badge || settingsBadgeLayout;
+    return (
+      '<g transform="' +
+      definition.transform +
+      '">' +
+      definition.body +
+      '</g>' +
+      '<g transform="translate(' +
+      badge.x +
+      ' ' +
+      badge.y +
+      ') scale(' +
+      settingsBadgeLayout.radius / 127.5 +
+      ') translate(-211.5 -212)">' +
+      settingsBadgePath +
+      '</g>'
+    );
+  }
+
+  // Compose once at startup, not on each row render or navigation event.
+  Object.keys(settingsIcons).forEach(function (name) {
+    paths[name] = settingsIcon(settingsIcons[name]);
+  });
 
   // Alternate names deliberately share the same artwork.
   paths.camera = paths.image;
@@ -144,7 +205,9 @@
   function icon(name) {
     var key = Object.prototype.hasOwnProperty.call(paths, name) ? name : 'application';
     return (
-      '<svg viewBox="0 0 48 48" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" aria-hidden="true" focusable="false">' +
+      '<svg' +
+      (Object.prototype.hasOwnProperty.call(settingsIcons, key) ? ' class="settings-symbol"' : '') +
+      ' viewBox="0 0 48 48" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" aria-hidden="true" focusable="false">' +
       paths[key] +
       '</svg>'
     );

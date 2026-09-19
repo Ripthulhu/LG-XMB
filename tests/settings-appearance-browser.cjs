@@ -88,7 +88,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     assert.equal(restored.preferences.waveBrightness,'normal'); assert.equal(restored.waveDiagnostics.reducedMotion,true);
     checks.push('Wave animation, speed and brightness use remote-friendly grouped controls, persist validated values and preserve the renderer quality/frame cap');
 
-    for (const id of ['sound','previews','about']) {
+    for (const id of ['sound','previews','remote']) {
       await open(id);
       const layout = await page.evaluate(() => {
         const modal=document.getElementById('modal'),style=getComputedStyle(modal),rect=modal.getBoundingClientRect();
@@ -97,15 +97,6 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
       });
       assert.equal(layout.background,'rgba(0, 0, 0, 0)'); assert.equal(layout.shadow,'none'); assert.equal(layout.radius,'0px');
       assert.match(layout.tint,/19, 8, 13/); assert.equal(layout.inView,true);
-      if(id==='background') {
-        await page.locator('[data-process-id="voice"]').focus();
-        const fit=await page.evaluate(() => {
-          const row=document.querySelector('[data-process-id="voice"]'),content=document.getElementById('modalContent').getBoundingClientRect(),copy=row.querySelector('.background-option-copy').getBoundingClientRect(),control=row.querySelector('.background-option-control').getBoundingClientRect();
-          return copy.right<=control.left&&control.right<=content.right;
-        });
-        assert.equal(fit,true,'Long privacy descriptions fit alongside their switches');
-        await page.screenshot({path:path.join(__dirname,'../qa/settings-privacy-rose-1080.png')});
-      }
     }
     await page.setViewportSize({width:1280,height:720}); await open('appearance');
     await page.getByRole('group',{name:'Brightness',exact:true}).getByRole('button',{name:'High',exact:true}).focus();
@@ -113,7 +104,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     const focused = await page.evaluate(() => {const r=document.activeElement.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;});
     assert.equal(focused,true);
     await page.screenshot({path:path.join(__dirname,'../qa/settings-waves-rose-720.png')});
-    checks.push('All submenus retain white text and dividers over themed backgrounds; long privacy text and 720p controls stay within the unboxed layout');
+    checks.push('Sound, previews and Back settings retain white text and dividers over themed backgrounds; 720p controls stay within the unboxed layout');
 
     await page.evaluate(() => localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify({theme:'__proto__',waveSpeed:'Infinity',waveBrightness:99,motion:'invalid'})));
     await page.reload(); await page.waitForFunction(() => window.C5App);

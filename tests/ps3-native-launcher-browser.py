@@ -75,7 +75,7 @@ def main() -> int:
             state = page.evaluate('C5App.getState()')
             diag = state['waveDiagnostics']
             assert diag['contextVersion'] == 2
-            assert diag['renderQuality']['softness'] == .75
+            assert diag['renderQuality']['softness'] == 1.5
             assert diag['renderQuality']['strength'] == 'strong'
             checks.append({'name': 'Launcher initializes with existing preferences', 'passed': True})
             result['initial_renderer'] = diag
@@ -92,8 +92,8 @@ def main() -> int:
                 page.keyboard.press('Enter')
                 page.wait_for_function('!!C5App.getState().modal')
 
-            open_settings('motion')
-            assert 'WebGL 2' in page.locator('#waveRenderStatus').inner_text()
+            open_settings('appearance')
+            assert page.evaluate('C5App.getState().waveDiagnostics.contextVersion') == 2
             detail = page.get_by_role('group', name='Mesh detail', exact=True)
             detail.get_by_role('button', name='Reduced', exact=True).click()
             assert page.evaluate('C5App.getState().waveDiagnostics.surface.grid') == 64
@@ -107,6 +107,7 @@ def main() -> int:
             assert page.evaluate('C5App.getState().waveDiagnostics.surface.particleCount') == 2000
             checks.append({'name': 'Particle settings toggle native instanced draws', 'passed': True})
             open_settings('appearance')
+            page.get_by_role('button', name='Theme', exact=True).click()
             page.get_by_role('button', name='Forest', exact=True).click()
             assert page.evaluate('C5App.getState().preferences.theme') == 'forest'
             assert page.evaluate('C5App.getState().waveMode') == 'webgl'

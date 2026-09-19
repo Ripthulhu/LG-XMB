@@ -47,8 +47,8 @@ test('refused RGB10_A2 falls back once to RGBA8 and remains cached',()=>{
  assert.equal(g.log.filter(x=>x[0]==='storage').length,2);
 });
 test('full-size float render targets are rejected while the 64x32 intermediate is allowed',()=>{
- const {r,g}=fixture();assert.throws(()=>r.allocate(1920,1080,0,g.RGBA16F),/Full-size/);assert.throws(()=>r.allocate(1280,720,0,34836),/Full-size/);
- assert.equal(g.log.length,0);const t=r.allocate(64,32,0,g.RGBA16F);assert.equal(t.format,g.RGBA16F);
+ const {r,g}=fixture();assert.throws(()=>r.allocate(1920,1080,g.RGBA16F),/Full-size/);assert.throws(()=>r.allocate(1280,720,34836),/Full-size/);
+ assert.equal(g.log.length,0);const t=r.allocate(64,32,g.RGBA16F);assert.equal(t.format,g.RGBA16F);
 });
 test('transmission/halo LUT uploads once, without requiring a float framebuffer extension',()=>{
  const {r,g}=fixture();g.ext=false;r.prepareAmbient();for(let i=0;i<600;i++)r.prepareAmbient();
@@ -73,7 +73,7 @@ test('destroy releases ambient texture and every target; repeated destruction is
  assert.equal(g.log.filter(x=>x[0]==='deleteTexture').length,3);
 });
 test('frame integration binds independent complete scene/backdrop/ambient textures and uses existing draws',()=>{
- const {r,g}=fixture();Object.assign(r,{ready:true,settings:{sampling:1,msaa:0,strength:'normal',postprocess:'off',softness:0,particles:false},
+ const {r,g}=fixture();Object.assign(r,{ready:true,settings:{sampling:1,strength:'normal',postprocess:'off',softness:0,particles:false},
  simulation:{particles:{},wave:{}},updateGrid(){},resize(){this.target={width:64,height:32,texture:{id:'wave'}};},band(){return[0,1];},wavePass(){},filterTunings:{normal:[0,0,0]},drawCount:0});
  r.uniforms.composite={uScene:'scene',uBackdrop:'backdrop',uAmbient:'ambient'};r.draw(64,32,[1,1,1],1,bg,null);
  assert.equal(r.drawCount,1);assert.equal(r.backdropRenders,1);assert.ok(g.log.some(x=>x[0]==='uniform1i'&&x[1]==='ambient'&&x[2]===2));

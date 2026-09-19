@@ -14,14 +14,12 @@ uniform float uBackdropScale;
 uniform highp vec2 uTexel;
 uniform float uSoftness;
 uniform bool uFilter;
-uniform bool uCoverage;
 uniform vec3 uTuning;
 uniform highp vec2 uBand;
 in highp vec2 vUV;
 layout(location=0) out mediump vec4 outColor;
 float signalAt(highp vec2 uv) {
-  vec4 c=texture(uScene,uv);
-  return uCoverage ? c.a : dot(c.rgb,vec3(0.3,0.59,0.11));
+  return texture(uScene,uv).a;
 }
 float stepSize(int i) {
   if(i==0) return 1.5;

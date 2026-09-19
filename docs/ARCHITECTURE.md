@@ -63,6 +63,20 @@ for ordinary apps and the fallback for unknown icon names. A catalog shortcut
 can choose its own icon. Discovered-app exceptions are assigned by
 `iconForApp()` in `app/catalog.js`. Check category, list-row and detail sizes together.
 
+Settings icons are composed in `app/icons.js` from the `settingsIcons` table:
+
+- `body` holds the symbol's SVG or reuses a plain icon, such as `paths.hdmi`.
+- `transform` sizes and places that body within the 48 × 48 view box.
+- `badge` optionally moves the wrench centre. `settingsBadgeLayout.radius`
+  controls its size for every settings icon; `settingsBadgePath` defines its shape.
+
+Add one table entry and assign its name in the catalog. Composition and the
+`settings-symbol` class are automatic; there is no second list to update.
+Adjust `--settings-icon-scale` in `app/style.css` to enlarge all settings row
+icons together. Their slot and text alignment stay fixed, and the detail icon
+keeps its own size. Tune individual body transforms only for optical balance;
+do not compensate for a small body by shrinking the shared wrench.
+
 ### Layout
 
 Edit `app/style.css` for page layout and `app/launcher-view.js` for row offsets

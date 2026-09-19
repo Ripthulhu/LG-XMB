@@ -138,14 +138,18 @@ def main() -> int:
 
         def filters_and_quality():
             samples=[]
-            for mode,strength,soft in [('wave','strong',.75),('fxaa','gentle',1.5),('off','normal',0)]:
+            for mode,strength,soft in [('off','strong',0),('wave','strong',0),
+                                       ('wave','gentle',1.5),('wave','strong',3)]:
                 page.evaluate('(q)=>demo.setQuality(q)',{'particles':True,'sampling':1.25,'postprocess':mode,'strength':strength,'softness':soft})
                 d=page.evaluate('demo.getDiagnostics()')
                 assert d['mode']=='webgl',d
                 assert page.evaluate('demo.gl.getError()')==0
                 assert d['surface']['particleCount']==2000
-                samples.append({'filter':mode,'strength':strength,'pixel_hash':page.evaluate('pixelHash()')})
-            assert len({s['pixel_hash'] for s in samples})>1, samples
+                assert d['surface']['postprocess']==mode
+                samples.append({'filter':mode,'strength':strength,'softness':soft,
+                                'pixel_hash':page.evaluate('pixelHash()')})
+            assert samples[0]['pixel_hash'] != samples[1]['pixel_hash'], samples
+            assert samples[1]['pixel_hash'] != samples[-1]['pixel_hash'], samples
             before=page.evaluate('stateHash()')
             page.evaluate('demo.setQuality({detail:"low",particleCount:500})')
             d=page.evaluate('demo.getDiagnostics()')
@@ -155,36 +159,38 @@ def main() -> int:
             assert d['surface']['vertices']==16384 and d['surface']['particleCount']==2025
             assert before==page.evaluate('stateHash()')
             return {'filters':samples,'low_vertices':4096,'reference_vertices':16384,'capacity':d['surface']['particleCapacity']}
-        check('FXAA, wave-coverage FXAA, softness, detail and particle limits', filters_and_quality)
+        check('Off/FXAA, edge softness, detail and particle limits', filters_and_quality)
 
-        def msaa():
-            states=[]
-            for samples in [4,2,0]:
-                page.evaluate('(n)=>demo.setQuality({msaa:n,sampling:1})',samples)
-                d=page.evaluate('demo.getDiagnostics().surface')
-                assert page.evaluate('demo.gl.getError()')==0,d
-                assert d['msaaSamples']<=samples
-                assert d['msaaSamples'] in [0]+d['msaaSupported']
-                if d['msaaSamples']!=samples: assert d['msaaFallback']
-                states.append({'requested':samples,'actual':d['msaaSamples'],'fallback':d['msaaFallback']})
-            return {'negotiated':states}
-        check('MSAA negotiation, resolve and unsupported-count fallback', msaa)
+        def retired_quality_options():
+            page.evaluate('demo.setQuality({sampling:1,detail:"high",postprocess:"wave",softness:1.5})')
+            before=page.evaluate('({state:stateHash(),pixels:pixelHash(),allocations:demo.renderer.allocations})')
+            page.evaluate('demo.setQuality({msaa:4,detail:"fine",postprocess:"fxaa",softness:.75})')
+            after=page.evaluate('({state:stateHash(),pixels:pixelHash(),allocations:demo.renderer.allocations})')
+            d=page.evaluate('demo.getDiagnostics()')
+            assert before==after,(before,after)
+            assert d['renderQuality']['detail']=='high'
+            assert d['renderQuality']['postprocess']=='wave'
+            assert d['renderQuality']['softness']==1.5
+            assert 'msaa' not in d['renderQuality']
+            assert page.evaluate('demo.gl.getError()')==0
+            return {'legacy_options_preserve_pixels_and_simulation':True,'extra_target_allocations':0}
+        check('Retired quality options map to the existing wave-only filter without reallocating', retired_quality_options)
 
         def resize_and_budget():
             before=page.evaluate('stateHash()')
             page.set_viewport_size({'width':1920,'height':1080})
             page.wait_for_timeout(150)
-            page.evaluate('demo.resize();demo.setQuality({sampling:2,msaa:4,postprocess:"wave",softness:.75,strength:"strong"})')
+            page.evaluate('demo.resize();demo.setQuality({sampling:2,postprocess:"wave",softness:1.5,strength:"strong"})')
             d=page.evaluate('demo.getDiagnostics()')
             assert d['mode']=='webgl',d
             assert d['backingWidth']==1920 and d['backingHeight']==1080
             assert d['surface']['renderTargetBytes']<=96*1024*1024
-            assert d['surface']['msaaSamples']==0 or d['surface']['effectiveScale']<2
+            assert d['surface']['renderTargetBytes']==d['surface']['surfaceWidth']*d['surface']['surfaceHeight']*4
             assert before==page.evaluate('stateHash()')
             assert page.evaluate('demo.gl.getError()')==0
             big=d['surface']
             page.set_viewport_size({'width':1280,'height':800});page.wait_for_timeout(150)
-            page.evaluate('demo.resize();demo.setQuality({sampling:1,msaa:0})')
+            page.evaluate('demo.resize();demo.setQuality({sampling:1})')
             d=page.evaluate('demo.getDiagnostics()')
             assert d['backingWidth']==1280 and d['backingHeight']==800
             assert page.evaluate('demo.gl.getError()')==0
@@ -205,6 +211,7 @@ def main() -> int:
         check('Paused resize preserves retained frame and CPU state', paused_resize)
 
         def clock():
+            page.evaluate('demo.setQuality({frameRate:30})')
             d=page.evaluate(r'''() => {
               const oldRAF=window.requestAnimationFrame,oldCancel=window.cancelAnimationFrame;
               demo.cancel(); let queued=0;
@@ -262,7 +269,7 @@ def main() -> int:
 
         # Real screenshot of this implementation, never a generated/mock PS3 image.
         page.set_viewport_size({'width':1920,'height':1080});page.wait_for_timeout(150)
-        page.evaluate('demo.resize();demo.setQuality({sampling:1.5,msaa:0,detail:"high",particles:true,particleCount:2000,softness:.75,postprocess:"wave",strength:"strong"});demo.draw()')
+        page.evaluate('demo.resize();demo.setQuality({sampling:1.5,detail:"high",particles:true,particleCount:2000,softness:1.5,postprocess:"wave",strength:"strong"});demo.draw()')
         args.output.parent.mkdir(parents=True,exist_ok=True)
         page.screenshot(path=str(args.output.parent/'webgl2-preview-1080p.png'))
         final_diagnostics=page.evaluate('demo.getDiagnostics()')

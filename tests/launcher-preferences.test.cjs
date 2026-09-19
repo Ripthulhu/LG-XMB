@@ -52,9 +52,48 @@ test('independent launchers do not share settings or mutable seasonal colours', 
 test('renderer options are a fresh projection of the saved quality settings', () => {
   const restored = preferences.load({getItem: () => JSON.stringify({waveMSAA: 4, waveSampling: 2, waveParticles: false})}, false, colors);
   const quality = preferences.waveQuality(restored);
-  assert.equal(quality.msaa, 4);
+  assert.equal('msaa' in quality, false);
   assert.equal(quality.sampling, 2);
   assert.equal(quality.particles, false);
-  quality.msaa = 0;
-  assert.equal(restored.waveMSAA, 4);
+  quality.sampling = 1;
+  assert.equal(restored.waveSampling, 2);
+  assert.equal('waveMSAA' in restored, false);
+});
+
+test('retired wave settings migrate to the simplified controls and survive saving', () => {
+  for (const filter of ['fxaa', 'wave', 'off']) {
+    const loaded = preferences.load({getItem: () => JSON.stringify({waveMSAA: 4,
+      waveDetail: 'fine', waveSoftness: 0.75, wavePostprocess: filter})}, false, colors);
+    assert.equal(loaded.waveDetail, 'high');
+    assert.equal(loaded.waveSoftness, 1.5);
+    assert.equal(loaded.wavePostprocess, filter === 'off' ? 'off' : 'wave');
+    assert.equal('waveMSAA' in loaded, false);
+    let saved;
+    preferences.save({setItem: (_, value) => {saved = value;}}, loaded);
+    assert.deepEqual(preferences.load({getItem: () => saved}, false, colors), loaded);
+  }
+  for (const amount of [0, 1.5, 3]) {
+    const loaded = preferences.load({getItem: () => JSON.stringify({waveSoftness: amount})}, false, colors);
+    assert.equal(loaded.waveSoftness, amount);
+  }
+});
+
+test('appearance controls expose only the supported mesh, softness and FXAA choices', () => {
+  const vm = require('node:vm'), fs = require('node:fs');
+  const state = preferences.load({getItem: () => null}, false, colors);
+  const groups = {}, rendered = [], context = {window: {}, LGXMBPreferences: preferences};
+  vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../app/appearance-settings.js'), 'utf8'), context);
+  new context.window.LGXMBAppearanceSettings({preferences: state, themes: {},
+    ui: {row: () => ({}), choiceGroup: (name, choices, selected, set) => {groups[name] = {choices, selected, set};}},
+    wave: {setQuality: value => rendered.push(value)}, save() {}, applyPreferences() {}
+  }).open();
+  const plain = value => JSON.parse(JSON.stringify(value));
+  assert.equal(groups.MSAA, undefined);
+  assert.deepEqual(plain(groups['Mesh detail'].choices), [['standard', 'Reduced'], ['high', 'Original']]);
+  assert.deepEqual(plain(groups['Edge softness'].choices), [[0, 'Sharp'], [1.5, 'Subtle'], [3, 'Soft']]);
+  assert.deepEqual(plain(groups['Post-process antialiasing'].choices), [['off', 'Off'], ['wave', 'FXAA']]);
+  groups['Edge softness'].set(3); groups['Post-process antialiasing'].set('wave');
+  assert.equal(rendered.at(-1).softness, 3);
+  assert.equal(rendered.at(-1).postprocess, 'wave');
+  assert.equal('msaa' in rendered.at(-1), false);
 });

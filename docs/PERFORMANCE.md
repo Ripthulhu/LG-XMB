@@ -25,7 +25,7 @@ approximation for large sprites. PS3-original colour doesn't use that decoration
 
 The full-size cache uses four bytes per pixel, about 7.91 MiB at 1920 × 1080.
 That's pixel storage, not total GPU allocation. The lookup adds 8 KiB. Wave
-supersampling and MSAA use separate targets; see [the renderer](WEBGL2.md).
+supersampling uses a separate target; see [the renderer](WEBGL2.md).
 
 ## Menu work
 

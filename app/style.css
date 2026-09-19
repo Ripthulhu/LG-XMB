@@ -11,6 +11,7 @@
   --ease: cubic-bezier(0.16, 0.92, 0.34, 1);
   --navigation-duration: 0.4s;
   --row-navigation-duration: 0.24s;
+  --settings-icon-scale: 1.4;
 }
 /* Category motion is the PS3's position curve. The 3.01 firmware moves the bar and
    the lists with a per-frame approach to the target, p += (1 - p) * 0.2206 at
@@ -202,6 +203,14 @@ header {
   margin: 0 2.15vw 0 1.8vw;
   color: rgba(255, 255, 255, calc(var(--item-alpha, 0.24) * 0.74));
   transition: transform var(--row-navigation-duration) var(--ease);
+}
+/* Composite settings artwork needs more room than a single symbol. Keep the
+   row's icon slot and text alignment fixed while enlarging the visible SVG. */
+.item-icon > .settings-symbol {
+  width: calc(100% * var(--settings-icon-scale));
+  height: calc(100% * var(--settings-icon-scale));
+  max-width: none;
+  margin: calc(50% * (1 - var(--settings-icon-scale)));
 }
 .item-text {
   font-size: clamp(19px, 1.75vw, 40px);

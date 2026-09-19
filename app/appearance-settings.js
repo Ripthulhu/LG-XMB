@@ -67,28 +67,6 @@
           save();
         });
       }
-      // An unsupported level is never rounded up, so offering one the driver cannot
-      // allocate renders with no MSAA at all and reads as a broken setting. The C5
-      // reports 4x only, so 2x is withheld there instead of silently doing nothing.
-      function msaaChoices() {
-        var surface = wave.getDiagnostics().surface,
-          supported = surface ? surface.msaaSupported : null;
-        var choices = [[0, 'Off']];
-        [2, 4].forEach(function (n) {
-          if (!supported || supported.indexOf(n) !== -1) choices.push([n, n + '×']);
-        });
-        if (
-          preferences.waveMSAA &&
-          !choices.some(function (choice) {
-            return choice[0] === preferences.waveMSAA;
-          })
-        ) {
-          // Match what the renderer was already doing with an unsupported request.
-          preferences.waveMSAA = 0;
-          save();
-        }
-        return choices;
-      }
       qualityChoice(
         'Frame rate',
         [
@@ -97,7 +75,6 @@
         ],
         'waveFrameRate'
       );
-      qualityChoice('MSAA', msaaChoices(), 'waveMSAA');
       qualityChoice(
         'Supersampling',
         [
@@ -112,8 +89,7 @@
         'Mesh detail',
         [
           ['standard', 'Reduced'],
-          ['high', 'Original'],
-          ['fine', 'Original (legacy)']
+          ['high', 'Original']
         ],
         'waveDetail'
       );
@@ -121,8 +97,8 @@
         'Edge softness',
         [
           [0, 'Sharp'],
-          [0.75, 'Subtle'],
-          [1.5, 'Soft']
+          [1.5, 'Subtle'],
+          [3, 'Soft']
         ],
         'waveSoftness'
       );
@@ -148,8 +124,7 @@
         'Post-process antialiasing',
         [
           ['off', 'Off'],
-          ['fxaa', 'FXAA'],
-          ['wave', 'Wave FXAA']
+          ['wave', 'FXAA']
         ],
         'wavePostprocess'
       );

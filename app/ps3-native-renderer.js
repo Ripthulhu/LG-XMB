@@ -15,7 +15,6 @@
     strength: 'normal',
     particles: false,
     particleCount: 2000,
-    msaa: 0,
     frameRate: 60
   };
   function quality(options, previous) {
@@ -26,13 +25,12 @@
     }
     return {
       sampling: select('sampling', [1, 1.25, 1.5, 2]),
-      detail: select('detail', ['low', 'standard', 'high', 'fine']),
-      softness: select('softness', [0, 0.5, 0.75, 1, 1.5, 2, 3]),
-      postprocess: select('postprocess', ['off', 'fxaa', 'wave']),
+      detail: o.detail === 'fine' ? 'high' : select('detail', ['low', 'standard', 'high']),
+      softness: o.softness === 0.75 ? 1.5 : select('softness', [0, 1.5, 3]),
+      postprocess: o.postprocess === 'fxaa' ? 'wave' : select('postprocess', ['off', 'wave']),
       strength: select('strength', ['gentle', 'normal', 'strong']),
       particles: typeof o.particles === 'boolean' ? o.particles : p.particles,
       particleCount: select('particleCount', [500, 1000, 2000, 4000]),
-      msaa: select('msaa', [0, 2, 4]),
       frameRate: select('frameRate', [30, 60])
     };
   }
@@ -134,8 +132,6 @@
     this.height = 0;
     this.effectiveScale = 1;
     this.samplingFallback = null;
-    this.msaaFallback = null;
-    this.msaaSamples = 0;
     this.uniforms = {};
     this.filterTunings = {
       gentle: new Float32Array([0.015625, 0.125, 0.5]),
@@ -146,15 +142,6 @@
     var limit = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE),
       vp = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
     this.maxDimension = Math.min(3840, limit, gl.getParameter(gl.MAX_TEXTURE_SIZE), vp[0], vp[1]);
-    var maxSamples = gl.getParameter(gl.MAX_SAMPLES),
-      counts = gl.getInternalformatParameter(gl.RENDERBUFFER, gl.RGBA8, gl.SAMPLES);
-    this.msaaSupported = Array.from(counts || [])
-      .filter(function (n) {
-        return n > 1 && n <= 4 && n <= maxSamples;
-      })
-      .sort(function (a, b) {
-        return b - a;
-      });
     this.parallel = gl.getExtension('KHR_parallel_shader_compile');
     try {
       this.waveProgram = this.program(Shaders.waveVertex, Shaders.waveFragment, [
@@ -243,14 +230,14 @@
       gl.getExtension('EXT_color_buffer_half_float')
     ) {
       try {
-        this.monthlyTarget = this.allocate(64, 32, 0, gl.RGBA16F);
+        this.monthlyTarget = this.allocate(64, 32, gl.RGBA16F);
       } catch (ignored) {
         /* A refused optional target must not disable the waves. */
       }
     }
     if (!this.monthlyTarget) {
       try {
-        this.monthlyTarget = this.allocate(64, 32, 0);
+        this.monthlyTarget = this.allocate(64, 32);
       } catch (ignored) {
         return;
       }
@@ -479,21 +466,19 @@
   Renderer.prototype.releaseTarget = function (t) {
     if (!t) return;
     var gl = this.gl;
-    if (t.msaaFbo) gl.deleteFramebuffer(t.msaaFbo);
-    if (t.msaaBuffer) gl.deleteRenderbuffer(t.msaaBuffer);
     if (t.framebuffer) gl.deleteFramebuffer(t.framebuffer);
     if (t.texture) gl.deleteTexture(t.texture);
   };
-  Renderer.prototype.allocate = function (w, h, samples, format) {
+  Renderer.prototype.allocate = function (w, h, format) {
     var gl = this.gl,
       internalFormat = format || gl.RGBA8;
     if (
       internalFormat !== gl.RGBA8 &&
       internalFormat !== gl.RGB10_A2 &&
-      !(internalFormat === gl.RGBA16F && w === 64 && h === 32 && !samples)
+      !(internalFormat === gl.RGBA16F && w === 64 && h === 32)
     )
       throw new Error('Full-size floating-point render targets are not supported');
-    var t = { width: w, height: h, samples: samples, format: internalFormat },
+    var t = { width: w, height: h, format: internalFormat },
       ok = false;
     try {
       t.texture = gl.createTexture();
@@ -511,41 +496,18 @@
         error = gl.getError();
       if (status !== gl.FRAMEBUFFER_COMPLETE || error !== gl.NO_ERROR)
         throw new Error('Incomplete render target');
-      if (samples) {
-        t.msaaBuffer = gl.createRenderbuffer();
-        t.msaaFbo = gl.createFramebuffer();
-        if (!t.msaaBuffer || !t.msaaFbo) throw new Error('No MSAA target');
-        gl.bindRenderbuffer(gl.RENDERBUFFER, t.msaaBuffer);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, internalFormat, w, h);
-        if (gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_SAMPLES) !== samples)
-          throw new Error('MSAA sample mismatch');
-        gl.bindFramebuffer(gl.FRAMEBUFFER, t.msaaFbo);
-        gl.framebufferRenderbuffer(
-          gl.FRAMEBUFFER,
-          gl.COLOR_ATTACHMENT0,
-          gl.RENDERBUFFER,
-          t.msaaBuffer
-        );
-        if (
-          gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE ||
-          gl.getError() !== gl.NO_ERROR
-        )
-          throw new Error('Incomplete MSAA target');
-      }
       ok = true;
       return t;
     } finally {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.bindRenderbuffer(gl.RENDERBUFFER, null);
       if (!ok) this.releaseTarget(t);
     }
   };
   Renderer.prototype.resize = function (w, h) {
     var s = this.settings,
-      key = w + 'x' + h + '@' + s.sampling + '#' + s.msaa;
+      key = w + 'x' + h + '@' + s.sampling;
     if (key === this.allocationKey) return;
     this.samplingFallback = null;
-    this.msaaFallback = null;
     var scales = [s.sampling, 1],
       last = '',
       candidate = null;
@@ -556,31 +518,16 @@
       var size = sw + 'x' + sh;
       if (size === last) continue;
       last = size;
-      var samples = this.msaaSupported.filter(function (n) {
-        return n <= s.msaa;
-      });
-      samples.push(0);
-      for (var j = 0; j < samples.length && !candidate; j++) {
-        if (sw * sh * 4 * (1 + samples[j]) > 96 * 1024 * 1024) {
-          this.msaaFallback = '96 MiB render-target budget';
-          continue;
-        }
-        try {
-          candidate = this.allocate(sw, sh, samples[j]);
-        } catch (error) {
-          this.msaaFallback = error.message;
-          if (this.gl.isContextLost()) throw error;
-        }
+      if (sw * sh * 4 > 96 * 1024 * 1024) continue;
+      try {
+        candidate = this.allocate(sw, sh);
+      } catch (error) {
+        if (this.gl.isContextLost()) throw error;
       }
-      if (candidate) {
-        this.effectiveScale = scale;
-        this.msaaSamples = candidate.samples;
-      }
+      if (candidate) this.effectiveScale = scale;
     }
     if (!candidate) throw new Error('WebGL 2 render target unavailable');
     if (this.effectiveScale !== s.sampling) this.samplingFallback = 'Render-target limit';
-    if (this.msaaSamples !== s.msaa)
-      this.msaaFallback = this.msaaFallback || 'Requested MSAA sample count unavailable';
     this.releaseTarget(this.target);
     this.target = candidate;
     this.allocationKey = key;
@@ -723,19 +670,19 @@
   // re-rendered only when its clock uniforms or the output size change.
   // Opaque cached colour needs no fractional alpha. RGB10_A2 stores four
   // times as many RGB levels in the same 32 bits/texel as RGBA8. Never use a
-  // full-size floating-point target; keep the existing wave/MSAA path intact.
+  // full-size floating-point target; keep the existing wave path intact.
   Renderer.prototype.allocateBackdrop = function (w, h) {
     var gl = this.gl,
       target = null;
     if (this.backdropFormat !== gl.RGBA8) {
       try {
-        target = this.allocate(w, h, 0, gl.RGB10_A2);
+        target = this.allocate(w, h, gl.RGB10_A2);
       } catch (ignored) {
         this.backdropFormat = gl.RGBA8;
         this.backdropFallback = 'RGB10_A2 unavailable';
       }
     }
-    if (!target) target = this.allocate(w, h, 0);
+    if (!target) target = this.allocate(w, h);
     this.backdropFormat = target.format;
     return target;
   };
@@ -862,7 +809,7 @@
     var gl = this.gl,
       t = this.target,
       p = this.simulation.particles;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, t.msaaFbo || t.framebuffer);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, t.framebuffer);
     gl.viewport(0, 0, t.width, t.height);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
@@ -876,22 +823,7 @@
     gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
     this.wavePass(w / h, wave, brightness);
     this.lastCount = 0;
-    if (t.msaaFbo) {
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.msaaFbo);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.framebuffer);
-      gl.blitFramebuffer(
-        0,
-        0,
-        t.width,
-        t.height,
-        0,
-        0,
-        t.width,
-        t.height,
-        gl.COLOR_BUFFER_BIT,
-        gl.NEAREST
-      );
-    }
+
     gl.disable(gl.BLEND);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, w, h);
@@ -913,7 +845,6 @@
     gl.uniform2f(u.uBand, band[0], band[1]);
     gl.uniform2f(u.uTexel, 1 / w, 1 / h);
     gl.uniform3fv(u.uTuning, this.filterTunings[this.settings.strength]);
-    gl.uniform1i(u.uCoverage, this.settings.postprocess === 'wave' ? 1 : 0);
     gl.uniform1f(u.uSoftness, this.settings.softness);
     gl.uniform1i(u.uFilter, this.settings.postprocess !== 'off' ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -952,11 +883,7 @@
       requestedScale: this.settings.sampling,
       effectiveScale: this.effectiveScale,
       samplingFallback: this.samplingFallback,
-      msaaSupported: this.msaaSupported.slice(),
-      msaaSamples: this.msaaSamples,
-      msaaFallback: this.msaaFallback,
       detail: this.settings.detail,
-      detailAlias: this.settings.detail === 'fine' ? 'Original 128 x 128 grid' : null,
       grid: this.grid,
       vertices: this.grid * this.grid,
       postprocess: this.settings.postprocess,
@@ -1010,7 +937,7 @@
       waveTicks: this.simulation.wave.ticks,
       particleTicks: p.ticks,
       recycledParticles: p.recycled,
-      renderTargetBytes: this.target ? this.width * this.height * 4 * (1 + this.msaaSamples) : 0
+      renderTargetBytes: this.target ? this.width * this.height * 4 : 0
     };
   };
   Renderer.prototype.destroy = function (lost) {

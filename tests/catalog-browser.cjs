@@ -3,6 +3,7 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE_PATH||'playwright');
+const menu=require('./support/menu-navigation.cjs');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'artifacts/catalog');
 const order=['settings','photo','music','video','tv','apps','browser','network'];
 const results=[],errors=[];
@@ -105,14 +106,14 @@ async function select(page,id){
       await select(page,'network');await page.evaluate(()=>catalogHarness.failLaunch=true);await press(page,'Enter');await page.waitForTimeout(20);
       assert.equal((await state(page)).busy,false);assert.match(await page.locator('#toast').textContent(),/Could not open Homebrew Channel/);results.push(width+' launch failure recovers');
       await page.evaluate(()=>catalogHarness.failLaunch=false);await select(page,'tv');
-      await page.evaluate(()=>{for(let i=0;i<60;i++)document.dispatchEvent(new KeyboardEvent('keydown',{key:i%2?'ArrowLeft':'ArrowRight',bubbles:true,cancelable:true}));});
+      await page.evaluate(()=>{for(let i=0;i<60;i++)document.dispatchEvent(new KeyboardEvent('keydown',{key:i%2?'ArrowLeft':'ArrowRight',bubbles:true,cancelable:true}));document.dispatchEvent(new KeyboardEvent('keyup',{key:'ArrowLeft',bubbles:true}));});
       assert.equal((await state(page)).category,'tv');results.push(width+' rapid reversal retains selection');
       assert.equal(await page.evaluate(()=>catalogHarness.objects.filter(x=>x.id.startsWith('c')).length),8);
       await page.emulateMedia({reducedMotion:'reduce'});await select(page,'photo');
       assert.equal(await page.locator('#categories').evaluate(n=>n.classList.contains('categories-instant')),true);results.push(width+' reduced motion');
       await select(page,'tv');await page.waitForTimeout(250);
       // Live HDMI previews must follow the new TV placement as well.
-      await select(page,'settings');await press(page,'ArrowDown',4);await press(page,'Enter');
+      await menu.item(page,'settings','previews');await press(page,'Enter');
       assert.equal((await state(page)).modal,'previews');
       await page.getByRole('button',{name:'Live',exact:true}).click();await press(page,'Escape');
       await select(page,'tv');assert.equal((await state(page)).inputPreview.port,2);

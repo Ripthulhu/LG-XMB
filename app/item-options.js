@@ -40,6 +40,7 @@
     this.panel = this.element.querySelector('section');
     this.title = this.element.querySelector('h2');
     this.caption = this.element.querySelector('.item-options-caption');
+    this.scroll = this.element.querySelector('.item-options-scroll');
     this.actions = this.element.querySelector('.item-options-actions');
     this.content = this.element.querySelector('.item-options-content');
     this.status = this.element.querySelector('.item-options-status');
@@ -184,6 +185,7 @@
       this.actions.textContent = '';
     this.content.textContent = '';
     this.status.textContent = '';
+    this.scroll.scrollTop = 0;
     this.actions.removeAttribute('role');
     this.actions.removeAttribute('aria-labelledby');
     this.title.textContent = item.title;
@@ -614,6 +616,20 @@
     else if (e.key === 'Tab') direction = e.shiftKey ? -1 : 1;
     if (direction) {
       e.preventDefault();
+      // Information has one action followed by read-only text. Moving focus
+      // between buttons cannot reveal it, so arrows scroll the reading area.
+      if (this.view === 'info' && e.key !== 'Tab') {
+        var before = this.scroll.scrollTop;
+        this.scroll.scrollTop = Math.max(
+          0,
+          Math.min(
+            this.scroll.scrollHeight - this.scroll.clientHeight,
+            before + direction * Math.max(48, this.scroll.clientHeight * 0.18)
+          )
+        );
+        if (this.scroll.scrollTop !== before) this.sound('cursor');
+        return;
+      }
       var buttons = Array.from(this.actions.querySelectorAll('button'));
       if (!buttons.length) return;
       var index = buttons.indexOf(root.document.activeElement);

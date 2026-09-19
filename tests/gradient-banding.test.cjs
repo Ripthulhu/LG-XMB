@@ -127,12 +127,12 @@ test('failure of both optional targets leaves no live monthly target', () => {
   r.prepareMonthlyTarget(); assert.equal(r.monthlyTexture, null); assert.equal(r.monthlyTarget, null);
   assert.equal(counts.deletes.length, 4);
 });
-test('default full-size wave/MSAA allocations stay RGBA8', () => {
+test('full-size wave allocations stay RGBA8 without multisampling', () => {
   const {r, gl, counts} = renderer({extension: 'EXT_color_buffer_float'});
   r.prepareMonthlyTarget();
-  assert.equal(r.allocate(1920, 1080, 0).format, gl.RGBA8);
-  assert.equal(r.allocate(1280, 720, 4).format, gl.RGBA8);
-  assert.equal(counts.msaaFormat, gl.RGBA8);
+  assert.equal(r.allocate(1920, 1080).format, gl.RGBA8);
+  assert.equal(r.allocate(1280, 720).format, gl.RGBA8);
+  assert.equal(counts.msaaFormat, undefined);
 });
 test('recreating the tiny target releases its predecessor', () => {
   const {r, counts} = renderer({extension: 'EXT_color_buffer_float'});

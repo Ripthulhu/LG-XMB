@@ -14,7 +14,7 @@
         {
           id: 'appearance',
           title: 'Appearance',
-          icon: 'palette',
+          icon: 'appearance',
           type: 'SETTING',
           description: 'Choose a theme and configure the animated background.',
           action: 'appearance'
@@ -30,7 +30,7 @@
         {
           id: 'previews',
           title: 'Input previews',
-          icon: 'hdmi',
+          icon: 'previewsettings',
           type: 'SETTING',
           description: 'Choose cached pictures or live video.',
           action: 'previews'
@@ -38,7 +38,7 @@
         {
           id: 'remote',
           title: 'Back button',
-          icon: 'remote',
+          icon: 'remotesettings',
           type: 'SETTING',
           description: 'Choose whether Back keeps Home open or shows the TV exit prompt.',
           action: 'remote'
@@ -54,7 +54,7 @@
         {
           id: 'com.palm.app.settings',
           title: 'TV Settings',
-          icon: 'settings',
+          icon: 'tvsettings',
           type: 'SETTING',
           description: 'Open picture, sound, and TV settings.'
         }

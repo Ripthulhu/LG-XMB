@@ -24,7 +24,7 @@ function terms(x,y){
 }
 test('all three modified GLSL stages match the generated script',()=>{
  for(const name of ['compositeFragment','particleFragment','glareFragment']){
-  assert.equal(shaders[name],fs.readFileSync(path.join(repo,'shaders',name+'.frag'),'utf8'));
+  assert.equal(shaders[name],fs.readFileSync(path.join(repo,'shaders',name+'.frag'),'utf8').replace(/\r\n/g,'\n'));
   assert.ok(shaders[name].startsWith('#version 300 es\n'));
  }
 });
