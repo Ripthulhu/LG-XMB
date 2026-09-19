@@ -1,54 +1,63 @@
 # LG-XMB
 
-LG-XMB replaces the home screen on an LG webOS TV with an XMB-style menu for apps and inputs.
+LG-XMB is an XMB-style home screen for LG webOS TVs, inspired by the PS3.
 
-![Home screen](docs/images/home.png)
+![LG-XMB running on an LG C5](docs/images/home.png)
 
-The app is called **Home** on the TV. You can install it as a separate launcher,
-or use a root-only bind mount to replace LG Home. Installing the IPK alone doesn't
-replace the Home screen.
+## Features
 
-## What you need
+- Launch installed apps and switch between TV inputs.
+- Choose which categories apps appear in, sort by name or recent use, and hide apps without uninstalling them.
+- Show cached HDMI pictures, with optional live previews.
+- Adjust wave colours, speed and rendering quality, including monthly colours and day/night changes.
+- Use your own navigation sounds and background music.
 
-The interface targets **webOS 22–26**. The **LG C5 running webOS 10.3.1** is the
-hardware-tested target. Native features need testing on other TVs. See
-[Compatibility](docs/COMPATIBILITY.md) for the limits.
+Left and Right change categories. Up and Down select an item. Press OK to open
+it, hold OK for options, and press Back to return. The Magic Remote pointer
+works too.
 
-Replacing LG Home requires an existing root SSH connection. The optional HDMI
-capture helper also needs Homebrew Channel and Python 3.7 or newer on the TV.
-Don't enable Developer Mode on a rooted TV. A non-root Developer Mode install
-can run the standalone launcher, but can't replace Home or run the helper.
+## TV support
+
+The interface targets **webOS 22–26**. Hardware testing has been on the
+**LG C5 running webOS 10.3.1**. Native features still need testing on other TVs.
+See [Compatibility](docs/COMPATIBILITY.md) for the platform details and known limits.
+
+Replacing LG Home requires root. Cached HDMI pictures also need Homebrew
+Channel with an elevated service and Python 3.7 or newer on the TV. Animated
+backgrounds need WebGL 2; otherwise the menu uses a static background.
+
+Use your existing root SSH connection. **Don't enable Developer Mode on a rooted TV.**
 
 ## Install
 
 Download an IPK from [Releases](https://github.com/Ripthulhu/LG-XMB/releases),
-or build one below. [Installation](docs/INSTALLATION.md) shows how to transfer
-and install it over your existing SSH connection. You can also use
-[webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop/releases).
-Open **Home** to test navigation and app launching before replacing LG Home.
+or build one below.
 
-[Replacing LG Home](docs/HOME-TAKEOVER.md) covers the manual copy, bind mount,
-startup hook and recovery. It works from the installed IPK, so release users
-don't need to build the source. Keep working SSH access throughout setup.
+1. Follow [Installation](docs/INSTALLATION.md) to transfer the IPK and install it over SSH.
+2. Open **Home** from the TV's apps. Test navigation, app launching and HDMI.
+3. Follow [Replacing LG Home](docs/HOME-TAKEOVER.md) to make it the Home screen and keep it after a reboot.
 
-## Use
+Installing the IPK adds a standalone launcher. Replacing LG Home is a separate
+manual setup using a copy of that installed app. The guide covers the startup
+hook and restoring stock Home. Keep SSH access working throughout setup.
 
-Left and Right change categories. Up and Down select an item. Press OK to open
-it, or hold OK to open [item options](docs/ITEM-OPTIONS.md). Pointer navigation
-works too.
+When updating, follow the [Home update steps](docs/HOME-TAKEOVER.md#updating-the-payload).
+Installing a new IPK doesn't update the Home replacement copy.
 
-**Settings** contains appearance, wave, audio and Back-button options. The waves
-use WebGL 2. Without it, the menu uses a static background. There's no media
-player or emulator built into LG-XMB; media shortcuts open the TV's apps.
+## Customise
 
-HDMI names follow the TV's input labels where its service permits the read.
-Cached pictures need the helper and appear after an eligible input has been
-viewed. Live previews are optional because they can change HDR mode.
+Open **Settings → Appearance** for themes, wave colours and rendering options.
+[Wave settings](docs/WEBGL2.md#settings) explains the controls and automatic colour changes.
 
-You can add your own [menu sounds](docs/MENU-SOUNDS.md) and
-[background MP3](docs/MUSIC.md). Neither is required, and no recordings are
-included. See [Menu categories](docs/MENU-CATEGORIES.md) for the shortcuts and
-[Wave settings](docs/WEBGL2.md#settings) for the renderer controls.
+Hold OK on an app to change its category, sorting or visibility.
+[Item options](docs/ITEM-OPTIONS.md) covers those controls and restoring hidden apps.
+
+**Settings → Sound** controls [menu sounds](docs/MENU-SOUNDS.md) and
+[background music](docs/MUSIC.md). Supply your own audio files; recordings aren't included.
+
+**Settings → Input previews** selects cached pictures or live video.
+Cached pictures appear after you've viewed an eligible HDMI input.
+Live previews can trigger HDR mode changes.
 
 ## Build
 
@@ -62,39 +71,27 @@ npm run package
 npm run verify:package
 ```
 
-The IPK and `SHA256SUMS` are written to `dist/`. These commands don't install
-anything on a TV.
+The IPK and `SHA256SUMS` are written to `dist/`. The repository includes the
+shaders and wave data needed for a normal build.
 
-All application source, shaders and runtime data needed to build the waves are
-in this repo. You don't need a firmware dump, a separate renderer archive or an
-import step. `npm ci` installs the pinned development tools.
+[Building and testing](docs/BUILDING.md) covers platform setup, package checks
+and the test suites.
+
+## Development
 
 For a desktop preview, run `npm run preview` and open
 <http://127.0.0.1:8765>. TV actions are simulated there.
-[Building and testing](docs/BUILDING.md) covers the remaining commands.
 
-To change the menu, icons, settings or background, start with the
-[code map](docs/ARCHITECTURE.md). It identifies each feature's source files and
-the behaviour to preserve. [Contributing](CONTRIBUTING.md) covers review and
-validation.
+The app uses plain JavaScript, CSS and SVG icons. The [code map](docs/ARCHITECTURE.md)
+shows where to change the menu, settings, icons and renderer.
+Read [Contributing](CONTRIBUTING.md) before submitting changes.
 
-## Notes
-
-The package ID is still `org.local.openxmb.c5` so existing installations can
-upgrade in place. It isn't the project name.
-
-The Home bind mount is separate from IPK installation. Updating the IPK doesn't
-update that copied payload automatically. The two installations need to match
-for helper-managed sound links to work.
-
-Don't treat a browser test as proof that native TV services work. App launches,
-HDMI capture, standby and recovery need testing on the actual firmware.
+The package ID remains `org.local.openxmb.c5` so existing installations can upgrade in place.
 
 ## Licence
 
-Project code is distributed under GPL version 3. Files marked
-`GPL-3.0-or-later` retain that permission. Third-party code and extracted
-reference data have separate notices in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-The project licence doesn't relicense Sony's extracted data.
+Project code is distributed under [GPL version 3](LICENSE). Files marked
+`GPL-3.0-or-later` retain that permission. Third-party code and extracted PS3
+data have separate terms in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 LG-XMB isn't affiliated with LG or Sony.
