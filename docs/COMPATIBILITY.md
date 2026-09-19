@@ -1,12 +1,49 @@
 # Compatibility
 
-The development target is the **LG C5 (OLED42C54LA) running webOS 10.3.1**.
-Other TVs aren't confirmed compatible just because they run webOS.
+The interface targets **webOS 22–26**, with Chromium 87 as its browser baseline.
+The hardware-tested target is the **LG C5 (OLED42C54LA), webOS 10.3.1**.
+Native features have only been tested on that TV.
 
-The interface targets the webOS 22-era browser and newer. The package declares
-1920 × 1080, and its animated background requires WebGL 2. A missing or failed
-WebGL 2 context leaves a static background rather than preventing navigation.
-A desktop layout check at another resolution isn't a test on that TV model.
+Choose by the installed platform, which can change through TV updates, rather
+than the model's purchase year. LG publishes the
+[platform and browser versions](https://webostv.developer.lge.com/develop/specifications/web-api-and-web-engine):
+
+| Installed platform | Chromium | Current validation |
+| --- | --- | --- |
+| webOS 22 | 87 | Browser baseline; no current hardware test |
+| webOS 23 | 94 | Browser target; no current hardware test |
+| webOS 24 | 108 | Browser target; no current hardware test |
+| webOS 25 | 120 | C5 / webOS 10.3.1 tested, including the 0.1.31 cold-boot fixes |
+| webOS 26 | 132 | Browser target; native permissions need testing on this platform |
+
+The package declares 1920 × 1080. LG specifies 1920 × 1080 graphics for UHD
+models and 1280 × 720 for Full HD models. There is currently no separate 720p
+package. A desktop 720p layout check doesn't validate installation on a Full HD
+TV. See [LG's resolution requirements](https://webostv.developer.lge.com/develop/specifications/app-resolution).
+
+## Browser and graphics behaviour
+
+The Chromium 87 `aspect-ratio` fallback remains in `app/style.css`, so cached and
+live previews retain their 16:9 shape without that CSS property. The bridge
+accepts both `PalmSystem` and `webOSSystem`; optional `ResizeObserver` and newer
+media-query event listeners have fallbacks.
+
+Animated backgrounds require WebGL 2. The earlier WebGL 1 renderer is no longer
+included. A missing context or failed shader setup leaves a static background;
+navigation and settings remain usable. Optional floating-point render targets
+fall back to ordinary colour targets, and allocation failures can lower the
+requested wave resolution. Smooth animation still depends on the TV's GPU.
+
+Run `npm run test:compat` after installing the development dependencies. It
+checks normal and forced legacy preview layout at 720p and 1080p, then loads the
+full app without WebGL and navigates into and out of Settings. It uses the same
+browser selection as the other browser tests in [BUILDING.md](BUILDING.md).
+No preview server or TV connection is needed.
+
+This test runs the installed desktop browser. It is **not Chromium 87 emulation**
+and doesn't replace a webOS 22 test. The native-service unit tests exercise
+denied calls, malformed replies, timeouts and missing bridges, using synthetic
+responses rather than a TV.
 
 ## Check each feature separately
 
@@ -16,7 +53,7 @@ A desktop layout check at another resolution isn't a test on that TV model.
 | Native app launching and HDMI names | The packaged app must be allowed to call the TV services |
 | Cached HDMI pictures | Rooted Homebrew environment, Python and compatible capture behaviour |
 | Live HDMI preview | A working TV media pipeline; starting it can change HDR mode |
-| Home replacement | Root access and a manually managed bind mount |
+| Home replacement | Root access and the matching stock Home layout; follow [Home setup](HOME-TAKEOVER.md) |
 | App deletion and clock changes | Native service permission under the app's actual identity |
 | User audio | Readable local files and a working audio path |
 
@@ -25,8 +62,25 @@ The capture worker has C5-specific geometry: a 3840 × 2160 panel and a
 a different model. OpenCV and NumPy are needed for its live-preview crop path,
 not for ordinary full-input PNG capture.
 
-The helper doesn't provide Home remapping or background-service controls.
-Changing an LS2 manifest or a service permission isn't part of installation.
+The helper needs Linux, Python 3.7 or newer at `/usr/bin/python3`, root access,
+Homebrew Channel's elevated `exec` service, and the expected app installation
+paths. It uses private capture, video, power and foreground-app APIs. Unexpected
+reply shapes skip capture. Audio recovery under the Home identity uses private media and
+audio-routing APIs. The C5 cold-boot test covered helper startup, HDMI
+video/audio, background music and fresh cached thumbnails; it is not evidence
+for another model or a long-standby cycle.
+
+On [webOS 26 Re:New, LG applies ACG permissions](https://webostv.developer.lge.com/develop/guides/acg-guide)
+when `requiredACG` is present. The app declares `application.launcher` and
+`application.query` for the public launch and installation-check APIs. That
+does not grant the private app-list, input-label, capture, clock-write, removal
+or audio-routing methods. Test those from the installed app under its actual
+identity; a successful root-shell call is not equivalent.
+
+The helper doesn't assign Home or manage background services. Home replacement
+is a separate root setup, not part of installing the IPK. Its stock Home paths
+and app type must match the target TV. Changing service permissions to force
+private APIs to work is not part of installation.
 
 ## Read-only diagnostic
 
@@ -55,5 +109,4 @@ Check navigation, app and HDMI return, standby, upgrade and removal. For Home
 replacement, also test [restoring LG Home](HOME-TAKEOVER.md#restore-lg-home).
 
 Earlier test records apply to their recorded builds. They don't validate later
-renderer or helper changes. Browser and synthetic-service tests don't establish
-TV frame pacing, native permissions or capture compatibility.
+renderer or helper changes.

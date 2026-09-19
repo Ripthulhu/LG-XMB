@@ -18,6 +18,16 @@ npm ci --ignore-scripts --no-audit --no-fund
 Packaging calls `python3` on Linux and macOS, or `python` on Windows. Set `PYTHON`
 to another interpreter path when needed.
 
+```sh
+export PYTHON=/path/to/python3
+```
+
+In PowerShell:
+
+```powershell
+$env:PYTHON = 'C:\path\to\python.exe'
+```
+
 ## Make an IPK
 
 ```sh
@@ -74,12 +84,21 @@ settings. Keep this terminal running for tests that use the preview server.
 
 ```sh
 npm test
+```
+
+Run the Python suites on Linux, including WSL on Windows. The native helper tests
+use Linux file descriptors, permissions and `/proc`; they don't run on native
+Windows or macOS.
+
+```sh
 python3 -B -m unittest discover -s tests -p 'test_*.py'
 python3 -B -m unittest discover -s tv-helper -p 'test_*.py'
 python3 -B -m unittest discover -s tv-helper/recovery -p 'test_*.py'
 ```
 
 Some helper ownership tests need Linux and root in an isolated test environment.
+The JavaScript suite skips its symlink check when Windows denies link creation;
+run it on Linux to cover that case. The other packaging checks still run.
 Capture-comparison tests need private fixtures and skip when they're absent.
 A skipped comparison isn't a passing accuracy check.
 
@@ -91,16 +110,33 @@ Install a browser for Playwright:
 npx playwright install chromium
 ```
 
-`npm run test:compat` runs the isolated layout checks. With the preview server
-running, `npm run test:browser`, `npm run test:music` and `npm run test:menu` run
-their respective browser groups. These scripts don't cover every browser test
-in `tests/`.
+On Linux, use `npx playwright install --with-deps chromium` if the browser's system
+libraries are missing. Select the downloaded browser before running the tests:
 
-Browser selection differs between older and newer test scripts. Some default to
-installed Edge, while others use Playwright's Chromium. Use
-`PLAYWRIGHT_EXECUTABLE_PATH` where supported, or `PLAYWRIGHT_CHANNEL=chrome` for
-scripts that select a browser channel. Read the script's launch options when
-setting up a machine without Edge.
+```sh
+export PLAYWRIGHT_CHANNEL=bundled
+```
+
+In PowerShell:
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL = 'bundled'
+```
+
+`PLAYWRIGHT_EXECUTABLE_PATH` selects an existing browser by its full executable
+path. It takes priority over the channel. Without either setting, some scripts
+use installed Edge and others use downloaded Chromium.
+
+| Command | Preview server |
+| --- | --- |
+| `npm run test:compat` | Not needed |
+| `npm run test:helper` | Not needed |
+| `npm run test:browser` | Start `npm run preview` first |
+| `npm run test:music` | Start `npm run preview` first |
+| `npm run test:menu` | Starts its own server; stop the preview first |
+
+The preview uses port 8765. Run the tests from the same checkout as the server.
+These groups don't cover every browser test in `tests/`.
 
 Focused guides list tests for [item options](ITEM-OPTIONS.md),
 [date and time](DATE-TIME-AND-OPTIONS.md) and [menu sounds](MENU-SOUNDS.md).
@@ -114,3 +150,9 @@ archive into `.tools/`. It doesn't extract or run it, and the normal build
 doesn't need it. `@webos-tools/cli` remains the IPK packager.
 
 Don't commit `.build/`, `dist/`, browser recordings, credentials or TV state.
+
+## Install and set up Home
+
+Follow [Installation and removal](INSTALLATION.md) to install the verified IPK.
+Installing it adds the standalone launcher. Follow [Replacing LG Home](HOME-TAKEOVER.md)
+for the separate root-only setup that makes it the TV's Home screen.

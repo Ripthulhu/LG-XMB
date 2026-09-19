@@ -10,22 +10,26 @@ replace the Home screen.
 
 ## What you need
 
-The development target is the **LG C5 running webOS 10.3.1**. Other models and
-firmware versions need separate testing. See [Compatibility](docs/COMPATIBILITY.md).
+The interface targets **webOS 22–26**. The **LG C5 running webOS 10.3.1** is the
+hardware-tested target. Native features need testing on other TVs. See
+[Compatibility](docs/COMPATIBILITY.md) for the limits.
 
-You need an existing Developer Mode or rooted connection to install the IPK.
-Replacing LG Home requires root. The optional HDMI capture helper also needs a
-rooted TV with Homebrew Channel and Python 3.7 or newer.
+Replacing LG Home requires an existing root SSH connection. The optional HDMI
+capture helper also needs Homebrew Channel and Python 3.7 or newer on the TV.
+Don't enable Developer Mode on a rooted TV. A non-root Developer Mode install
+can run the standalone launcher, but can't replace Home or run the helper.
 
 ## Install
 
-Download an IPK from [Releases](https://github.com/Ripthulhu/LG-XMB/releases) and
-install it with [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop/releases).
-Open **Home** to test navigation and app launching.
+Download an IPK from [Releases](https://github.com/Ripthulhu/LG-XMB/releases),
+or build one below. [Installation](docs/INSTALLATION.md) shows how to transfer
+and install it over your existing SSH connection. You can also use
+[webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop/releases).
+Open **Home** to test navigation and app launching before replacing LG Home.
 
-[Installation and removal](docs/INSTALLATION.md) covers the standalone app.
-[Replacing LG Home](docs/HOME-TAKEOVER.md) covers the bind mount, its limitations
-and recovery. Keep a working SSH connection before changing the Home screen.
+[Replacing LG Home](docs/HOME-TAKEOVER.md) covers the manual copy, bind mount,
+startup hook and recovery. It works from the installed IPK, so release users
+don't need to build the source. Keep working SSH access throughout setup.
 
 ## Use
 

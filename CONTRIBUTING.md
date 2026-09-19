@@ -62,14 +62,19 @@ an unsupported TV look compatible. `app/appinfo.json` is hashed by the helper;
 changes require updating its pin in `tv-helper/thumbnail_cache.py`.
 
 Never test recovery or ownership checks against a real TV's files from a desktop
-test runner. The Python tests use temporary directories. Some require a Linux
-root test environment and skip elsewhere.
+test runner. Run the Python helper tests on Linux or WSL; they use temporary
+directories and Linux filesystem APIs. Some ownership cases also require root
+in an isolated test environment.
 
 ## Checks
 
 Use [Building and testing](docs/BUILDING.md). Run the relevant unit and browser
 tests, then build and inspect the IPK. Record failures and skipped tests rather
 than describing a partial run as the whole suite.
+
+Check packaging changes from a fresh clone or a `git archive` export. Build with
+the lockfile and no private fixtures or existing `.build/` output. The resulting
+IPK must include the waves and a verified helper bundle.
 
 For a native change, test the packaged app on the TV. Check install, upgrade,
 app and HDMI return, standby, removal and the recovery path affected by the

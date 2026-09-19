@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {includeAppFile} = require('../tools/package-files.cjs');
-test('package staging excludes personal recordings, old audio folders and the runtime link', () => {
+test('package staging excludes personal recordings, old audio folders and the runtime music path', () => {
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'lg-xmb-music-'));
   try {
     const app=path.join(temp,'app'),out=path.join(temp,'output');fs.mkdirSync(app);
@@ -13,12 +13,31 @@ test('package staging excludes personal recordings, old audio folders and the ru
     fs.writeFileSync(path.join(app,'audio','README.md'),'obsolete bundled asset');
     fs.writeFileSync(path.join(app,'other','sound.MP3'),'personal recording');
     fs.writeFileSync(path.join(app,'background-music.js'),'keep code');
-    fs.symlinkSync('/media/internal/lg-xmb/background.mp3',path.join(app,'user-music.mp3'));
+    fs.writeFileSync(path.join(app,'user-music.mp3'),'personal recording');
     fs.cpSync(app,out,{recursive:true,filter:source=>includeAppFile(app,source)});
     assert.deepEqual(fs.readdirSync(out).sort(),['background-music.js','other']);
     assert.equal(fs.readdirSync(path.join(out,'other')).length,0);
     assert.match(fs.readFileSync(path.join(__dirname,'../.gitignore'),'utf8'),/app\/user-music\.mp3/);
   } finally {fs.rmSync(temp,{recursive:true,force:true});}
+});
+
+test('package staging excludes the runtime music symlink without following it', t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'lg-xmb-music-link-'));
+  try {
+    const app = path.join(temp, 'app'), out = path.join(temp, 'output');
+    fs.mkdirSync(app);
+    try {
+      fs.symlinkSync(path.join(temp, 'missing-track.mp3'), path.join(app, 'user-music.mp3'));
+    } catch (error) {
+      if (process.platform === 'win32' && error.code === 'EPERM') {
+        t.skip('Windows account cannot create symlinks; run this check on Linux.');
+        return;
+      }
+      throw error;
+    }
+    fs.cpSync(app, out, {recursive: true, filter: source => includeAppFile(app, source)});
+    assert.deepEqual(fs.readdirSync(out), []);
+  } finally { fs.rmSync(temp, {recursive: true, force: true}); }
 });
 test('source app contains no bundled recording or track fingerprint',()=>{
   const root=path.join(__dirname,'../app');

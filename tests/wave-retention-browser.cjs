@@ -1,11 +1,12 @@
-// Real WebGL pixel checks in installed Edge; no TV or external requests.
+// Real WebGL pixel checks; no TV or external requests.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
+const menu = require('./support/menu-navigation.cjs');
 
 (async () => {
-  const browser = await chromium.launch({channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true});
+  const browser = await chromium.launch(menu.launchOptions());
   const checks = [], errors = [];
   try {
     const page = await browser.newPage({viewport: {width: 1920, height: 1080}});

@@ -207,7 +207,7 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
 if (require.main === module) {
   (async()=>{
     const {chromium}=require('playwright');
-    const browser=await chromium.launch({channel:process.env.PLAYWRIGHT_CHANNEL||'msedge',headless:true});
+    const browser=await chromium.launch(menu.launchOptions());
     const checks=[],errors=[];
     try {await module.exports(browser,checks,errors);console.log(JSON.stringify({checks,testedOnTV:false},null,2));}
     finally {await browser.close();}
