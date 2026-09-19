@@ -6,7 +6,7 @@ function load() {
   const names=['prepareAmbient','backdropPass','monthlyPass','prepareMonthlyTarget','allocateBackdrop','allocate','releaseTarget','texture','resource','draw','particlePass','destroy'];
   const code=names.map(n=>{const m=new RegExp('  Renderer\\.prototype\\.'+n+' = function[\\s\\S]*?\\n  };').exec(source);assert.ok(m,n);return m[0];}).join('\n');
   const equal=/  function sameBackgroundVector\([\s\S]*?\n  }/.exec(source);assert.ok(equal);
-  const clock={calls:0,fromLocalDate(d){this.calls++;return{seconds:Math.floor(d.getTime()/1000)};},calendar(month,day,hour){this.calls++;return{month,day,hour};},uniforms(c){return{layers:[0,1,2,3],values:{_DayTime: c.seconds||c.hour||0}};}};
+  const clock={calls:0,coordinates(date,auto,month,period){return auto?this.fromLocalDate(date):this.calendar(month,1,period==='night'?0:12);},fromLocalDate(d){this.calls++;return{seconds:Math.floor(d.getTime()/1000)};},calendar(month,day,hour){this.calls++;return{month,day,hour};},uniforms(c){return{layers:[0,1,2,3],values:{_DayTime: c.seconds||c.hour||0}};}};
   const sandbox={root:{LGXMBPS3BackgroundClock:clock},Renderer:function(){},RETAINED_DAY_NIGHT:{},Date,Float32Array};
   vm.runInNewContext(equal[0]+'\n'+code,sandbox);return {Renderer:sandbox.Renderer,clock};
 }

@@ -34,7 +34,7 @@ window.C5Catalog=[
       {
         "id": "remote",
         "title": "Back button",
-        "icon": "settings",
+        "icon": "remote",
         "type": "SETTING",
         "description": "Choose whether Back keeps Home open or shows the TV exit prompt.",
         "action": "remote"
@@ -42,7 +42,7 @@ window.C5Catalog=[
       {
         "id": "datetime",
         "title": "Date & time",
-        "icon": "settings",
+        "icon": "clock",
         "type": "SETTING",
         "description": "Set the TV date and time.",
         "action": "datetime"
@@ -53,14 +53,6 @@ window.C5Catalog=[
         "icon": "settings",
         "type": "SETTING",
         "description": "Open picture, sound, and TV settings."
-      },
-      {
-        "id": "about",
-        "title": "About this menu",
-        "icon": "info",
-        "type": "SETTING",
-        "description": "Version and licence information.",
-        "action": "about"
       }
     ]
   },
@@ -181,7 +173,7 @@ window.C5Catalog=[
       {
         "id": "com.webos.app.homeconnect",
         "title": "Home Hub",
-        "icon": "home",
+        "icon": "homehub",
         "type": "APP",
         "description": "Open connected devices."
       }

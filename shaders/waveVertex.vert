@@ -9,7 +9,7 @@ uniform float uAspectCorrection;
 uniform float uGuardClip;
 out vec4 tfPosition;
 out vec4 tfNormal;
-out vec2 vUV;
+out mediump float vEdge;
 void main() {
   // Vertices past the grid are guards: copies of the end columns that get
   // pushed beyond the viewport, so the sheet's finite end never shows as a
@@ -40,5 +40,9 @@ void main() {
     // In the captured transform column zero is the RIGHT end of the sheet.
     gl_Position.x=gx==0?max(gl_Position.x,plane):min(gl_Position.x,-plane);
   }
-  vUV=vec2(sampleIndex)/127.0;
+  // Recovered attribute 8.y: linear 10% ramps at all four sheet edges.
+  // Calculate before rasterization, as in the original coordinate stream.
+  vec2 uv=vec2(sampleIndex)/127.0;
+  vec2 taper=min(vec2(1.0),10.0*min(uv,1.0-uv));
+  vEdge=taper.x*taper.y;
 }

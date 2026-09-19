@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-const root={};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../app/wave-colors.js'),'utf8'),{window:root});const api=root.LGXMBWaveColors;
+const root={LGXMBPS3BackgroundClock:require('../app/ps3-background-clock.js')};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../app/wave-colors.js'),'utf8'),{window:root,Date});const api=root.LGXMBWaveColors;
 const plain=v=>JSON.parse(JSON.stringify(v));
 test('existing themes remain the default, independently of new colour settings',()=>{
   assert.equal(api.normalize().mode,'theme');assert.equal(api.resolve(null),null);assert.equal(api.resolve({mode:'invalid'}),null);
@@ -29,7 +29,7 @@ test('Original RGB uses the reference top/bottom multipliers, including the blue
 });
 test('invalid RGB channels, months and intensity values cannot reach uniforms',()=>{
   const n=api.normalize({mode:'rgb',red:'255',green:Infinity,blue:-1,month:13,period:'midday',top:NaN,bottom:99});
-  assert.deepEqual(plain(n),{mode:'rgb',clock:'auto',month:1,period:'day',red:37,green:89,blue:179,top:.09,bottom:.62});
+  assert.deepEqual(plain(n),{mode:'rgb',themeClock:false,clock:'auto',dateMode:'auto',timeMode:'auto',month:1,period:'day',red:37,green:89,blue:179,top:.09,bottom:.62});
 });
 test('resolved colours are independent objects and cannot mutate the preset table',()=>{
   const a=api.resolve({mode:'monthly',month:1}),b=api.resolve({mode:'monthly',month:1});a.start[0]=0;assert.equal(b.start[0],197/255);

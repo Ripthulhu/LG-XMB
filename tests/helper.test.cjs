@@ -11,7 +11,7 @@ function setup(tv=true){
   window.PalmServiceBridge=class{call(uri,body){calls.push({uri,command:JSON.parse(body).command,bridge:this});}cancel(){this.cancelled=true;}};
   vm.runInNewContext(source,{window,Promise});
   function reply(index,value,outer={}){calls[index].bridge.onservicecallback(JSON.stringify({returnValue:true,stdoutString:JSON.stringify(value),stderrString:'',...outer}));}
-  return {helper:window.LGXMBHelper,calls,timers,reply};
+  return {helper:window.LGXMBHelper,calls,timers,reply,window};
 }
 const ready={returnValue:true,ready:true,captureRunning:true};
 test('desktop setup sends no native calls',async()=>{
@@ -102,4 +102,20 @@ test('a true worker lock conflict stays distinct and cannot trigger an automatic
   assert.equal(h.helper.isReady(),false);
   assert.equal(h.calls.length,1);
   assert.match(h.helper.getState().message,/No additional worker/);
+});
+
+test('fresh capture heartbeat overrides an unconfirmed setup without rerunning it',async()=>{
+ const h=setup(),op=h.helper.ensure();h.reply(0,{returnValue:false,errorCode:'helper_bundle_mismatch'});await assert.rejects(op);
+ let xhr,count=0;h.window.XMLHttpRequest=class{constructor(){xhr=this;count++;}open(method,url){assert.equal(method,'GET');assert.match(url,/^thumbnails\/status.json\?t=/);}send(){}};
+ const first=h.helper.checkCapture(),second=h.helper.checkCapture();assert.equal(first,second);assert.equal(count,1);
+ xhr.status=0;xhr.responseText=JSON.stringify({version:1,state:'idle',updatedAt:Date.now()/1000,captures:{}});xhr.onload();
+ assert.equal(await first,'running');assert.equal(h.helper.getState().captureHealth,'running');assert.equal(h.helper.getState().phase,'failed');assert.equal(h.calls.length,1);
+});
+test('capture health distinguishes stale, stopped, skipped and unreadable reports',async()=>{
+ for(const [state,age,expected] of [['captured',100,'stale'],['stopped',0,'stopped'],['skipped',0,'skipped'],['waiting',0,'running'],['bogus',0,'unknown']]){
+  const h=setup();h.window.XMLHttpRequest=class{open(){}send(){this.status=200;this.responseText=JSON.stringify({version:1,state,updatedAt:Date.now()/1000-age});this.onload();}};
+  assert.equal(await h.helper.checkCapture(),expected);
+ }
+ const h=setup();h.window.XMLHttpRequest=class{open(){}send(){this.ontimeout();}};
+ assert.equal(await h.helper.checkCapture(),'unknown');assert.equal(h.calls.length,0);
 });

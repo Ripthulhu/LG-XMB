@@ -39,7 +39,8 @@ function waveState() { return new Core.Wave(reference.wave, reference.settings);
 for (const [name, source] of Object.entries(Shaders)) {
   test(`${name}: native GLSL ES 3.00, no legacy shader constructs`, () => {
     assert.ok(source.startsWith('#version 300 es\n'));
-    assert.doesNotMatch(source, /\b(attribute|varying|gl_FragColor|texture2D)\b/);
+    const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
+    assert.doesNotMatch(code, /\b(attribute|varying|gl_FragColor|texture2D)\b/);
     // The output may carry its own precision qualifier, like the composite pass.
     if (name.endsWith('Fragment')) assert.match(source, /layout\(location\s*=\s*0\)\s*out\s+(?:lowp |mediump |highp )?vec4/);
   });

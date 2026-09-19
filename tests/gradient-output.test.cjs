@@ -50,7 +50,7 @@ function makeWave() {
     removeEventListener() {}};
   const w={canvas,mode:'webgl',allowed:()=>true,cancel(){},renderer:{
     monthlyActive:true,configure(){},draw(){return false;},destroy(){}}};
-  for (const n of ['syncBackgroundLayer','draw','fail','destroy']) w[n]=method('C5Wave',n);
+  for (const n of ['clockDriven','refreshClock','scheduleClock','syncBackgroundLayer','draw','fail','destroy']) w[n]=method('C5Wave',n);
   return {w,attributes,writes};
 }
 test('both changed GLSL sources agree with the bundled stages',()=>{

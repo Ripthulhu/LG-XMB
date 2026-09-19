@@ -14,6 +14,7 @@ const base=path.resolve(__dirname,'..'), out=path.join(base,'artifacts/performan
   const cdp=await page.context().newCDPSession(page);let layers=[];cdp.on('LayerTree.layerTreeDidChange',e=>{layers=e.layers||[];});await cdp.send('LayerTree.enable');
   await page.setContent('<!doctype html><div class="screen"><header><span id="time">12:00</span></header><div id="categories"><button class="category active"><span class="face lit"><span class="category-label">Apps</span></span></button></div><div class="cross-content"><div id="items"><span class="item-text">Player</span></div><div class="detail"><h1>Player</h1><p>Installed app</p></div></div></div>');
   for(const f of ['style.css','item-options.css'])await page.addStyleTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
+  await page.addScriptTag({content:fs.readFileSync(path.join(base,'app/menu-focus.js'),'utf8')});
   await page.addScriptTag({content:fs.readFileSync(path.join(base,'app/item-options.js'),'utf8')});
   await page.evaluate(()=>{
    window.calls=0;window.item={id:'org.test.player',title:'Player',type:'APP'};window.category={id:'apps',title:'Apps',items:[item]};
@@ -27,17 +28,20 @@ const base=path.resolve(__dirname,'..'), out=path.join(base,'artifacts/performan
    const q=await cdp.send('DOM.querySelector',{nodeId:ids.root.nodeId,selector:'.item-options-'+key});
    nodes[key]=(await cdp.send('DOM.describeNode',{nodeId:q.nodeId})).node.backendNodeId;
   }
-  async function closed(){
-   await page.waitForFunction(()=>document.querySelector('.item-options').hidden);
+  async function closed(prepared=false){
+   await page.waitForFunction(prepared=>{const e=document.querySelector('.item-options');return prepared?getComputedStyle(e).visibility==='hidden':e.hidden;},prepared);
    await page.waitForTimeout(60);
-   assert.equal(await page.locator('.item-options-panel').boundingBox(),null);
-   assert.equal(await page.locator('.item-options-shade').boundingBox(),null);
+   if(prepared)assert.ok(await page.locator('.item-options-panel').boundingBox(),'hold preparation lays out the invisible panel');
+   else {
+    assert.equal(await page.locator('.item-options-panel').boundingBox(),null);
+    assert.equal(await page.locator('.item-options-shade').boundingBox(),null);
+   }
    const owned=layers.filter(l=>l.backendNodeId===nodes.panel||l.backendNodeId===nodes.shade);
    assert.equal(owned.length,0,'closed menu has no panel/shade entry in Chromium layer tree');
    return owned.length;
   }
   await closed();checks.push(width+': initially closed menu has no bounds or dedicated panel/shade layers');
-  await page.evaluate(()=>options.prepare(item,category));await closed();assert.equal(await page.evaluate(()=>calls),0);
+  await page.evaluate(()=>options.prepare(item,category));await closed(true);assert.equal(await page.evaluate(()=>calls),0);
   checks.push(width+': preparing during hold builds no visible/retained GPU layer or metadata request');
   for(let cycle=0;cycle<3;cycle++){
    await page.evaluate(()=>options.open(item,category));await page.waitForFunction(()=>!options.opening);

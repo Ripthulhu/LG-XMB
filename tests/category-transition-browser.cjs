@@ -45,16 +45,16 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
         window.inputRows=[...document.querySelectorAll('#items>.rows:not(.parked)>.item')];
       });
       await page.waitForTimeout(450);
-      // Up/down is the reference: measure its actual CSS transform timing.
+      // Rows follow input faster; the category bar retains its original duration.
       const vertical=await page.evaluate(()=>{
         menuPress('ArrowUp');const row=document.querySelector('#items>.rows:not(.parked)>.item');
         const animation=row.getAnimations().find(a=>a.transitionProperty==='transform');
         return animation&&{duration:animation.effect.getTiming().duration,easing:animation.effect.getTiming().easing};
       });
-      assert.equal(vertical.duration,400);await page.waitForTimeout(450);
+      assert.equal(vertical.duration,240);await page.waitForTimeout(450);
       await page.evaluate(()=>menuPress('ArrowDown'));await page.waitForTimeout(450);
       await page.evaluate(()=>menuPress('ArrowRight'));
-      const frame=await page.evaluate(seekBar,0);assert.deepEqual(frame.travel,vertical);
+      const frame=await page.evaluate(seekBar,0);assert.deepEqual(frame.travel,{duration:400,easing:vertical.easing});
       assert.equal(await page.evaluate(()=>C5App.getState().category),'apps');
       const initial=await page.evaluate(column);
       assert.equal(initial.transform,'none');assert.equal(initial.opacity,'1');assert.equal(initial.effects,0);
@@ -145,7 +145,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.item,.category')].every(n=>getComputedStyle(n).willChange==='auto')),true);
       assert.ok(['none','normal'].includes(await page.locator('#items>.rows:not(.parked) .selected').evaluate(n=>getComputedStyle(n,'::after').content)));
       await page.screenshot({path:path.join(dir,`home-rest-${width}.png`)});
-      checks.push(`${width}px DPR ${dpr}: matching up/down CSS timing, stationary unfaded column, identical settled icon pixels, native reversal, one bar-position transition, reused rows/upper labels, immediate activation and hidden/resize cleanup`);
+      checks.push(`${width}px DPR ${dpr}: faster rows with preserved category timing, stationary unfaded column, identical settled icon pixels, native reversal, one bar-position transition, reused rows/upper labels, immediate activation and hidden/resize cleanup`);
     }finally{await page.close();}
   }
   for(const mode of ['reduced','no-animation-api','refused-animation','system-reduced']){

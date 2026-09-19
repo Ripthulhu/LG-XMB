@@ -31,7 +31,7 @@ async function load(p,data={}){
    else throw Error('Unexpected service '+uri);
   };};
  });
- for(const name of ['menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
+ for(const name of ['menu-focus.js','directional-repeat.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  // Keep production timing by default; expose the scheduler only to advance
  // selected race tests without spending 30 seconds on every permutation.
  await p.evaluate(()=>{const Native=LGXMBAppRefresh;window.LGXMBAppRefresh=function(o){return window.testRefresh=new Native(o);};});

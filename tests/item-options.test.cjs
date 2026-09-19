@@ -14,7 +14,7 @@ test('650 ms hold consumes all repeats and release',()=>{const c=clock(),h=new H
 test('cancelled or stale hold cannot open options or launch',()=>{const c=clock(),h=new Hold(c);let n=0;h.down('key',()=>n++,()=>n++);const callback=[...c.jobs.values()][0].fn;h.cancel();callback();h.up('key');assert.equal(n,0);});
 test('wrong pointer/key release does not complete another gesture',()=>{const c=clock(),h=new Hold(c);let n=0;h.down('pointer',()=>n++,()=>n++);assert.equal(h.up('key'),false);h.up('pointer');assert.equal(n,1);});
 test('sort preserves objects and selected identity with natural ordering',()=>{const c={id:'apps',items:[{id:'z',title:'Zebra'},{id:'10',title:'App 10'},{id:'2',title:'App 2'}]},original=c.items.slice(),s=storage(),o=new Order([c],s);assert.equal(o.set(c,'az','z'),2);assert.deepEqual(c.items.map(i=>i.id),['2','10','z']);assert.equal(c.items[2],original[0]);assert.equal(o.set(c,'default','z'),0);assert.deepEqual(c.items,original);});
-test('sort preference survives recreation; invalid saved modes are ignored',()=>{const s=storage(),c={id:'apps',items:[{id:'a',title:'A'},{id:'b',title:'B'}]};new Order([c],s).set(c,'za','a');assert.equal(new Order([c],s).modes.apps,'za');s.setItem('lg-xmb-menu-order-v1','{"apps":"recent","bogus":"az"}');assert.equal(new Order([c],s).modes.apps,'default');});
+test('sort preference survives recreation; invalid saved modes are ignored',()=>{const s=storage(),c={id:'apps',items:[{id:'a',title:'A'},{id:'b',title:'B'}]};new Order([c],s).set(c,'za','a');assert.equal(new Order([c],s).modes.apps,'za');s.setItem('lg-xmb-menu-order-v1','{"apps":"invalid","bogus":"az"}');assert.equal(new Order([c],s).modes.apps,'default');});
 test('storage denial does not reorder the menu',()=>{const c={id:'apps',items:[{id:'b',title:'B'},{id:'a',title:'A'}]},s=storage(),o=new Order([c],s);s.setItem=()=>{throw Error('denied');};assert.throws(()=>o.set(c,'az','b'));assert.deepEqual(c.items.map(i=>i.id),['b','a']);});
 test('deletion removes duplicate shortcuts and preserves other selections',()=>{const c=[{id:'music',title:'Music',items:[{id:'plex',title:'Plex'},{id:'a',title:'A'}]},{id:'video',title:'Video',items:[{id:'plex',title:'Plex'}]}],sel=[1,0],o=new Order(c,storage());o.remove('plex',sel);assert.equal(c[0].items[sel[0]].id,'a');assert.equal(c[1].items[sel[1]].action,'empty');assert.ok(o.removed.has('plex'));});
 test('confirmed deleted shortcuts persist and return after verified reinstall',()=>{const s=storage(),fresh=()=>[{id:'video',title:'Video',items:[{id:'plex',title:'Plex'}]}],a=fresh(),o=new Order(a,s);o.remove('plex',[0]);const b=fresh(),n=new Order(b,s);n.removed.forEach(id=>n.remove(id,[0]));assert.equal(b[0].items[0].action,'empty');n.reconcile([{id:'plex'}]);assert.equal(b[0].items[0].id,'plex');assert.equal(n.removed.size,0);});
@@ -31,3 +31,18 @@ test('concurrent removal is rejected and error status is not a success',async()=
 test('wrong-id terminal notification cannot remove current item',async()=>{const {api,calls}=manager();const p=api.removeApp('org.test.app',true);calls[0].reply({returnValue:true,appInfo:info()});await flush();calls[1].reply({id:'org.other',statusValue:31});await assert.rejects(p,e=>e.code==='INVALID_RESPONSE');});
 test('uninstall timeout remains uncertain and never retries automatically',async()=>{const {api,calls,c}=manager();const p=api.removeApp('org.test.app',true);calls[0].reply({returnValue:true,appInfo:info()});await flush();c.advance(45000);await assert.rejects(p,e=>e.code==='TIMEOUT'&&/may still finish/.test(e.message));assert.equal(calls.length,2);});
 test('preview metadata cannot enable or simulate successful deletion',async()=>{const {api,calls,root}=manager();root.C5TV.isTV=()=>false;assert.equal((await api.getAppInfo('org.test.app')).info.removable,false);await assert.rejects(api.removeApp('org.test.app',true),e=>e.code==='PREVIEW_ONLY');assert.equal(calls.length,0);});
+
+test('recent order persists, keeps unused default order and retains selection',()=>{
+ const fresh=()=>({id:'apps',items:[{id:'b',title:'B'},{id:'a',title:'A'},{id:'c',title:'C'}]});
+ const s=storage(),c=fresh(),o=new Order([c],s);o.record('a');o.record('c');o.record('a');
+ assert.equal(o.set(c,'recent','b'),2);assert.deepEqual(c.items.map(i=>i.id),['a','c','b']);
+ const next=fresh(),loaded=new Order([next],s);loaded.apply(next,'b');assert.deepEqual(next.items.map(i=>i.id),['a','c','b']);
+ loaded.set(next,'default','b');assert.deepEqual(next.items.map(i=>i.id),['b','a','c']);
+});
+test('recent usage is shared between categories and tolerates corrupt or denied storage',()=>{
+ const s=storage();s.setItem('lg-xmb-recent-items-v1','[null,"a","a",{},"bad/id"]');
+ const cats=[{id:'one',items:[{id:'a',title:'A'},{id:'b',title:'B'}]},{id:'two',items:[{id:'a',title:'A'},{id:'b',title:'B'}]}],o=new Order(cats,s);
+ assert.deepEqual(o.recent,['a']);cats.forEach(c=>o.set(c,'recent','a'));
+ s.setItem=()=>{throw Error('denied');};assert.doesNotThrow(()=>o.record('b'));cats.forEach(c=>{o.apply(c,'a');assert.equal(c.items[0].id,'b');});
+ for(let i=0;i<1010;i++)o.record('app.'+i);assert.equal(o.recent.length,1000);
+});

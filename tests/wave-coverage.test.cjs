@@ -9,14 +9,15 @@ const root = path.resolve(__dirname, '..');
 const wave = fs.readFileSync(path.join(root, 'shaders/waveFragment.frag'), 'utf8').replace(/\r\n/g, '\n');
 const shaders = require(path.join(root, 'app/ps3-native-shaders.js'));
 const clean = wave.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
-const match = /float\s+coverage\s*=\s*min\(1\.0-exp\(-light\*5\.0\),\s*([\d.]+)\)\s*\*\s*edge\s*;/.exec(clean);
+const match = /float\s+coverage\s*=\s*min\(1\.0-exp\(-light\*5\.0\),\s*([\d.]+)\)\s*;/.exec(clean);
 const ceiling = match ? Number(match[1]) : NaN;
 const base = light => 1 - Math.exp(-light * 5);
-const coverage = (light, edge = 1) => Math.min(base(light), ceiling) * edge;
+const coverage = (light, edge = 1) => Math.min(base(light * edge), ceiling);
 
-test('readable shader selects the approved ceiling before edge fading', () => {
-  assert.ok(match, 'Cap coverage before multiplying by edge; not a final-frame clamp.');
+test('readable shader keeps the approved ceiling with the recovered light taper', () => {
+  assert.ok(match, 'Cap each sheet after its light response; not a final-frame clamp.');
   assert.equal(ceiling, .30);
+  assert.match(clean, /float light=density\*dot\(lut,uMaterial\.xy\)\*vEdge;/);
 });
 test('the loaded JavaScript bundle includes exactly the readable shader', () => {
   assert.equal(shaders.waveFragment, wave);
@@ -50,15 +51,17 @@ test('bright sheets plateau at 0.30, with a continuous monotone response', () =>
   const knee = -Math.log(.7) / 5;
   assert.ok(Math.abs(coverage(knee - 1e-10) - coverage(knee + 1e-10)) < 1e-8);
 });
-test('the edge envelope still attenuates bright sheets instead of being clipped away', () => {
+test('the recovered edge taper attenuates light before the capped response', () => {
   for (let i = 0; i <= 100; i++) {
     const edge = i / 100;
-    assert.equal(coverage(10, edge), .3 * edge);
-    assert.ok(coverage(10, edge) <= base(10) * edge);
+    assert.equal(coverage(.02, edge), base(.02 * edge));
+    assert.ok(coverage(.02, edge) <= coverage(.02));
   }
   assert.equal(coverage(10, 0), 0);
-  assert.equal(coverage(10, .5), .15);
+  assert.equal(coverage(10, .5), .3);
+  assert.ok(coverage(.02, .5) > .5 * coverage(.02));
 });
+
 test('additive overlaps may exceed 0.3; this is not a final-image limiter', () => {
   assert.equal(coverage(10) * 2, .6);
   assert.ok(coverage(10) * 4 > 1);

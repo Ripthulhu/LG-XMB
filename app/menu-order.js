@@ -1,10 +1,17 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 (function (root) {
   'use strict';
-  var DELETED = 'lg-xmb-deleted-apps-v1', KEY = 'lg-xmb-menu-order-v1', MODES = ['default', 'az', 'za'];
+  var DELETED = 'lg-xmb-deleted-apps-v1', KEY = 'lg-xmb-menu-order-v1', RECENT = 'lg-xmb-recent-items-v1', MODES = ['default', 'az', 'za', 'recent'];
   function MenuOrder(categories, storage) {
     this.categories = categories; this.storage = storage;
     this.modes = Object.create(null); this.order = Object.create(null); this.removed = new Set();
+    this.recent = [];
+    try {
+      var recent = JSON.parse(storage.getItem(RECENT) || '[]');
+      if (Array.isArray(recent)) this.recent = recent.filter(function (id, at) {
+        return typeof id === 'string' && id.length <= 128 && /^[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*$/.test(id) && recent.indexOf(id) === at;
+      }).slice(0, 1000);
+    } catch (ignore) {}
     var saved, deleted;
     try { deleted = JSON.parse(storage.getItem(DELETED) || '[]'); } catch (ignore) {}
     if (Array.isArray(deleted)) deleted.slice(0, 1000).forEach(function (id) {
@@ -18,14 +25,22 @@
     }
   }
   MenuOrder.prototype.apply = function (category, selected) {
-    var order = this.order[category.id], mode = this.modes[category.id];
+    var order = this.order[category.id], mode = this.modes[category.id], recent = this.recent;
     category.items.forEach(function (item) { if (order.indexOf(item) < 0) order.push(item); });
     category.items.sort(function (a, b) {
-      var n = mode === 'default' ? 0 : a.title.localeCompare(b.title, undefined, {numeric: true, sensitivity: 'base'});
+      var aRecent = recent.indexOf(a.id), bRecent = recent.indexOf(b.id);
+      var n = mode === 'recent' ? (aRecent < 0 ? recent.length : aRecent) - (bRecent < 0 ? recent.length : bRecent) :
+        mode === 'default' ? 0 : a.title.localeCompare(b.title, undefined, {numeric: true, sensitivity: 'base'});
       return (mode === 'za' ? -n : n) || order.indexOf(a) - order.indexOf(b);
     });
     var at = category.items.findIndex(function (i) { return i.id === selected; });
     return at < 0 ? 0 : at;
+  };
+  // Record successful opens only. A denied storage write must not block launch.
+  MenuOrder.prototype.record = function (id) {
+    if (typeof id !== 'string' || id.length > 128 || !/^[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*$/.test(id) || this.recent[0] === id) return;
+    this.recent = [id].concat(this.recent.filter(function (entry) { return entry !== id; })).slice(0, 1000);
+    try { this.storage.setItem(RECENT, JSON.stringify(this.recent)); } catch (ignore) {}
   };
   MenuOrder.prototype.set = function (category, mode, selected) {
     if (MODES.indexOf(mode) < 0) throw new Error('Invalid menu sort');

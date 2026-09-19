@@ -17,10 +17,9 @@ function render(key,initial){
     error.textContent=errorMessage;error.hidden=!errorMessage;
     [].forEach.call(back.querySelectorAll('[data-remote-choice]'),function(button){var selected=button.getAttribute('data-remote-choice')==='Back button:'+options.getBack();if(button.getAttribute('aria-pressed')!==String(selected)){button.setAttribute('aria-pressed',String(selected));button.querySelector('.option-check').textContent=selected?'✓':'';}});
   });
-  back.appendChild(element('p','remote-note','Back closes an open panel first. From the main menu, it stays here or opens the TV exit prompt.'));
   var target=null;[].forEach.call(root.querySelectorAll('[data-remote-choice]'),function(button){if(button.getAttribute('data-remote-choice')===key)target=button;});
   if(!target&&initial)target=root.querySelector('[aria-pressed="true"]')||root.querySelector('button');
-  if(target)target.focus();root.scrollTop=scroll;
+  if(target)target.focus({preventScroll:true});root.scrollTop=scroll;
 }
 window.C5RemoteSettings={open:function(callbacks){generation++;opened=true;errorMessage='';options=callbacks;render(null,true);},close:function(){generation++;opened=false;},getState:function(){return{back:options?options.getBack():null};}};
 })();

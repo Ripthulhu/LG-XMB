@@ -25,31 +25,31 @@
       s.querySelector('h3').hidden=true;
     }
     function visibility(){
-      var pinned=state.mode==='monthly'||(state.mode==='ps3'&&state.clock==='fixed');
-      ['month','period'].forEach(function(key){if(sections[key])sections[key].hidden=!pinned;});
-      if(sections.clock)sections.clock.hidden=state.mode!=='ps3';
+      var calendar=state.mode==='monthly'||state.mode==='ps3';
+      sections.month.hidden=!calendar||state.dateMode==='auto';
+      sections.dateMode.hidden=!calendar;sections.timeMode.hidden=!calendar;sections.themeClock.hidden=state.mode!=='theme';
       ['red','green','blue','top','bottom'].forEach(function(key){if(sections[key])sections[key].hidden=state.mode!=='rgb';});
     }
     choices('Colour source','mode',[['theme','Current theme'],['ps3','PS3 original'],['monthly','Monthly presets'],['rgb','Custom RGB']]);
-    choices('Clock','clock',[['auto','Follow the clock'],['fixed','Fixed month']],2);
+    choices('Day / night','themeClock',[[false,'Off'],[true,'Automatic']],2);
+    choices('Month selection','dateMode',[['auto','Automatic'],['fixed','Fixed month']],2);
     choices('Month','month',root.LGXMBWaveColors.months.map(function(m,i){return[i+1,m];}),4);
-    choices('Day / Night','period',[['day','Day'],['night','Night']],2);
+    choices('Time of day','timeMode',[['auto','Automatic'],['day','Day'],['night','Night']]);
     slider('Red','red',0,255,1);slider('Green','green',0,255,1);slider('Blue','blue',0,255,1);
     slider('Top intensity','top',0,0.3,0.005);slider('Bottom intensity','bottom',0.2,1.2,0.005);
-    var hint=document.createElement('p');hint.className='wave-quality-note';hint.textContent='Changes are saved immediately. Left / Right adjusts a slider; Up / Down moves between controls. Current theme restores your Appearance colours.';host.appendChild(hint);
     visibility();
   }
   function key(event,modal){
     var current=document.activeElement,group=current.closest('.color-group'),groups=Array.from(modal.querySelectorAll('.color-group')).filter(function(g){return !g.hidden;});
     var controls=Array.from(modal.querySelectorAll('button,input')).filter(function(el){return !el.hidden&&!el.closest('[hidden]');});
-    function focus(el){if(el&&el!==document.activeElement){el.focus();el.scrollIntoView({block:'nearest'});}}
-    function toGroup(index,delta){var g=groups[index],box=g&&g.querySelector('.color-choices');var edge=box&&Number(box.dataset.columns)===1?box.children[delta<0?box.children.length-1:0]:null;focus(g ? (edge || g.querySelector('[aria-pressed="true"]') || g.querySelector('input,button')) : modal.querySelector('#closeModal'));}
+    function focus(el){root.LGXMBMenuFocus(el);}
+    function toGroup(index,delta){if(index<0||index>=groups.length)return;var g=groups[index],box=g&&g.querySelector('.color-choices');var edge=box&&Number(box.dataset.columns)===1?box.children[delta<0?box.children.length-1:0]:null;focus(g ? (edge || g.querySelector('[aria-pressed="true"]') || g.querySelector('input,button')) : null);}
     if(event.key==='Tab'){
       event.preventDefault();var index=controls.indexOf(current);focus(controls[(index+(event.shiftKey?-1:1)+controls.length)%controls.length]);return;
     }
     if(!/^Arrow/.test(event.key))return;
     event.preventDefault();
-    if(!group){toGroup(event.key==='ArrowUp'?groups.length-1:0);return;}
+    if(!group){toGroup(event.key==='ArrowUp'?groups.length-1:0,event.key==='ArrowUp'?-1:1);return;}
     var vertical=event.key==='ArrowUp'||event.key==='ArrowDown',delta=event.key==='ArrowDown'||event.key==='ArrowRight'?1:-1;
     if(current.tagName==='INPUT'){
       if(vertical){toGroup(groups.indexOf(group)+delta,delta);return;}

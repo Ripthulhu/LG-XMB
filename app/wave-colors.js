@@ -28,7 +28,10 @@
     value = value && typeof value === 'object' ? value : {};
     return {
       mode:['theme','monthly','rgb','ps3'].indexOf(value.mode) >= 0 ? value.mode : 'theme',
+      themeClock:value.themeClock===true,
       clock:value.clock === 'fixed' ? 'fixed' : 'auto',
+      dateMode:['auto','fixed'].indexOf(value.dateMode)>=0?value.dateMode:value.mode==='monthly'||value.clock==='fixed'?'fixed':'auto',
+      timeMode:['auto','day','night'].indexOf(value.timeMode)>=0?value.timeMode:value.mode==='monthly'||value.clock==='fixed'?(value.period==='night'?'night':'day'):'auto',
       month:Number.isInteger(value.month) && value.month >= 1 && value.month <= 12 ? value.month : 1,
       period:value.period === 'night' ? 'night' : 'day',
       red:Math.round(bounded(value.red,0,255,37)), green:Math.round(bounded(value.green,0,255,89)),
@@ -36,17 +39,31 @@
       top:bounded(value.top,0,0.3,0.09), bottom:bounded(value.bottom,0.2,1.2,0.62)
     };
   }
-  function resolve(value) {
+  function resolve(value, date) {
     var s = normalize(value);
     if (s.mode === 'theme') return null;
     // The PS3's own monthly background: the recovered back_colours0 program
     // over the 24 month_bg textures, driven by the clock or pinned to a month.
     // The wave over it is near white, like the console, rather than tinted.
-    if (s.mode === 'ps3') return {monthly:{auto:s.clock === 'auto',month:s.month,period:s.period},tint:[0.92,0.96,1]};
+    if (s.mode === 'ps3') return {monthly:{auto:s.dateMode === 'auto',month:s.month,period:s.timeMode},tint:[0.92,0.96,1]};
     var start,end,angle=90,tint;
     if (s.mode === 'monthly') {
-      var p = (s.period === 'night' ? NIGHT : DAY)[s.month-1]; angle=p[0];
-      start=p[1].map(function(v){return v/255;}); end=p[2].map(function(v){return v/255;});
+      var clock=root.LGXMBPS3BackgroundClock, live=date||new Date();
+      var coord=clock.coordinates(live,s.dateMode==='auto',s.month,s.timeMode);
+      var index=Math.floor(coord.month)%12,next=(index+1)%12,weight=coord.month-Math.floor(coord.month);
+      weight=weight*weight*(3-2*weight);
+      var day=clock.uniforms(coord,clock.retained).values._NightDayBlend;
+      // Preset gradients share the clock, but are not the PS3 texture shader.
+      if(s.timeMode==='day')day=1;else if(s.timeMode==='night')day=0;
+      function blend(a,b,t){return a+(b-a)*t;}
+      function gradient(layer){
+        var a=layer[index],b=layer[next],delta=((b[0]-a[0]+540)%360)-180;
+        return [a[0]+delta*weight,a[1].map(function(v,i){return blend(v,b[1][i],weight)/255;}),a[2].map(function(v,i){return blend(v,b[2][i],weight)/255;})];
+      }
+      var night=gradient(NIGHT),light=gradient(DAY);
+      angle=night[0]+(((light[0]-night[0]+540)%360)-180)*day;
+      start=night[1].map(function(v,i){return blend(v,light[1][i],day);});
+      end=night[2].map(function(v,i){return blend(v,light[2][i],day);});
       tint=start.map(function(v,i){return Math.max(v,end[i]);});
     } else {
       tint=[s.red/255,s.green/255,s.blue/255];

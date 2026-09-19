@@ -10,8 +10,10 @@ the panel without waiting for the hold timer.
 
 | Action | Behaviour |
 | --- | --- |
-| Sort By | Default order, Name A–Z or Name Z–A for this category |
+| Sort By | Default order, Recently used, Name A–Z or Name Z–A for this category |
 | Start / Open | Launch the app or input, or open a launcher setting |
+| Hide app | Hide its shortcuts across all categories without uninstalling it |
+| Show hidden apps | List hidden apps; select one to restore its shortcuts |
 | Delete | Ask for confirmation, then request native app removal if permitted |
 | Information | Show native metadata; absent fields say “Not reported” |
 
@@ -23,6 +25,13 @@ Sort order is saved per category. Removing an app removes its shortcuts from
 all categories, including both Plex entries. An empty category shows a
 non-launching “No apps” row. A later installed-app refresh restores shortcuts
 for a reinstalled app.
+
+Hidden apps stay installed and retain their category assignments and recent-use
+history. Their visibility is saved locally and survives app-list refreshes and
+restarts. Show hidden apps is available from any item's options, including the
+“No apps” row. It remains reachable when every app in a category is hidden.
+Launcher settings and HDMI inputs cannot be hidden. If saving fails, the app
+stays in its previous state and the menu reports the error.
 
 ## Deleting an app
 
@@ -55,6 +64,9 @@ There is no filesystem deletion or root fallback.
 in `lg-xmb-deleted-apps-v1`. A storage failure doesn't prevent startup, but those
 choices then might not survive a restart.
 
+`app/app-categories.js` stores hidden IDs and display names in
+`lg-xmb-hidden-apps-v1`. Hiding and restoring make no native install/remove calls.
+
 ## Tests
 
 ```sh
@@ -66,3 +78,9 @@ node tests/item-options-style-browser.cjs
 The browser tests use synthetic native replies. Check deletion permissions and
 completion on the TV under the actual installed identity. Presentation details
 are in [ITEM-OPTIONS-STYLING.md](ITEM-OPTIONS-STYLING.md).
+
+Recently used sorts successful opens from this launcher, newest first. Apps shared
+across categories share their last-use order. Inputs and launcher settings are
+included; unused items retain their default order. The last 1,000 distinct IDs
+are stored locally in `lg-xmb-recent-items-v1`, without timestamps or network
+requests. Opening apps outside this launcher does not update the order.

@@ -23,7 +23,7 @@ async function load(p){
    else throw Error('Unexpected native call '+uri);
   };};
  });
- for(const f of ['menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
+ for(const f of ['menu-focus.js','directional-repeat.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
  await p.evaluate(()=>{const C=LGXMBItemOptions;window.LGXMBItemOptions=function(o){return window.testOptions=new C(o);};});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'app/app.js'),'utf8')});
  await p.waitForFunction(()=>window.C5App);

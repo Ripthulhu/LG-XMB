@@ -11,6 +11,7 @@ const checks = [], errors = [], traces = [];
 async function load(page) {
   await page.setContent('<!doctype html><html><body><div class="screen" id="screen"><header>Clock</header><nav id="categories">Menu</nav><section class="cross-content">Items</section></div><div class="modal-backdrop" id="referenceBackdrop"><section class="modal" id="referencePanel"><div class="modal-top"><button id="referenceClose">×</button></div><h2 id="referenceTitle">Date &amp; time</h2><p class="modal-intro" id="referenceCaption">Set the TV clock manually.</p><div id="modalContent"><button class="option" id="referenceAction">Apply date &amp; time</button></div></section></div></body></html>');
   for (const name of ['style.css', 'item-options.css']) await page.addStyleTag({content:fs.readFileSync(path.join(base, 'app', name), 'utf8')});
+  await page.addScriptTag({content:fs.readFileSync(path.join(base,'app/menu-focus.js'),'utf8')});
   await page.addScriptTag({content:fs.readFileSync(path.join(base, 'app/item-options.js'), 'utf8')});
   await page.evaluate(() => {
     window.styleCalls = {metadata:0, removal:0, starts:0, sorts:0};

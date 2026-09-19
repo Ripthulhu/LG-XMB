@@ -79,11 +79,36 @@
     pending=operation.then(function(value){confirmed=value;phase='ready';pending=null;emit();return value;},function(error){failure=error;phase=error.code==='SETUP_PENDING'?'waiting':'failed';pending=null;emit();throw error;});
     return pending;
   }
+  var captureHealth='unknown',captureCheck=null;
+  function checkCapture(){
+    if(captureCheck)return captureCheck;
+    captureHealth='checking';
+    captureCheck=new Promise(function(resolve){
+      var xhr,done=false;
+      function finish(value){if(done)return;done=true;captureHealth=value;resolve(value);}
+      try{
+        xhr=new root.XMLHttpRequest();xhr.open('GET','thumbnails/status.json?t='+Date.now(),true);xhr.timeout=3000;
+        xhr.onload=function(){
+          try{
+            if((xhr.status!==0&&xhr.status!==200)||xhr.responseText.length>16384)throw Error();
+            var value=JSON.parse(xhr.responseText),age=Date.now()/1000-value.updatedAt;
+            if(!object(value)||value.version!==1||!Number.isFinite(value.updatedAt)||typeof value.state!=='string')throw Error();
+            if(age < -5 || age > 30){finish('stale');return;}
+            if(['idle','settling','waiting','captured','discarded_source_changed'].indexOf(value.state)>=0)finish('running');
+            else if(['stopped','app_absent','app_rejected','app_unavailable'].indexOf(value.state)>=0)finish('stopped');
+            else if(value.state==='skipped')finish('skipped');else finish('unknown');
+          }catch(ignore){finish('unknown');}
+        };
+        xhr.onerror=xhr.ontimeout=function(){finish('unknown');};xhr.send();
+      }catch(ignore){finish('unknown');}
+    }).then(function(value){captureCheck=null;return value;});
+    return captureCheck;
+  }
   function status(){
-    return {phase:phase,ready:!!confirmed,captureRunning:!!(confirmed&&confirmed.captureRunning),
+    return {captureHealth:captureHealth,phase:phase,ready:!!confirmed,captureRunning:!!(confirmed&&confirmed.captureRunning),
       code:failure?failure.code:null,message:failure?failure.message:phase==='starting'?'Preparing TV helper…':
         confirmed?(confirmed.captureRunning?'TV helper ready. Cached pictures appear after an input is viewed.':'Helper setup finished, but HDMI capture did not start.'):'TV helper has not started.'};
   }
-  root.LGXMBHelper=Object.freeze({ensure:ensure,isReady:function(){return !!confirmed;},getState:status,
+  root.LGXMBHelper=Object.freeze({ensure:ensure,checkCapture:checkCapture,isReady:function(){return !!confirmed;},getState:status,
     retry:function(){if(pending)return pending;failure=null;confirmed=null;return ensure();}});
 }(typeof window!=='undefined'?window:globalThis));

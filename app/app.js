@@ -26,7 +26,7 @@ if(saved && typeof saved === 'object') {
 }
 // Keep the requested output at full HD; allocation limits are handled by the renderer.
 preferences.waveColors=LGXMBWaveColors.normalize(saved && saved.waveColors);
-var wave=new C5Wave($('wave'),{quality:'1080p',adaptive:false,onRenderStatus:updateWaveStatus});
+var wave=new C5Wave($('wave'),{quality:'1080p',adaptive:false});
 var inputPreview=new C5InputPreview($('inputPreview'),{isTV:function(){return C5TV.isTV();}});
 var thumbnail=new C5Thumbnail($('inputThumbnail'),$('thumbnailFallback'),{isTV:function(){return C5TV.isTV();}});
 var categoryTransition=new LGXMBCategoryTransition($('categories'));
@@ -42,6 +42,10 @@ var appRefresh=new LGXMBAppRefresh({read:function(){return C5TV.listApps();},
   apply:function(apps){var changed=appCategories.reconcile(apps,selections);if(changed){categoryTransition.cancel();buildItems();render();}return changed;}
 });
 var itemOptions=new LGXMBItemOptions({manager:LGXMBAppManager,sound:tick,
+  canHide:function(item){return appCategories.canHide(item);},
+  getHidden:function(){return appCategories.hiddenApps();},
+  onHide:function(item){appCategories.hide(item,selections);categoryTransition.cancel();},
+  onRestore:function(id){appCategories.restore(id,selections);categoryTransition.cancel();},
   canAssign:function(item){return appCategories.canAssign(item);},
   getCategories:function(){return appCategories.choices();},
   getCategory:function(id){return appCategories.get(id);},
@@ -51,12 +55,12 @@ var itemOptions=new LGXMBItemOptions({manager:LGXMBAppManager,sound:tick,
   onRefresh:function(){appRefresh.refresh();},
   getSort:function(id){return menuOrder.modes[id];},
   onOpen:function(){document.body.classList.add('item-options-visible');categoryTransition.cancel();clearToast();clearTimeout(detailTimer);detailTimer=0;modalOpen=true;modalType='item-options';document.querySelector('.screen').setAttribute('aria-hidden','true');syncInputPreview();},
-  onClose:function(reason){document.body.classList.remove('item-options-visible');modalOpen=false;modalType='';document.querySelector('.screen').classList.remove('modal-dimmed');document.querySelector('.screen').removeAttribute('aria-hidden');if(reason!=='lifecycle'&&pageActive&&!document.hidden){$('items').focus();if(reason!=='start'){buildItems();render();}}},
+  onClose:function(reason){if(directionRepeat)directionRepeat.cancel();document.body.classList.remove('item-options-visible');modalOpen=false;modalType='';document.querySelector('.screen').classList.remove('modal-dimmed');document.querySelector('.screen').removeAttribute('aria-hidden');if(reason!=='lifecycle'&&pageActive&&!document.hidden){$('items').focus();if(reason!=='start'){buildItems();render();}}},
   onStart:function(item){if(currentItem().id===item.id)activate();},
   onSort:function(cat,mode,id){var ci=categories.indexOf(cat);selections[ci]=menuOrder.set(cat,mode,id);buildItems();render();},
   onDeleted:function(id,title){appRefresh.invalidate();appCategories.deleted(id,selections);buildItems();if(pageActive&&!document.hidden){render();toast(title+' was deleted.');}}
 });
-var dateTimeSettings=new LGXMBDateTimeSettings({api:LGXMBSystemTime,sound:tick,closeButton:$('closeModal'),onApplied:function(){updateClock();seasonal();wave.setTheme(Object.assign({},themes[preferences.theme],{colors:preferences.waveColors}));}});
+var dateTimeSettings=new LGXMBDateTimeSettings({api:LGXMBSystemTime,sound:tick,onApplied:function(){updateClock();seasonal();wave.setTheme(Object.assign({},themes[preferences.theme],{colors:preferences.waveColors}));}});
 function openItemOptions(){if(busy||modalOpen||waveOnly||!pageActive||document.hidden)return;if(itemOptions.removal){toast('App deletion is still in progress.');return;}itemOptions.open(currentItem(),categories[selectedCategory]);}
 function cancelHold(){hold.cancel();pointerHold=null;}
 var sounds=new LGXMBMenuSounds({enabled:preferences.sound,onChange:updateSoundStatus});
@@ -66,6 +70,13 @@ function seasonal(){var colour=monthColours[new Date().getMonth()],rgb=colour.ma
 function applyPreferences(){sounds.setEnabled(preferences.sound);if(preferences.motion==='reduced')categoryTransition.cancel();seasonal();var theme=themes[preferences.theme];document.documentElement.style.setProperty('--accent','#ffffff');document.documentElement.style.setProperty('--accent-rgb','255,255,255');document.documentElement.style.setProperty('--background',theme.background);document.documentElement.style.setProperty('--background-rgb',theme.background.match(/[a-f0-9]{2}/gi).map(function(x){return parseInt(x,16);}).join(','));document.body.classList.toggle('reduced-motion',preferences.motion==='reduced');wave.setTheme(Object.assign({},theme,{colors:preferences.waveColors}));wave.setStyle({speed:{slow:0.5,normal:1.5,fast:2.25}[preferences.waveSpeed],brightness:{dim:0.3,low:0.6,normal:1}[preferences.waveBrightness]});wave.setQuality({frameRate:preferences.waveFrameRate,msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});wave.setReducedMotion(preferences.motion==='reduced');}
 function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){$('toast').classList.remove('show');},4200);}
 function clearToast(){clearTimeout(toastTimer);$('toast').classList.remove('show');if($('toast').textContent)$('toast').textContent='';}
+var recentOrderDirty=false;
+function recordRecent(item){menuOrder.record(item.id);recentOrderDirty=true;}
+function refreshRecent(){
+  if(!recentOrderDirty)return;recentOrderDirty=false;var changed=false;
+  categories.forEach(function(cat,ci){if(menuOrder.modes[cat.id]==='recent'){var before=cat.items.map(function(i){return i.id;}).join('|');selections[ci]=menuOrder.apply(cat,cat.items[selections[ci]]&&cat.items[selections[ci]].id);if(before!==cat.items.map(function(i){return i.id;}).join('|'))changed=true;}});
+  if(changed){buildItems();renderRows(selectedCategory);$('items').setAttribute('aria-activedescendant','item-'+selections[selectedCategory]);}
+}
 function invalidateLaunch(){launchGeneration++;busy=false;$('items').removeAttribute('aria-busy');}
 function currentItem(){return categories[selectedCategory].items[selections[selectedCategory]];}
 function currentPort(){var item=currentItem(),match=item.action==='input'&&/^com\.webos\.app\.hdmi([1-4])$/.exec(item.id);return match?Number(match[1]):null;}
@@ -223,16 +234,15 @@ function row(label,colour,isSelected,handler,parent){var button=document.createE
 function selectChoice(parent,value){[].forEach.call(parent.querySelectorAll('[data-choice]'),function(button){var chosen=button.getAttribute('data-choice')===String(value);if(button.getAttribute('aria-pressed')!==String(chosen)){button.setAttribute('aria-pressed',String(chosen));button.querySelector('.option-check').textContent=chosen?'✓':'';}});}
 function choiceGroup(label,choices,value,handler){var group=document.createElement('section');group.className='choice-group';group.setAttribute('role','group');group.setAttribute('aria-label',label);var title=document.createElement('h3');title.textContent=label;group.appendChild(title);var options=document.createElement('div');options.className='choice-options';group.appendChild(options);choices.forEach(function(choice){var button=row(choice[1],null,value===choice[0],function(){handler(choice[0]);selectChoice(options,choice[0]);},options);button.setAttribute('data-choice',choice[0]);});$('modalContent').appendChild(group);return group;}
 var modalType='';
-function openModal(type){cancelHold();categoryTransition.cancel();if(!modalOpen||modalType!==type)clearToast();if(modalType==='remote')C5RemoteSettings.close();if(modalType==='datetime')dateTimeSettings.close();stopInputPreview();modalType=type;$('modal').classList.toggle('waves-settings',type==='appearance'||type==='sound'||type==='wave-colors');$('modal').classList.toggle('appearance-settings',type==='appearance');modalOpen=true;syncInputPreview();document.querySelector('.screen').setAttribute('aria-hidden','true');$('modalBackdrop').hidden=false;$('modalContent').textContent='';$('modalContent').classList.remove('theme-options');$('modalTitle').textContent={datetime:'Date & time',appearance:'Appearance',theme:'Theme','wave-colors':'Wave colours',sound:'Sound',previews:'Input previews',remote:'Back button',about:'About this menu'}[type];$('modalIntro').textContent={datetime:'Set the TV clock manually.',appearance:'',theme:'','wave-colors':'Monthly gradients and manual RGB controls.',sound:'',previews:'Cached pictures need the capture helper. Live previews can change HDR mode.',remote:'Applies in this menu only.',about:'Version 0.1.31'}[type];
+function openModal(type){if(directionRepeat)directionRepeat.cancel();cancelHold();categoryTransition.cancel();if(!modalOpen||modalType!==type)clearToast();if(modalType==='remote')C5RemoteSettings.close();if(modalType==='datetime')dateTimeSettings.close();stopInputPreview();modalType=type;$('modal').classList.toggle('waves-settings',type==='appearance'||type==='sound'||type==='wave-colors');$('modal').classList.toggle('appearance-settings',type==='appearance');modalOpen=true;syncInputPreview();document.querySelector('.screen').setAttribute('aria-hidden','true');$('modalBackdrop').hidden=false;$('modalContent').textContent='';$('modalContent').classList.remove('theme-options');$('modalTitle').textContent={datetime:'Date & time',appearance:'Appearance',theme:'Theme','wave-colors':'Wave colours',sound:'Sound',previews:'Input previews',remote:'Back button'}[type];$('modalIntro').textContent={datetime:'',appearance:'',theme:'','wave-colors':'',sound:'',previews:'',remote:''}[type];
 if(type==='theme'){$('modalContent').classList.add('theme-options');Object.keys(themes).forEach(function(key){var button=row(themes[key].name,key==='seasonal'?monthColours[new Date().getMonth()]:themes[key].wave,preferences.theme===key,function(){preferences.theme=key;applyPreferences();save();selectChoice($('modalContent'),key);});button.setAttribute('data-choice',key);});}
 else if(type==='appearance'){row('Theme',null,false,function(){openModal('theme');}).id='openTheme';openWaveSettings();}
 else if(type==='datetime'){dateTimeSettings.open($('modalContent'));}
 else if(type==='wave-colors'){LGXMBWaveColorSettings.open($('modalContent'),preferences.waveColors,function(value){preferences.waveColors=value;wave.setTheme(Object.assign({},themes[preferences.theme],{colors:value}));save();});}
 else if(type==='sound'){openSoundSettings();}
-else if(type==='previews'){[['cached','Cached'],['live','Live']].forEach(function(choice){var button=row(choice[1],null,preferences.previewMode===choice[0],function(){if(preferences.previewMode===choice[0])return;preferences.previewMode=choice[0];save();selectChoice($('modalContent'),choice[0]);});button.setAttribute('data-choice',choice[0]);});helperStatusPanel();}
+else if(type==='previews'){[['cached','Cached'],['live','Live']].forEach(function(choice){var button=row(choice[1],null,preferences.previewMode===choice[0],function(){if(preferences.previewMode===choice[0])return;preferences.previewMode=choice[0];save();selectChoice($('modalContent'),choice[0]);updateHelperStatus();});button.setAttribute('data-choice',choice[0]);});helperStatusPanel();}
 else if(type==='remote'){C5RemoteSettings.open({getBack:function(){return preferences.backBehavior;},setBack:function(value){if(['stay','lg'].indexOf(value)===-1)throw new Error('Choose a valid Back button setting.');var next=Object.assign({},preferences,{backBehavior:value});try{localStorage.setItem('lg-xmb-preferences-v1',JSON.stringify(next));}catch(ignore){throw new Error('This device could not save the Back button setting.');}preferences.backBehavior=value;}});}
-else{$('modalContent').innerHTML='<div class="about-copy"><p>LG-XMB is an XMB-style launcher for LG webOS TVs. Its WebGL 2 background reconstructs parts of the PS3 3.01 waves and particles.</p><p>LG-XMB adds no advertising or usage logging. Your TV and other apps keep their own privacy settings.</p><p>Project code is distributed under GPL version 3. Third-party code and extracted reference data have separate notices in the source and app package.</p></div>';}
-var chosen=(type==='appearance'&&$('openTheme'))||(type==='datetime'&&$('modalContent').querySelector('.date-time-value'))||$('modalContent').querySelector('[aria-pressed="true"]')||$('modalContent').querySelector('button')||$('closeModal');chosen.focus();}
+var chosen=(type==='appearance'&&$('openTheme'))||(type==='datetime'&&$('modalContent').querySelector('.date-time-value'))||$('modalContent').querySelector('[aria-pressed="true"]')||$('modalContent').querySelector('button')||$('modal');LGXMBMenuFocus(chosen);}
 // Hide with visibility to avoid text-opacity compositing on the C5.
 // Ignore navigation while hidden so the menu retains its selection.
 var waveOnly=false;
@@ -248,10 +258,7 @@ function reserveAction(button){var slot=document.createElement('div');slot.class
 function updateSoundStatus(){
   var status=$('soundStatus');if(!status||!sounds)return;
   var state=sounds.getState();
-  var message=!state.enabled?'Sound is off.':state.phase==='loading'?'Loading local sounds…':
-    state.phase==='unsupported'?'Web Audio is unavailable on this device.':
-    state.loaded===state.total?'All menu sounds are ready.':
-    state.loaded+' of '+state.total+' menu sounds loaded. Missing navigation clips use the built-in click; other missing clips stay silent.';
+  var message=state.enabled&&state.phase==='unsupported'?'Navigation sound unavailable.':'';
   statusText(status,message);
 }
 function openSoundSettings(){
@@ -259,12 +266,10 @@ function openSoundSettings(){
     preferences.sound=value;sounds.setEnabled(value);save();updateSoundStatus();
   });
   openMusicSettings();
-  var note=document.createElement('p');note.className='wave-quality-note';
-  note.textContent='Navigation sound files. Filenames are case-sensitive. No recordings are included.';
-  $('modalContent').appendChild(note);
-  var path=document.createElement('p');path.className='wave-quality-note music-file-path';path.textContent='/media/internal/lg-xmb/Sounds/';$('modalContent').appendChild(path);
   var status=document.createElement('p');status.id='soundStatus';status.className='wave-quality-note';status.setAttribute('role','status');$('modalContent').appendChild(status);
-  row('Reload sounds',null,false,function(){sounds.retry();updateSoundStatus();}).id='reloadSounds';
+  var reload=row('Reload sounds',null,false,function(){sounds.retry();updateSoundStatus();});reload.id='reloadSounds';
+  $('modalContent').insertBefore(reload,$('musicStatus'));
+  $('modalContent').appendChild(status);
   updateSoundStatus();
 }
 function openWaveSettings(){
@@ -277,7 +282,7 @@ function openWaveSettings(){
     choiceGroup(label,choices,preferences[key],function(value){
       preferences[key]=value;
       wave.setQuality({frameRate:preferences.waveFrameRate,msaa:preferences.waveMSAA,sampling:preferences.waveSampling,detail:preferences.waveDetail,softness:preferences.waveSoftness,postprocess:preferences.wavePostprocess,strength:preferences.waveSmoothing,particles:preferences.waveParticles,particleCount:preferences.waveParticleCount});
-      save();updateWaveStatus();
+      save();
     });
   }
   // An unsupported level is never rounded up, so offering one the driver cannot
@@ -303,11 +308,7 @@ function openWaveSettings(){
   qualityChoice('Particle density',[[1000,'Low'],[2000,'Medium'],[4000,'High']],'waveParticleCount');
   qualityChoice('Post-process antialiasing',[['off','Off'],['fxaa','FXAA'],['wave','Wave FXAA']],'wavePostprocess');
   qualityChoice('Smoothing strength',[['gentle','Gentle'],['normal','Normal'],['strong','Strong']],'waveSmoothing');
-  var note=document.createElement('p');note.className='wave-quality-note';
-  note.textContent='Supersampling and MSAA affect the wave surface, not menu text or particles. Reduced detail uses a 64 × 64 mesh; Original uses 128 × 128. Particle density limits the population to 1,000, 2,000 or 4,000. The status below shows the actual settings. Lower the frame rate or supersampling if animation stutters.';
-  $('modalContent').appendChild(note);
-  var status=document.createElement('p');status.id='waveRenderStatus';status.className='wave-quality-note';status.setAttribute('role','status');
-  $('modalContent').appendChild(status);updateWaveStatus();
+
 }
 // The Home identity's audio is never connected by the TV, see connectMusicAudio.
 // The pipeline can show up a moment after the element says it's playing, so
@@ -321,40 +322,31 @@ function connectMusic(again){
     if(!current())return;
     if(result&&result.reason==='no-pipeline'){
       if(again)musicConnectTimer=setTimeout(function(){if(current())connectMusic(false);},2000);
-      else{musicRouteError='The TV has not made the music output available. Choose Retry playback.';updateMusicStatus();}
+      else{musicRouteError='Audio unavailable. Retry playback.';updateMusicStatus();}
     }
-  }).catch(function(){if(current()){musicRouteError='The TV could not connect the music output. Choose Retry playback.';updateMusicStatus();}});
+  }).catch(function(){if(current()){musicRouteError='Audio unavailable. Retry playback.';updateMusicStatus();}});
 }
 function updateMusicStatus(){
   if(music){var phase=music.getState().phase;if(phase!==musicPhase){musicRouteEpoch++;clearTimeout(musicConnectTimer);musicRouteError='';if(phase==='playing')connectMusic(true);}musicPhase=phase;}
   var status=$('musicStatus'),retry=$('retryMusic');if(!status||!music)return;
   var state=music.getState();
-  var message=musicRouteError||{off:'Music is off.',loading:'Loading background music…',recovering:'Waiting for the TV audio player…',playing:'Playing on repeat.',
-    suspended:'Paused while Home is away.',preview:'Paused for the live HDMI preview.',
-    blocked:'Press OK on Retry playback to start the music.',
-    unavailable:state.failure&&state.failure.kind==='timeout'?'The TV audio player did not start. Choose Retry playback.':
-      state.failure&&state.failure.kind==='media'&&(state.failure.code===3||state.failure.code===4)?'The TV could not read or decode the music file. Check the MP3, then choose Retry playback.':
-      'The TV could not start the music. Choose Retry playback.'}[state.phase]||'';
+  var message=musicRouteError||{blocked:'Choose Retry playback.',
+    unavailable:state.failure&&state.failure.kind==='media'&&(state.failure.code===3||state.failure.code===4)?
+      'Check the MP3 at /media/internal/lg-xmb/background.mp3.':'Music unavailable. Retry playback.'}[state.phase]||'';
   statusText(status,message);
   if(retry){
     var hide=state.phase!=='blocked'&&state.phase!=='unavailable'&&!musicRouteError;
-    if(hide&&document.activeElement===retry){var choice=$('modalContent').querySelector('[aria-pressed="true"]');if(choice)choice.focus();}
+    if(hide&&document.activeElement===retry){var choice=$('modalContent').querySelector('[aria-pressed="true"]');if(choice)LGXMBMenuFocus(choice);}
     retry.hidden=hide;
   }
 }
 function openMusicSettings(){
-  var help=document.createElement('p');help.className='wave-quality-note';
-  help.textContent='No music is included. Copy an MP3 to this path on the TV. It stays there across app updates.';
-
-  var path=document.createElement('p');path.id='musicFilePath';path.className='wave-quality-note music-file-path';
-  path.textContent='/media/internal/lg-xmb/background.mp3';
   choiceGroup('Background music',[[true,'On'],[false,'Off']],preferences.musicEnabled,function(value){
     preferences.musicEnabled=value;music.setEnabled(value);save();updateMusicStatus();
   });
   choiceGroup('Music volume',[[0.1,'10%'],[0.25,'25%'],[0.5,'50%'],[0.75,'75%'],[1,'100%']],preferences.musicVolume,function(value){
     preferences.musicVolume=value;music.setVolume(value);save();
   });
-  $('modalContent').appendChild(help);$('modalContent').appendChild(path);
   var status=document.createElement('p');status.id='musicStatus';status.className='wave-quality-note';status.setAttribute('role','status');
   $('modalContent').appendChild(status);
   var retry=row('Retry playback',null,false,function(){music.retry();updateMusicStatus();});retry.id='retryMusic';reserveAction(retry);
@@ -369,34 +361,20 @@ function musicGesture(event){
 }
 window.addEventListener('keydown',musicGesture);
 window.addEventListener('click',musicGesture);
-function updateWaveStatus(){
-  var status=$('waveRenderStatus');if(!status||!wave)return;
-  var diag=wave.getDiagnostics(),surface=diag.surface;
-  if(diag.mode!=='webgl'||!surface||!surface.surfaceWidth){
-    var message=diag.mode==='pending'||diag.mode==='compiling'?'Preparing WebGL 2 waves…':
-      'Static backdrop: '+(diag.error||'WebGL 2 renderer unavailable.');statusText(status,message);return;
-  }
-  var message='WebGL 2 · GLSL ES 3.00 · Output '+diag.backingWidth+' × '+diag.backingHeight+
-    ' · Wave surface '+surface.surfaceWidth+' × '+surface.surfaceHeight+
-    ' · Mesh '+surface.grid+' × '+surface.grid+
-    ' · MSAA '+(surface.msaaSamples?surface.msaaSamples+'×':'Off')+
-    (surface.samplingFallback?' · '+surface.samplingFallback:'')+
-    (surface.msaaFallback?' · '+surface.msaaFallback:'')+
-    ' · Filter '+({off:'Off',fxaa:'FXAA',wave:'Wave FXAA'}[surface.postprocess]||'Off');
-  if(preferences.waveParticles)message+=' · '+surface.particleCount+' particles';
-  statusText(status,message);
-}
 function updateHelperStatus(){
   var status=$('helperStatus'),retry=$('retryHelper');
   if(!status||!window.LGXMBHelper)return;
   var state=LGXMBHelper.getState();
-  statusText(status,state.message);
-  if(retry)retry.hidden=state.phase!=='failed' && !(state.ready&&!state.captureRunning);
+  var health=state.captureHealth, cached=preferences.previewMode==='cached';
+  var message=cached?{stale:'Cached preview helper is not responding.',stopped:'Cached preview helper stopped.',skipped:'Cached preview could not be updated.',unknown:state.phase==='failed'?'Helper setup could not be confirmed.':''}[health]||'':'';
+  statusText(status,message);
+  if(retry)retry.hidden=!message;
+
 }
 function helperStatusPanel(){
   if(!C5TV.isTV()||!window.LGXMBHelper)return;
   var status=document.createElement('p');status.id='helperStatus';status.className='modal-intro';status.setAttribute('role','status');$('modalContent').appendChild(status);
-  var retry=row('Retry helper setup',null,false,function(){LGXMBHelper.retry().then(updateHelperStatus,updateHelperStatus);});retry.id='retryHelper';reserveAction(retry);updateHelperStatus();
+  var retry=row('Retry helper setup',null,false,function(){LGXMBHelper.retry().then(function(){return LGXMBHelper.checkCapture();},function(){return LGXMBHelper.checkCapture();}).then(updateHelperStatus);});retry.id='retryHelper';reserveAction(retry);LGXMBHelper.checkCapture().then(updateHelperStatus);updateHelperStatus();
 }
 function startHelper(){
   if(!C5TV.isTV()||!window.LGXMBHelper)return;
@@ -408,7 +386,7 @@ function startHelper(){
   },function(){/* Settings show the specific setup error; navigation stays usable. */});
 }
 document.addEventListener('lg-xmb-helper-status',updateHelperStatus);
-function closeModal(quiet){if(itemOptions.opened){itemOptions.close(quiet===true?'lifecycle':'back');return;}if(quiet!==true)tick('cancel');if(modalType==='wave-colors'||modalType==='theme'){var returnId=modalType==='theme'?'openTheme':'openWaveColors';openModal('appearance');$(returnId).focus();return;}if(modalType==='remote')C5RemoteSettings.close();if(modalType==='datetime')dateTimeSettings.close();modalOpen=false;$('modalBackdrop').hidden=true;document.querySelector('.screen').classList.remove('modal-dimmed');document.querySelector('.screen').removeAttribute('aria-hidden');$('items').focus();renderDetail();}
+function closeModal(quiet){if(directionRepeat)directionRepeat.cancel();if(itemOptions.opened){itemOptions.close(quiet===true?'lifecycle':'back');return;}if(quiet!==true)tick('cancel');if(modalType==='wave-colors'||modalType==='theme'){var returnId=modalType==='theme'?'openTheme':'openWaveColors';openModal('appearance');LGXMBMenuFocus($(returnId));return;}if(modalType==='remote')C5RemoteSettings.close();if(modalType==='datetime')dateTimeSettings.close();modalOpen=false;$('modalBackdrop').hidden=true;document.querySelector('.screen').classList.remove('modal-dimmed');document.querySelector('.screen').removeAttribute('aria-hidden');$('items').focus();refreshRecent();renderDetail();}
 function modalKey(event){
   if(event.key==='Escape'||event.key==='Backspace'||event.keyCode===461){event.preventDefault();closeModal();return;}
   if(modalType==='datetime'){dateTimeSettings.key(event);return;}
@@ -427,27 +405,22 @@ function modalKey(event){
       // their DOM order, including actions before and after those groups.
       var rows=[];
       controls.forEach(function(b){var row=b.closest('.choice-group')||b;if(rows.indexOf(row)<0)rows.push(row);});
-      var at=rows.indexOf(group||current),row=rows[Math.max(0,Math.min(rows.length-1,at+delta))];
+      var at=rows.indexOf(group||current),next=Math.max(0,Math.min(rows.length-1,at+delta));
+      if(next===at){event.preventDefault();return;}
+      var row=rows[next];
       target=row&&(row.matches('button')?row:row.querySelector('[aria-pressed="true"]')||row.querySelector('button'));
     }
   }else return;
-  event.preventDefault();if(target&&target!==current){target.focus();tick();}
+  event.preventDefault();if(target&&target!==current){LGXMBMenuFocus(target);tick();}
 }
-async function activate(){if(busy||!pageActive||document.hidden||itemOptions.opened)return;if(itemOptions.removal){toast('App deletion is still in progress.');return;}cancelHold();if(currentItem().action==='empty')return;categoryTransition.cancel();var item=currentItem();if(['appearance','sound','previews','remote','about','datetime'].indexOf(item.action)!==-1){tick('option');openModal(item.action);return;}tick('decide');var generation=++launchGeneration;clearToast();busy=true;musicAway=true;syncInputPreview();var launched=false;$('items').setAttribute('aria-busy','true');try{var result=item.action==='input'?await C5TV.openInput(item.id):await C5TV.launch(item.id);if(generation!==launchGeneration||!pageActive||document.hidden)return;launched=!result.preview;if(result.preview)toast('Preview · '+item.title+' opens on your TV.');}catch(error){if(generation===launchGeneration&&pageActive&&!document.hidden){tick('error');toast('Could not open '+item.title+'. '+(error.message||'Please try again.'));}}finally{if(generation===launchGeneration){busy=false;$('items').removeAttribute('aria-busy');if(!launched&&pageActive&&!document.hidden){musicAway=false;renderDetail();$('items').focus();}}}}
+async function activate(){if(busy||!pageActive||document.hidden||itemOptions.opened)return;if(itemOptions.removal){toast('App deletion is still in progress.');return;}cancelHold();if(currentItem().action==='empty')return;categoryTransition.cancel();var item=currentItem();if(['appearance','sound','previews','remote','datetime'].indexOf(item.action)!==-1){tick('option');openModal(item.action);recordRecent(item);return;}tick('decide');var generation=++launchGeneration;clearToast();busy=true;musicAway=true;syncInputPreview();var launched=false;$('items').setAttribute('aria-busy','true');try{var result=item.action==='input'?await C5TV.openInput(item.id):await C5TV.launch(item.id);if(!result.preview){recordRecent(item);if(generation!==launchGeneration&&pageActive&&!document.hidden&&!busy&&!modalOpen)refreshRecent();}if(generation!==launchGeneration||!pageActive||document.hidden)return;launched=!result.preview;if(result.preview)toast('Preview · '+item.title+' opens on your TV.');}catch(error){if(generation===launchGeneration&&pageActive&&!document.hidden){tick('error');toast('Could not open '+item.title+'. '+(error.message||'Please try again.'));}}finally{if(generation===launchGeneration){busy=false;$('items').removeAttribute('aria-busy');if(!launched&&pageActive&&!document.hidden){musicAway=false;renderDetail();$('items').focus();}}}}
 function back(){if(modalOpen){closeModal();return;}if(preferences.backBehavior!=='lg'||busy||!pageActive||document.hidden)return;tick('cancel');var generation=++launchGeneration;C5TV.platformBack().catch(function(error){if(generation===launchGeneration&&pageActive&&!document.hidden)toast(error.message||'Could not open the TV exit prompt.');});}
 // Main-menu activation happens on release; otherwise a long OK would launch
 // the app before the options timer had a chance to fire.
-var directionKey=null,directionAt=0;
-document.addEventListener('keydown',function(event){
+var directionRepeat=new LGXMBDirectionalRepeat({onDirection:handleKey});
+function handleKey(event){
+  if(!pageActive||document.hidden){directionRepeat.cancel();return;}
   var isActivate=event.key==='Enter'||event.keyCode===13,isBack=event.key==='Escape'||event.key==='Backspace'||event.keyCode===461;
-  // Some remotes omit repeat=true. Rate-limit a held direction in every menu,
-  // while keyup lets distinct taps and direction changes through immediately.
-  if(/^Arrow(Left|Right|Up|Down)$/.test(event.key)){
-    var directionNow=performance.now(),sameDirection=directionKey===event.key;
-    directionKey=event.key;
-    if(sameDirection&&directionNow-directionAt<100){event.preventDefault();return;}
-    directionAt=directionNow;
-  }
   if(!pointerHold)suppressHoldClick=false;
   if(waveOnly){event.preventDefault();if(isBack&&!event.repeat)setWaveOnly(false);return;}
   if(isActivate&&hold.state){event.preventDefault();return;}
@@ -464,12 +437,21 @@ document.addEventListener('keydown',function(event){
     itemOptions.prepare(currentItem(),categories[selectedCategory]);
     hold.down('key',function(){if(stillSelected())activate();},function(){if(stillSelected())openItemOptions();});
   }else if(isBack){event.preventDefault();cancelHold();back();}
+}
+document.addEventListener('keydown',function(event){
+  if(!pageActive||document.hidden){directionRepeat.cancel();return;}
+  directionRepeat.interval=!modalOpen&&/^Arrow(Up|Down)$/.test(event.key)?60:100;
+  if(directionRepeat.handle(event))return;
+  // An action changes the target of navigation; never deliver an old arrow afterward.
+  directionRepeat.cancel();handleKey(event);
 });
-document.addEventListener('keyup',function(event){if(event.key===directionKey)directionKey=null;if(event.key==='Enter'||event.keyCode===13){event.preventDefault();hold.up('key');}});
-window.addEventListener('blur',function(){directionKey=null;});
+
+document.addEventListener('keyup',function(event){directionRepeat.keyup(event);if(event.key==='Enter'||event.keyCode===13){event.preventDefault();hold.up('key');}});
+window.addEventListener('blur',function(){directionRepeat.cancel();});
 // Holding an item with the Magic Remote, mouse or touch uses the same timer.
 function pointerItem(target){return target.closest&&target.closest('#items>.rows:not(.parked)>.item');}
 document.addEventListener('pointerdown',function(e){
+  directionRepeat.cancel();
   suppressHoldClick=false;
   if(e.button!==0||e.isPrimary===false||busy||modalOpen||waveOnly||!pageActive||document.hidden)return;
   var b=pointerItem(e.target);if(!b)return;
@@ -494,10 +476,11 @@ document.addEventListener('contextmenu',function(e){
 window.addEventListener('blur',cancelHold);
 document.addEventListener('click',function(event){if(waveOnly){event.preventDefault();event.stopPropagation();setWaveOnly(false);}},true);
 document.addEventListener('wheel',function(event){if(waveOnly){event.preventDefault();return;}if(modalOpen){if(itemOptions.opened&&itemOptions.panel.contains(event.target))return;if($('modal').contains(event.target))return;event.preventDefault();return;}event.preventDefault();if(busy||Math.abs(event.deltaY)<2)return;var now=performance.now();if(now-lastDirection<130)return;lastDirection=now;navigate(event.deltaY>0?'down':'up');},{passive:false});
-$('closeModal').addEventListener('click',closeModal);$('modalBackdrop').addEventListener('click',function(event){if(event.target===$('modalBackdrop'))closeModal();});
+$('modalBackdrop').addEventListener('click',function(event){if(event.target===$('modalBackdrop'))closeModal();});
 $('previewButton').addEventListener('click',function(){if(busy||modalOpen)return;activate();});
-function updateClock(){var now=new Date(),time=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}),date=now.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});if($('time').textContent!==time){$('time').textContent=time;$('time').dateTime=now.toISOString();}if($('date').textContent!==date)$('date').textContent=date;}
-function restoreFocus(){if(itemOptions.opened){if(!itemOptions.panel.contains(document.activeElement))itemOptions.focus();return;}if(modalOpen){if(!$('modal').contains(document.activeElement)){var control=$('modalContent').querySelector('[aria-pressed="true"]')||$('modalContent').querySelector('button')||$('closeModal');control.focus();}}else if(document.activeElement!==$('items'))$('items').focus();}
+var themeMonth=new Date().getMonth();
+function updateClock(){var now=new Date();if(themeMonth!==now.getMonth()){themeMonth=now.getMonth();if(preferences.theme==='seasonal'){seasonal();wave.setTheme(Object.assign({},themes.seasonal,{colors:preferences.waveColors}));}}var time=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}),date=now.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});if($('time').textContent!==time){$('time').textContent=time;$('time').dateTime=now.toISOString();}if($('date').textContent!==date)$('date').textContent=date;}
+function restoreFocus(){if(itemOptions.opened){if(!itemOptions.panel.contains(document.activeElement))itemOptions.focus();return;}if(modalOpen){if(!$('modal').contains(document.activeElement)){var control=$('modalContent').querySelector('[aria-pressed="true"]')||$('modalContent').querySelector('button')||$('modal');LGXMBMenuFocus(control);}}else if(document.activeElement!==$('items'))$('items').focus();}
 async function refreshInputLabels(){
   if(!pageActive||document.hidden||inputLabelRead)return;
   var read;
@@ -544,9 +527,9 @@ function cancelInputLabels(){
     try{read.cancel();}catch(ignore){}
   }
 }
-function restorePage(refreshStill){if(document.hidden)return;var now=performance.now(),wasActive=pageActive,before=thumbnail.getState();pageActive=true;sounds.setActive(true);musicAway=false;wave.setPaused(false);renderDetail();if(refreshStill&&wasActive&&now-lastReturnAt>=250&&preferences.previewMode==='cached'&&before.port===currentPort()&&before.port!==null&&before.status!=='loading')thumbnail.refresh();lastReturnAt=now;updateClock();restoreFocus();if(!wasActive||refreshStill)refreshInputLabels();if(C5TV.isTV())appRefresh.resume();}
-function suspendPage(){appRefresh.pause();if(modalType==='datetime'){dateTimeSettings.close();modalOpen=false;modalType='';$('modalBackdrop').hidden=true;document.querySelector('.screen').classList.remove('modal-dimmed');document.querySelector('.screen').removeAttribute('aria-hidden');}cancelHold();itemOptions.close('lifecycle');categoryTransition.cancel();var wasActive=pageActive;pageActive=false;sounds.setActive(false);music.setContext(false,false);cancelInputLabels();invalidateLaunch();clearToast();clearTimeout(announceTimer);if(wasActive){stopInputPreview();thumbnail.setPaused(true);wave.setPaused(true);}}
-function handleRelaunch(){cancelHold();if(itemOptions.opened)itemOptions.close('lifecycle');setWaveOnly(false);categoryTransition.cancel();invalidateLaunch();clearToast();if(modalOpen)closeModal(true);restorePage(true);}
+function restorePage(refreshStill){if(document.hidden)return;var now=performance.now(),wasActive=pageActive,before=thumbnail.getState();pageActive=true;refreshRecent();sounds.setActive(true);musicAway=false;wave.setPaused(false);renderDetail();if(refreshStill&&wasActive&&now-lastReturnAt>=250&&preferences.previewMode==='cached'&&before.port===currentPort()&&before.port!==null&&before.status!=='loading')thumbnail.refresh();lastReturnAt=now;updateClock();restoreFocus();if(!wasActive||refreshStill)refreshInputLabels();if(C5TV.isTV())appRefresh.resume();}
+function suspendPage(){directionRepeat.cancel();appRefresh.pause();if(modalType==='datetime'){dateTimeSettings.close();modalOpen=false;modalType='';$('modalBackdrop').hidden=true;document.querySelector('.screen').classList.remove('modal-dimmed');document.querySelector('.screen').removeAttribute('aria-hidden');}cancelHold();itemOptions.close('lifecycle');categoryTransition.cancel();var wasActive=pageActive;pageActive=false;sounds.setActive(false);music.setContext(false,false);cancelInputLabels();invalidateLaunch();clearToast();clearTimeout(announceTimer);if(wasActive){stopInputPreview();thumbnail.setPaused(true);wave.setPaused(true);}}
+function handleRelaunch(){directionRepeat.cancel();cancelHold();if(itemOptions.opened)itemOptions.close('lifecycle');setWaveOnly(false);categoryTransition.cancel();invalidateLaunch();clearToast();if(modalOpen)closeModal(true);restorePage(true);}
 // handlesRelaunch stays false: webOS brings the app forward automatically.
 // A Home press while already visible still needs to leave any open dialog.
 document.addEventListener('webOSRelaunch',handleRelaunch,true);

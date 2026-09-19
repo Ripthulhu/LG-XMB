@@ -10,11 +10,9 @@
   DateTimeSettings.prototype.open = function (parent) {
     this.close(); this.opened = true; this.parent = parent; this.loaded = false; this.pending = false;
     parent.innerHTML = '<p class="date-time-zone"></p><div class="date-time-fields" role="group" aria-label="Date and time"></div>' +
-      '<p class="date-time-help">Left/Right selects a field. Up/Down changes it. Number keys also work. OK moves to Apply.</p>' +
       '<button type="button" class="option date-time-occurrence" hidden></button>' +
       '<button type="button" class="option" id="applyDateTime" aria-disabled="true">Apply date &amp; time</button>' +
       '<button type="button" class="option" id="readDateTime">Read current TV time</button>' +
-      '<p class="date-time-help">Uses the TV’s current time zone. Automatic time settings are not changed and may override a manual value.</p>' +
       '<p class="date-time-status" role="status" aria-live="polite"></p>';
     this.zone = parent.querySelector('.date-time-zone'); this.status = parent.querySelector('.date-time-status');
     this.applyButton = parent.querySelector('#applyDateTime'); this.readButton = parent.querySelector('#readDateTime');
@@ -99,14 +97,14 @@
   DateTimeSettings.prototype.finish = function (message) { this.pending = false; this.parent.removeAttribute('aria-busy'); this.update(); this.status.textContent = message; };
   DateTimeSettings.prototype.key = function (e) {
     var active = root.document.activeElement, index = this.buttons.indexOf(active), isEnter = e.key === 'Enter' || e.keyCode === 13;
-    var controls = this.buttons.concat(this.occurrence.hidden ? [] : [this.occurrence]).concat([this.applyButton, this.readButton, this.options.closeButton]);
+    var controls = this.buttons.concat(this.occurrence.hidden ? [] : [this.occurrence]).concat([this.applyButton, this.readButton]);
     if (e.key === 'Tab' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault(); this.number = ''; var d = e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey) ? -1 : 1;
-      controls[(Math.max(0, controls.indexOf(active)) + d + controls.length) % controls.length].focus(); return;
+      root.LGXMBMenuFocus(controls[(Math.max(0, controls.indexOf(active)) + d + controls.length) % controls.length]); return;
     }
     if (index >= 0) {
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); this.number = ''; this.change(active.dataset.field, e.key === 'ArrowUp' ? 1 : -1); }
-      else if (isEnter) { e.preventDefault(); if (!e.repeat) this.applyButton.focus(); }
+      else if (isEnter) { e.preventDefault(); if (!e.repeat) root.LGXMBMenuFocus(this.applyButton); }
       else if (/^[0-9]$/.test(e.key) && !e.repeat) {
         e.preventDefault(); var name = active.dataset.field, now = root.performance.now(), max = name === 'year' ? 4 : 2;
         if (this.numberField !== name || now - this.numberAt > 1500 || this.number.length >= max) this.number = '';
@@ -116,7 +114,7 @@
       return;
     }
     if (isEnter) { e.preventDefault(); if (!e.repeat && controls.indexOf(active) >= 0) active.click(); }
-    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); var delta = e.key === 'ArrowDown' ? 1 : -1; controls[(Math.max(0, controls.indexOf(active)) + delta + controls.length) % controls.length].focus(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); var delta = e.key === 'ArrowDown' ? 1 : -1; root.LGXMBMenuFocus(controls[Math.max(0, Math.min(controls.length - 1, controls.indexOf(active) + delta))]); }
   };
   DateTimeSettings.prototype.close = function () {
     this.opened = false; this.generation++;

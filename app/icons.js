@@ -1,29 +1,37 @@
-/* Original vector icons for the OpenXMB C5 adaptation. SPDX-License-Identifier: GPL-3.0-or-later */
+/* Original XMB-inspired vector icons. SPDX-License-Identifier: GPL-3.0-or-later */
 (function(){'use strict';
+// Flat white vectors with no shading or rendering effects.
 var paths={
- network:'<circle cx="24" cy="10" r="5"/><circle cx="10" cy="35" r="5"/><circle cx="38" cy="35" r="5"/><path d="M21 14 13 31M27 14l8 17M15 35h18"/>',
- inputs:'<rect x="8" y="10" width="32" height="25" rx="4"/><path d="M17 40h14M24 35v5M3 23h17m-5-5 5 5-5 5"/>',
- watch:'<rect x="5" y="10" width="38" height="28" rx="5"/><path d="M18 43h12M18 4l6 6 6-6"/><path d="m21 18 10 6-10 6z"/>',
- library:'<path d="M10 12v28M6 8h8v32H6zM20 8h8v32h-8zM32 11l7-2 8 29-8 2z"/>',
- apps:'<rect x="6" y="6" width="14" height="14" rx="4"/><rect x="28" y="6" width="14" height="14" rx="4"/><rect x="6" y="28" width="14" height="14" rx="4"/><rect x="28" y="28" width="14" height="14" rx="4"/>',
- settings:'<path d="m20 5-1 6-5 3-6-2-4 7 5 4v5l-5 4 4 7 6-2 5 3 1 5h8l1-5 5-3 6 2 4-7-5-4v-5l5-4-4-7-6 2-5-3-1-6z"/><circle cx="24" cy="25" r="7"/>',
- live:'<rect x="5" y="13" width="38" height="27" rx="4"/><path d="m15 4 9 9 9-9M11 33h17M35 23v.1M35 29v.1"/>',
- channels:'<path d="M10 9h28v30H10zM16 3v6M32 3v6M16 39v6M32 39v6M3 17h7M3 31h7M38 17h7M38 31h7"/><path d="m20 17 11 7-11 7z"/>',
- media:'<rect x="5" y="7" width="38" height="34" rx="4"/><path d="m19 17 12 7-12 7zM5 13h38M5 35h38M12 7v6M24 7v6M36 7v6M12 35v6M24 35v6M36 35v6"/>',
- hdmi:'<path d="M8 11h32v15l-7 8H15l-7-8zM18 34v9M30 34v9M15 17v6M21 17v6M27 17v6M33 17v6"/>',
- home:'<path d="m4 23 20-17 20 17M10 19v23h28V19M19 42V28h10v14"/>',
- music:'<path d="M19 33V10l23-5v25M19 17l23-5"/><ellipse cx="12" cy="36" rx="7" ry="5"/><ellipse cx="35" cy="33" rx="7" ry="5"/>',
- globe:'<circle cx="24" cy="24" r="19"/><ellipse cx="24" cy="24" rx="8" ry="19"/><path d="M5 24h38M9 13h30M9 35h30"/>',
- brew:'<path d="M10 17h25v17a8 8 0 0 1-8 8h-9a8 8 0 0 1-8-8zM35 19h3a6 6 0 0 1 0 12h-3M15 5v5M23 3v7M31 5v5"/>',
- shop:'<path d="M9 17h30l3 26H6zM17 17v-6a7 7 0 0 1 14 0v6"/>',
- image:'<rect x="5" y="7" width="38" height="34" rx="4"/><circle cx="16" cy="17" r="4"/><path d="m5 34 12-11 8 7 8-12 10 12"/>',
- palette:'<circle cx="24" cy="24" r="19"/><path d="M24 5c-14 14 14 24 0 38"/><circle cx="14" cy="22" r="2"/><circle cx="34" cy="26" r="2"/>',
- motion:'<path d="M3 18h10M2 25h8M5 32h10"/><circle cx="30" cy="25" r="14"/><path d="m27 18 8 7-8 7"/>',
- sound:'<path d="M6 18h9L27 8v32L15 30H6zM34 16a12 12 0 0 1 0 16M39 10a21 21 0 0 1 0 28"/>',
- info:'<circle cx="24" cy="24" r="19"/><path d="M24 21v14M24 13v1"/>',
- casting:'<path d="M5 19V9h38v30H26M5 26a13 13 0 0 1 13 13M5 33a6 6 0 0 1 6 6M5 39v.1"/>',
- camera:'<path d="m7 15 8-1 4-7h11l4 7 8 1v26H7z"/><circle cx="25" cy="27" r="8"/>',
- game:'<path d="M13 15h22c7 0 13 25 6 25-4 0-8-8-10-8H17c-2 0-6 8-10 8C0 40 6 15 13 15zM12 23v8M8 27h8M32 23v.1M37 28v.1"/>'
+ application:'<path d="m7 12 16-10q1-.7 2 0l16 10q1 .6 0 1.2l-2 1.2q-.5.3-1 0L24 5.5 10 14.4q-.5.3-1 0l-2-1.2q-1-.6 0-1.2zM4 16q0-.6.6-.2L22 26.3q.3.2.3.6v19q0 .7-.6.3L4.3 35.4q-.3-.2-.3-.6zm40 0q0-.6-.6-.2L26 26.3q-.3.2-.3.6v19q0 .7.6.3l17.4-10.8q.3-.2.3-.6z"/><ellipse cx="23" cy="11.3" rx="2.3" ry="1.4"/><ellipse cx="31.2" cy="16.2" rx="2.3" ry="1.4"/><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M17.5 15.3c.6 3.2 4.3 4.6 7.8 4.2"/>',
+ homehub:'<path d="M23 6a1.5 1.5 0 0 1 2 0l18 15c1.2 1 .5 2.5-1 2.5H36V36a5 5 0 0 1-5 5H17a5 5 0 0 1-5-5V23.5H6c-1.5 0-2.2-1.5-1-2.5zM18.5 23.5a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6zm11 0a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6zM19 31c-1.6-1.3-3.4 1-1.8 2.5 4 3.7 9.6 3.7 13.6 0 1.6-1.5-.2-3.8-1.8-2.5-3 2.5-7 2.5-10 0z"/>',
+ settings:'<path d="M15 14V11a5 5 0 0 1 5-5h8a5 5 0 0 1 5 5v3h8a3 3 0 0 1 3 3v3H36.2v-.4a1.8 1.8 0 0 0-1.8-1.8h-3a1.8 1.8 0 0 0-1.8 1.8v.4H18.4v-.4a1.8 1.8 0 0 0-1.8-1.8h-3a1.8 1.8 0 0 0-1.8 1.8v.4H4v-3a3 3 0 0 1 3-3zm3 0h12v-3a1.7 1.7 0 0 0-1.7-1.7h-8.6A1.7 1.7 0 0 0 18 11zM4 23h7.8v1.4a1.8 1.8 0 0 0 1.8 1.8h3a1.8 1.8 0 0 0 1.8-1.8V23h11.2v1.4a1.8 1.8 0 0 0 1.8 1.8h3a1.8 1.8 0 0 0 1.8-1.8V23H44v9a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"/>',
+ image:'<path d="M20 7h8c1 0 2 1 2.5 2l2 5H40a3 3 0 0 1 3 3v20a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V17a3 3 0 0 1 3-3h7.5l2-5c.5-1 1.5-2 2.5-2zM24 17a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><circle cx="24" cy="26" r="4.6"/>',
+ music:'<path d="M15 8c0-2 1-3 3-2 6 3 13 3 19 0 2-1 3 0 3 2v27c0 4-4 8-8 8s-6-3-5-6c1-5 5-8 9-8V14c-6 2-11 2-17 0v21c0 4-4 8-8 8s-6-3-5-6c1-5 5-8 9-8z"/>',
+ media:'<path d="M5 10h2a.6.6 0 0 1 .6.6v.8a.6.6 0 0 0 .6.6h3.2a.6.6 0 0 0 .6-.6v-.8a.6.6 0 0 1 .6-.6H15v3h20v-3h2.4a.6.6 0 0 1 .6.6v.8a.6.6 0 0 0 .6.6h3.2a.6.6 0 0 0 .6-.6v-.8a.6.6 0 0 1 .6-.6h2a.6.6 0 0 1 .6.6v26.8a.6.6 0 0 1-.6.6h-2a.6.6 0 0 1-.6-.6v-.8a.6.6 0 0 0-.6-.6h-3.2a.6.6 0 0 0-.6.6v.8a.6.6 0 0 1-.6.6H35v-4H15v4h-2.4a.6.6 0 0 1-.6-.6v-.8a.6.6 0 0 0-.6-.6H8.2a.6.6 0 0 0-.6.6v.8a.6.6 0 0 1-.6.6H5a.6.6 0 0 1-.6-.6V10.6a.6.6 0 0 1 .6-.6zM15 16v15h20V16zM7.5 15v4h4.5v-4zm0 7v4h4.5v-4zm0 7v4h4.5v-4zm30-14v4H42v-4zm0 7v4H42v-4zm0 7v4H42v-4z" transform="translate(-1 0)"/>',
+ watch:'<path d="M5 10c12-4 26-4 38 0 2 7 2 18 0 25-12 4-26 4-38 0-2-7-2-18 0-25zm4 3c-1 6-1 13 0 19 9 3 21 3 30 0 1-6 1-13 0-19-9-3-21-3-30 0zM21 39h6v3h9v3H12v-3h9z"/>',
+ live:'<path d="m15 3 9 8 9-8 2 2-7 7c5 0 10 1 14 2 3 6 3 18 0 25-10 4-26 4-36 0-3-7-3-19 0-25 4-1 9-2 14-2l-7-7zm-5 15c-2 4-2 13 0 18 7 2 16 2 23 0 2-5 2-14 0-18-7-2-16-2-23 0zm28 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-1 9v4h2v-4z"/>',
+ inputs:'<path d="M8 7h32a3 3 0 0 1 3 3v25a3 3 0 0 1-3 3H27v3h8v3H13v-3h8v-3H8v-4h31V11H12v8H8z"/><path d="M3 24h17v-6l11 9-11 9v-7H3z"/>',
+ hdmi:'<path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" d="M5 14h38v13l-7 7H12l-7-7z"/><path d="M11 20h26v3H11z"/><path fill="none" stroke="currentColor" stroke-width="1.2" d="M13 24v3m3-3v3m3-3v3m3-3v3m3-3v3m3-3v3m3-3v3m3-3v3"/>',
+ apps:'<path d="M12 11c3-1 5 1 8 3h9c3-2 5-4 8-3 4 1 6 6 8 17 1 7 0 10-3 11-4 2-6-1-8-4l-5-7H16l-5 7c-2 3-5 6-9 3-2-2-2-6-1-11 2-10 4-14 7-16 1 0 3-1 4 0z" transform="translate(3 0) scale(.91 1)"/>',
+ globe:'<path transform="translate(4 4) scale(.1384083) translate(-67 -46)" d="M211.5 46a144.5 144.5 0 1 0 0 289 144.5 144.5 0 0 0 0-289zM137 104c12-10 25-17 39-22-6 10-10 20-14 31-9-2-17-5-25-9zM208 79q3-4 6 0c9 13 15 26 21 39-16 2-31 2-47 0 5-14 12-27 20-39zM246 82c15 5 28 12 39 22-8 4-16 7-25 9-4-11-8-21-14-31zM117 126c12 6 24 11 37 15-3 12-4 24-5 37H98c3-19 10-36 19-52zM179 146c21 3 43 3 65 0 2 10 4 21 4 32h-73c0-11 2-22 4-32zM268 141c13-4 25-9 37-15 10 16 17 33 20 52h-52c0-13-2-25-5-37zM98 203h51c1 14 2 27 5 39-13 4-25 9-37 15-10-16-16-34-19-54zM175 203h73c0 12-2 23-4 34-22-3-44-3-65 0-2-11-4-22-4-34zM273 203h52c-3 20-10 38-20 54-12-6-24-11-37-15 3-12 5-25 5-39zM137 279c8-4 16-7 25-9 4 11 8 20 14 30-15-5-27-12-39-21zM188 265c16-2 31-2 47 0-5 13-12 26-21 38q-3 4-6 0c-9-12-16-25-20-38zM260 270c9 2 17 5 25 9-11 9-24 16-39 21 6-10 10-19 14-30z"/>',
+ network:'<path d="M24 4a20 20 0 1 0 0 40 20 20 0 0 0 0-40zm0 3a17 17 0 1 1 0 34 17 17 0 0 1 0-34z"/><path d="m12 12 8-4 5 1-3 4 2 3-5 3-1 4-4-1-2-5-3-1zm7 12 6 3 1 5-4 8-3-6-1-5-3-3zm11-13 5 2 4 6-5 1-3 4 3 2-2 8-4-2-3-7 2-5-1-5z"/>',
+ library:'<path d="M5 9h13l4 4h18v4H9v23H5z"/><path d="M12 20h32l-6 22H6zm3 4-4 14h24l4-14z"/>',
+ home:'<path d="m2 22 22-18 22 18-3 4-4-3v20H28V29h-8v14H9V23l-4 3zm14 0h16l-8-7z"/>',
+ channels:'<path d="M5 6c9-2 20-2 29 0v3c-8-2-18-2-26 0v19H5z"/><path d="M13 13c9-3 21-3 30 0 2 6 2 16 0 22-9 3-21 3-30 0-2-6-2-16 0-22zm4 3c-1 5-1 11 0 16 6 2 16 2 22 0 1-5 1-11 0-16-6-2-16-2-22 0zM25 38h5v3h8v3H17v-3h8z"/><path d="m25 19 9 5-9 5z"/>',
+ brew:'<path d="M8 17h27v3h3a7 7 0 0 1 0 14h-3v2a7 7 0 0 1-7 7H15a7 7 0 0 1-7-7zm27 7v6h3a3 3 0 0 0 0-6z"/><path d="M13 4h3v8h-3zm8-2h3v10h-3zm8 2h3v8h-3z"/>',
+ shop:'<path d="M16 14v-4a8 8 0 0 1 16 0v4h7l4 30H5l4-30zm4-4v4h8v-4a4 4 0 0 0-8 0zm-4 9v6h4v-6zm12 0v6h4v-6z"/>',
+ palette:'<path d="m30 5 5-3 10 10-3 5-16 15-10-10zM14 25l9 9c-2 8-9 10-20 8 6-4 1-13 11-17z"/><path d="m30 10 8 8-4 4-8-8z"/>',
+ motion:'<path d="M4 13h14v3H4zm-2 9h12v3H2zm3 9h13v3H5zM30 7a17 17 0 1 0 0 34 17 17 0 0 0 0-34zm0 4a13 13 0 1 1 0 26 13 13 0 0 1 0-26z"/><path d="m26 16 11 8-11 8z"/>',
+ sound:'<path d="M5 18h9L27 7v34L14 30H5z"/><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" d="M33 16a12 12 0 0 1 0 16M38 10a20 20 0 0 1 0 28"/>',
+ info:'<path d="M24 4a20 20 0 1 0 0 40 20 20 0 0 0 0-40zm0 4a16 16 0 1 1 0 32 16 16 0 0 1 0-32z"/><circle cx="24" cy="15" r="2.5"/><path d="M20 21h6v13h3v3h-9v-3h2V24h-2z"/>',
+ casting:'<path d="M5 7h39v31H27v-4h13V11H9v9H5zM5 23a18 18 0 0 1 18 18h-4A14 14 0 0 0 5 27zm0 8a10 10 0 0 1 10 10h-4a6 6 0 0 0-6-6z"/><circle cx="6" cy="40" r="2"/>',
+ camera:'<path d="M20 7h8c1 0 2 1 2.5 2l2 5H40a3 3 0 0 1 3 3v20a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V17a3 3 0 0 1 3-3h7.5l2-5c.5-1 1.5-2 2.5-2zM24 17a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><circle cx="24" cy="26" r="4.6"/>',
+ game:'<path d="M12 11c3-1 5 1 8 3h9c3-2 5-4 8-3 4 1 6 6 8 17 1 7 0 10-3 11-4 2-6-1-8-4l-5-7H16l-5 7c-2 3-5 6-9 3-2-2-2-6-1-11 2-10 4-14 7-16 1 0 3-1 4 0z" transform="translate(3 0) scale(.91 1)"/>',
+ remote:'<g transform="rotate(25 24 24)"><path d="M18 3h12a4 4 0 0 1 4 4v34a4 4 0 0 1-4 4H18a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zm6 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 7a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm-6 19v3h4v-3zm8 0v3h4v-3z"/><circle cx="24" cy="22" r="3"/></g>',
+ clock:'<path d="M24 4a20 20 0 1 0 0 40 20 20 0 0 0 0-40zm-2 5h4v19l-13-8 2-4 7 4z"/>'
 };
-window.C5Icon=function(name){return '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.apps)+'</svg>';};
+window.C5Icon=function(name){
+ var key=Object.prototype.hasOwnProperty.call(paths,name)?name:'application';
+ return '<svg viewBox="0 0 48 48" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" aria-hidden="true" focusable="false">'+paths[key]+'</svg>';
+};
 })();

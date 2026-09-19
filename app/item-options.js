@@ -9,7 +9,6 @@
     var self = this, doc = root.document;
     this.element = doc.createElement('div'); this.element.className = 'item-options';
     this.element.innerHTML = '<div class="modal-backdrop item-options-shade"></div><section class="modal item-options-panel" role="dialog" aria-modal="true" aria-labelledby="itemOptionsTitle" tabindex="-1">' +
-      '<div class="modal-top"><button type="button" class="item-options-close" aria-label="Close item options">×</button></div>' +
       '<h2 class="item-options-heading" id="itemOptionsTitle"></h2><p class="modal-intro item-options-caption" id="itemOptionsCaption"></p>' +
       '<div class="item-options-scroll"><div class="item-options-actions"></div><div class="item-options-content"></div>' +
       '<p class="modal-intro item-options-status" role="status" aria-live="polite"></p></div></section>';
@@ -19,9 +18,6 @@
     this.actions = this.element.querySelector('.item-options-actions');
     this.content = this.element.querySelector('.item-options-content');
     this.status = this.element.querySelector('.item-options-status');
-    this.backButton = this.element.querySelector('.item-options-close');
-    this.backButton.tabIndex = -1;
-    this.backButton.addEventListener('click', function () { self.back(); });
     this.element.querySelector('.item-options-shade').addEventListener('click', function () { self.close('back'); });
   }
   ItemOptions.prototype.sound = function (name) { this.options.sound(name); };
@@ -33,13 +29,13 @@
     var self = this;
     b.addEventListener('click', function () {
       if (!self.opened || self.removal) return;
-      if (b.getAttribute('aria-disabled') === 'true') { self.explainRemoval = action === 'delete'; self.status.textContent = action === 'category-apply' ? 'Choose at least one category, or restore the default locations.' : action === 'category' ? 'Inputs and launcher settings keep their categories.' : action === 'sort' ? 'This category has only one item.' : action === 'start' ? 'There is no app to open.' : self.reason || 'Not available for this item.'; return; }
+      if (b.getAttribute('aria-disabled') === 'true') { self.explainRemoval = action === 'delete'; self.status.textContent = action === 'hide' ? 'Only apps can be hidden.' : action === 'category-apply' ? 'Choose at least one category, or restore the default locations.' : action === 'category' ? 'Inputs and launcher settings keep their categories.' : action === 'sort' ? 'This category has only one item.' : action === 'start' ? 'There is no app to open.' : self.reason || 'Not available for this item.'; return; }
       handler();
     });
     this.actions.appendChild(b); return b;
   };
   ItemOptions.prototype.focus = function () {
-    (this.view === 'category' && this.actions.querySelector('[aria-checked=true]') || this.view === 'sort' && this.actions.querySelector('[aria-pressed=true]') || this.actions.querySelector('[data-action=start]') || this.actions.querySelector('button') || this.backButton).focus({preventScroll: true});
+    root.LGXMBMenuFocus(this.view === 'category' && this.actions.querySelector('[aria-checked=true]') || this.view === 'sort' && this.actions.querySelector('[aria-pressed=true]') || this.actions.querySelector('[data-action=start]') || this.actions.querySelector('button') || this.panel);
   };
   ItemOptions.prototype.prepare = function (item, category) {
     // Populate while the OK hold is still in progress. No native calls, focus,
@@ -94,7 +90,6 @@
     this.content.textContent = ''; this.status.textContent = '';
     this.actions.removeAttribute('role'); this.actions.removeAttribute('aria-labelledby');
     this.title.textContent = item.title; this.caption.textContent = this.category.title;
-    this.backButton.textContent = '×';
     if (this.view === 'main') {
       this.reason = item.action ? 'Inputs and launcher settings cannot be uninstalled.' :
         this.info ? this.info.removalReason : this.error || 'Checking whether this app can be deleted…';
@@ -102,6 +97,11 @@
         this.button('Sort By', 'sort', function () { self.view = 'sort'; self.render(); self.focus(); self.sound('option'); });
         this.button('Categories', 'category', function () { self.beginCategories(); self.sound('option'); });
         this.button('Start', 'start', function () { var target = self.item; self.close('start'); self.options.onStart(target); });
+        this.button('Hide app', 'hide', function () {
+          try { self.options.onHide(self.item); self.sound('decide'); self.close('hidden'); }
+          catch (error) { self.status.textContent = 'Could not hide the app. ' + error.message; self.sound('error'); }
+        });
+        this.button('Show hidden apps', 'hidden', function () { self.view = 'hidden'; self.hiddenChanged = false; self.render(); self.focus(); self.sound('option'); });
         this.button('Delete', 'delete', function () { self.view = 'confirm'; self.render(); self.focus(); self.sound('option'); });
         this.button('Information', 'info', function () { self.view = 'info'; self.render(); self.focus(); self.sound('option'); });
         this.button('Refresh apps', 'refresh', function () { self.close('refresh'); self.options.onRefresh(); });
@@ -114,6 +114,8 @@
       var start = this.actions.querySelector('[data-action=start]');
       start.textContent = item.action && item.action !== 'input' ? 'Open' : 'Start';
       start.setAttribute('aria-disabled', String(item.action === 'empty'));
+      this.actions.querySelector('[data-action=hide]').setAttribute('aria-disabled', String(!this.options.canHide || !this.options.canHide(item)));
+      this.actions.querySelector('[data-action=hidden]').setAttribute('aria-disabled', String(!this.options.getHidden));
       this.actions.querySelector('[data-action=delete]').setAttribute('aria-disabled', String(!this.info || !this.info.removable));
       this.actions.querySelector('[data-action=refresh]').setAttribute('aria-disabled', String(!this.options.onRefresh));
       this.mainButtons.forEach(function (b) { b.tabIndex = self.opened ? 0 : -1; });
@@ -122,13 +124,28 @@
       this.explainRemoval = false;
     } else if (this.view === 'sort') {
       this.caption.textContent = 'Sort this category';
-      [['default', 'Default order'], ['az', 'Name: A–Z'], ['za', 'Name: Z–A']].forEach(function (choice) {
+      [['default', 'Default order'], ['recent', 'Recently used'], ['az', 'Name: A–Z'], ['za', 'Name: Z–A']].forEach(function (choice) {
         var b = self.button(choice[1], 'sort-' + choice[0], function () {
           try { self.options.onSort(self.category, choice[0], item.id); self.sound('decide'); self.view = 'main'; self.render(); self.focus(); }
           catch (error) { self.status.textContent = 'Could not save the sort order. ' + error.message; self.sound('error'); }
         });
         b.setAttribute('aria-pressed', self.options.getSort(self.category.id) === choice[0] ? 'true' : 'false');
       });
+    } else if (this.view === 'hidden') {
+      this.title.textContent = 'Hidden apps'; this.caption.textContent = 'Restore an app';
+      var hidden = this.options.getHidden();
+      hidden.forEach(function (entry, index) {
+        var b = self.button(entry.title, 'restore', function () {
+          try {
+            self.options.onRestore(entry.id); self.hiddenChanged = true; self.render();
+            var buttons = self.actions.querySelectorAll('button');
+            root.LGXMBMenuFocus(buttons[Math.min(index, buttons.length - 1)] || self.panel);
+            self.sound('decide');
+          } catch (error) { self.status.textContent = 'Could not restore the app. ' + error.message; self.sound('error'); }
+        });
+        b.dataset.appId = entry.id; b.setAttribute('aria-label', 'Restore ' + entry.title);
+      });
+      if (!hidden.length) { this.caption.textContent = ''; this.status.textContent = 'No hidden apps.'; }
     } else if (this.view === 'category') {
       this.caption.textContent = 'Choose one or more categories';
       this.actions.setAttribute('role', 'group'); this.actions.setAttribute('aria-labelledby', 'itemOptionsCaption');
@@ -219,6 +236,7 @@
   };
   ItemOptions.prototype.back = function () {
     if (!this.opened) return;
+    if (this.view === 'hidden' && this.hiddenChanged && this.item.action === 'empty') { this.close('restored'); return; }
     if (this.view !== 'main' && !this.removal) { this.categoryDraft = null; this.view = 'main'; this.render(); this.focus(); this.sound('cancel'); }
     else this.close('back');
   };
@@ -244,12 +262,15 @@
     }
     if (e.key === 'ArrowRight') {
       e.preventDefault(); var a = root.document.activeElement;
-      if (!e.repeat && a && (a.dataset.action === 'sort' || a.dataset.action === 'category')) a.click(); return;
+      if (!e.repeat && a && (a.dataset.action === 'sort' || a.dataset.action === 'category' || a.dataset.action === 'hidden')) a.click(); return;
     }
     var d = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : e.key === 'Tab' ? (e.shiftKey ? -1 : 1) : 0;
     if (d) {
-      e.preventDefault(); var buttons = Array.from(this.actions.querySelectorAll('button')).concat([this.backButton]);
-      var at = buttons.indexOf(root.document.activeElement); buttons[(Math.max(0, at) + d + buttons.length) % buttons.length].focus(); this.sound('cursor');
+      e.preventDefault(); var buttons = Array.from(this.actions.querySelectorAll('button'));
+      if (!buttons.length) return;
+      var at = buttons.indexOf(root.document.activeElement);
+      var next = e.key === 'Tab' ? (Math.max(0, at) + d + buttons.length) % buttons.length : Math.max(0, Math.min(buttons.length - 1, at + d));
+      if (root.LGXMBMenuFocus(buttons[next])) this.sound('cursor');
     }
   };
   ItemOptions.prototype.getState = function () { return {open: this.opened, opening: false, view: this.view, item: this.item && this.item.id, deleting: !!this.removal, removable: !!(this.info && this.info.removable)}; };

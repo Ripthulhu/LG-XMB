@@ -36,13 +36,28 @@ older names for saved settings: `dim` is Low, `low` is Medium and `normal` is Hi
 
 MSAA and supersampling affect the wave surface. The composite filter doesn't
 filter menu text or particles. Particles and glare are drawn afterwards at output
-resolution. The status below the controls reports the actual surface size,
-sample count, mesh and particle count, including allocation fallbacks.
+resolution. Renderer diagnostics are available through `C5App.getState()`.
 
 **Wave colours** selects the theme, monthly gradient presets, custom RGB or
 **PS3 original**. The last option uses the recovered monthly background with the
-TV clock, or a fixed month and day/night choice. Monthly presets are a separate
-set of gradients, not the extracted PS3 textures.
+TV clock. Both PS3 original and monthly presets have separate Month selection
+(Automatic or Fixed month) and Time of day (Automatic, Day or Night) controls.
+A fixed month can still follow the local day/night cycle. Monthly presets are
+separate gradients, not the extracted PS3 textures.
+
+Current theme has an optional Day/night effect, off by default. It dims the
+selected theme at night without changing its colour. Seasonal also refreshes
+its month colour when the month changes. Custom RGB stays fixed.
+
+Clock-driven colours refresh once a second even with Animation off; wave and
+particle motion remain frozen. Background updates stop when Home is hidden and
+resume using the current local time. Fixed month plus fixed time needs no clock
+timer. Existing fixed presets retain their settings.
+
+The PS3 path retains the recovered calendar arithmetic, including February 29
+using February 28's month coordinate. Day/night parameters match the supplied
+RPCS3 background object. Preset interpolation and optional theme dimming are
+launcher features rather than a claim of exact PS3 output in those modes.
 
 **Show waves full screen** hides the menu without changing its selection.
 Back or Home returns to the menu.

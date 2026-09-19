@@ -15,6 +15,43 @@ function fixture(store=storage()){
  return {cats,sel,store,order,model,cat:id=>cats.find(c=>c.id===id),where:id=>cats.filter(c=>c.items.some(i=>i.id===id)).map(c=>c.id)};
 }
 const apps=[{id:'org.example.player',title:'A Player'},{id:'cdp-30',title:'Plex'}];
+
+test('hiding removes every shared shortcut and restoring preserves locations',()=>{
+ const f=fixture(),item=f.cat('photo').items[0];f.model.hide(item,f.sel);
+ assert.deepEqual(f.where(item.id),[]);assert.equal(f.cat('photo').items[0].action,'empty');
+ assert.deepEqual(f.model.hiddenApps(),[{id:item.id,title:item.title}]);
+ f.model.reconcile([{id:item.id,title:item.title}],f.sel);assert.deepEqual(f.where(item.id),[]);
+ f.model.restore(item.id,f.sel);assert.deepEqual(f.where(item.id),['photo','music']);assert.deepEqual(f.model.hiddenApps(),[]);
+ assert.equal(f.order.removed.size,0);
+});
+test('hidden apps survive restart and inventory refresh while keeping assignments and recent sorting',()=>{
+ const f=fixture();f.model.reconcile(apps,f.sel);const item=f.cat('apps').items[0];
+ f.model.assign(item,['video','music'],f.sel);f.order.record(item.id);f.order.set(f.cat('music'),'recent',item.id);
+ f.model.hide(f.cat('video').items[0],f.sel);
+ const g=fixture(f.store);g.model.reconcile(apps,g.sel);assert.deepEqual(g.where(item.id),[]);
+ g.model.restore(item.id,g.sel);assert.deepEqual(g.where(item.id),['music','video']);assert.equal(g.cat('music').items[0].id,item.id);
+});
+test('hide and restore preserve default order and reuse surviving app rows',()=>{
+ const f=fixture();f.model.reconcile(apps,f.sel);const original=f.cat('apps').items.slice();
+ f.model.hide(original[0],f.sel);assert.strictEqual(f.cat('apps').items[0],original[1]);
+ f.model.restore(original[0].id,f.sel);assert.deepEqual(f.cat('apps').items,original);assert.strictEqual(f.cat('apps').items[0],original[0]);
+});
+test('refused visibility saves leave lists, hidden choices and selections untouched',()=>{
+ const f=fixture(),item=f.cat('photo').items[0],save=f.store.setItem;
+ f.store.setItem=()=>{throw Error('storage full');};const selections=f.sel.slice();
+ assert.throws(()=>f.model.hide(item,f.sel),/storage full/);assert.deepEqual(f.where(item.id),['photo','music']);assert.deepEqual(f.sel,selections);
+ f.store.setItem=save;f.model.hide(item,f.sel);f.store.setItem=()=>{throw Error('storage full');};
+ assert.throws(()=>f.model.restore(item.id,f.sel),/storage full/);assert.deepEqual(f.where(item.id),[]);assert.equal(f.model.hiddenApps().length,1);
+});
+test('inputs, launcher settings and empty rows cannot be hidden; native apps can',()=>{
+ const f=fixture();for(const item of [f.cat('settings').items[0],f.cat('tv').items[0],f.cat('apps').items[0],{id:'com.webos.app.home'},null])assert.equal(f.model.canHide(item),false);
+ assert.equal(f.model.canHide(f.cat('photo').items[0]),true);assert.throws(()=>f.model.hide(f.cat('settings').items[0],f.sel));
+});
+test('hidden list remains restorable before discovery, ignores malformed entries and renders safe titles',()=>{
+ const f=fixture(storage({'lg-xmb-hidden-apps-v1':JSON.stringify({'org.test.app':'Saved app','../bad':'Bad','com.webos.app.home':'Home','native.media':'\u202eMedia'})}));
+ assert.deepEqual(f.model.hiddenApps(),[{id:'native.media',title:'Media'},{id:'org.test.app',title:'Saved app'}]);
+ f.model.restore('org.test.app',f.sel);f.model.reconcile([{id:'org.test.app',title:'Installed app'}],f.sel);assert.deepEqual(f.where('org.test.app'),['apps']);
+});
 test('unassigned apps go to Apps regardless of app name; no Plex catalogue rule',()=>{const f=fixture();assert.equal(f.model.reconcile(apps,f.sel),true);assert.deepEqual(f.where('cdp-30'),['apps']);const source=fs.readFileSync(path.join(__dirname,'../app/catalog.js'),'utf8');assert.doesNotMatch(source,/cdp-30|Plex/);});
 test('choosing Video moves rather than duplicates an app and follows its selection',()=>{const f=fixture();f.model.reconcile(apps,f.sel);const item=f.cat('apps').items[0];let ci=f.model.assign(item,'video',f.sel);assert.equal(f.cats[ci].id,'video');assert.equal(f.cats[ci].items[f.sel[ci]].id,item.id);assert.deepEqual(f.where(item.id),['video']);});
 test('assignment survives process restart and subsequent install snapshot',()=>{const f=fixture();f.model.reconcile(apps,f.sel);f.model.assign(f.cat('apps').items[0],'music',f.sel);const fresh=fixture(f.store);fresh.model.reconcile(apps,fresh.sel);assert.deepEqual(fresh.where(apps[0].id),['music']);});

@@ -9,6 +9,16 @@
   const defaults = Object.freeze({nightBlend:1, nightBrightness:0.5,
     dawnBegin:4, dawnEnd:6, duskBegin:18, duskEnd:20, daySpread:0});
 
+  // Active background object in the supplied RPCS3 capture at 0x20401954.
+  // Transition bounds are stored as fractions of a day.
+  const retained = Object.freeze({nightBlend:0.4999470114707947,nightBrightness:0.4860590100288391,
+    dawnBegin:0,dawnEnd:0.21525458991527557*24,duskBegin:0.7707499861717224*24,
+    duskEnd:0.8471333384513855*24,daySpread:2.68038010597229});
+  function coordinates(date, automaticDate, month, period) {
+    const live=fromLocalDate(date);
+    return {month:automaticDate?live.month:month-1,
+      day:period==='auto'?live.day:period==='night'?0:0.5};
+  }
   function calendar(month, day, hour, minute = 0, second = 0) {
     const fields = [month,day,hour,minute,second];
     if (!fields.every(Number.isInteger) || month < 1 || month > 12 || day < 1 ||
@@ -50,7 +60,7 @@
     const a=(F(0.04444444179534912)*(phase-15)*(phase-15)+F(0.1))*(y+1-F(0.1)*phase);
     return 0.5-0.5*Math.tanh(Math.max(-10,Math.min(10,a)));
   }
-  const api=Object.freeze({defaults,calendar,fromLocalDate,uniforms,nextMonthWeight});
+  const api=Object.freeze({defaults,retained,calendar,fromLocalDate,coordinates,uniforms,nextMonthWeight});
   if (typeof module === 'object' && module.exports) module.exports=api;
   else root.LGXMBPS3BackgroundClock=api;
 }(typeof window === 'object' ? window : globalThis));

@@ -12,10 +12,11 @@ for(const width of [1280,1920]){
  for(let n=0;n<Math.abs(ix[1]-ix[0]);n++)await page.keyboard.press(ix[1]>ix[0]?'ArrowDown':'ArrowUp');
  await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>C5App.getState().modal),id);
  }
- for(const id of ['appearance','sound','previews','remote','datetime','about']){
+ for(const id of ['appearance','sound','previews','remote','datetime']){
   const colour=await page.locator('#time').evaluate(e=>getComputedStyle(e).color);await open(id);
   assert.equal(await page.locator('#time').evaluate(e=>getComputedStyle(e).color),colour);
   assert.equal(await page.locator('.screen').getAttribute('aria-hidden'),'true');
+  assert.equal(await page.locator('#closeModal,.item-options-close,.modal-top').count(),0);
   // Same value does not replace choice nodes, steal focus or reset scrolling.
   if(['remote','previews'].includes(id)){
    assert.ok(await page.locator('#modalContent').evaluate(root=>{const buttons=[...root.querySelectorAll('button')],chosen=buttons.find(b=>b.getAttribute('aria-pressed')!=='true');chosen.focus();chosen.click();return buttons.every(b=>root.contains(b))&&document.activeElement===chosen;}));
@@ -24,6 +25,8 @@ for(const width of [1280,1920]){
    const before=await page.locator('.menu-action-slot').boundingBox();await page.locator('#retryMusic').evaluate(b=>b.hidden=!b.hidden);const after=await page.locator('.menu-action-slot').boundingBox();assert.deepEqual(after,before);
   }
   if(id==='appearance'){
+   assert.equal(await page.locator('#waveRenderStatus').count(),0);
+   assert.equal(await page.locator('#modalContent .wave-quality-note').count(),0);
    assert.equal(await page.evaluate(()=>document.activeElement.id),'openTheme');
    await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>C5App.getState().modal),'theme');
    await page.locator('[data-choice=ocean]').click();assert.equal(await page.evaluate(()=>C5App.getState().preferences.theme),'ocean');

@@ -33,10 +33,31 @@ Vertical navigation leaves the category bar alone. Rows and category faces are
 reused, and the detail text follows navigation after 140 ms so it doesn't paint
 in the same frame as every key press. Preview lifecycle changes remain immediate.
 
-Options prepare their reusable nodes before sliding in and defer metadata until
-after the slide. Closed panels are hidden rather than permanently promoted.
+Options prepare their reusable nodes during the OK hold, open without animation,
+and defer metadata until after opening. Closed panels are hidden rather than permanently promoted.
 Keep text opacity at 1; dim text through colour alpha without animating that
 colour. Don't add `will-change` across the interface as a blanket fix.
+
+Held arrows use a 60 ms minimum interval for vertical main-list navigation and
+100 ms in settings panels or horizontal navigation, with one pending event. Dropping every
+event that arrives too soon turns an 80 ms remote cadence into 160 ms navigation;
+the pending event instead runs at the next deadline. There is no backlog or
+repeat without incoming input. Release, reversal, blur, suspension and menu
+changes cancel pending movement. Separate taps remain immediate.
+
+Main-list rows and icons settle over 240 ms rather than the category bar's
+400 ms. This reduces visual lag during repeated Up/Down presses; it does not
+change the renderer's frame rate or the particle simulation.
+
+Settings and options focus with `preventScroll`, then reveal the nearest edge.
+Default browser focus can recenter a partly hidden row and jump several rows.
+Up/Down stop at list boundaries; Tab retains its focus loop. Moving beyond the
+last choice row does not switch focus to that row's selected value.
+
+On the C5, a short 80 ms repeat-input comparison traversed 40 Appearance rows
+versus 24 before the coalescer, with roughly 52–54 animation callbacks per second
+in both runs. Some intervals remained 33 ms, so this is an input/scrolling fix,
+not a claim of locked 60 fps while navigating.
 
 [Navigation details](performance/navigation.md) describe the row and category
 state. Keep that work separate from changing mesh detail or reducing particles.
@@ -57,6 +78,8 @@ an optimisation from software-renderer timing alone.
 ```sh
 node --test tests/category-transition.test.cjs tests/performance-cache.test.cjs tests/gradient-banding.test.cjs tests/gradient-output.test.cjs tests/gradient-pipeline.test.cjs
 node tests/performance-layers-browser.cjs
+node tests/menu-focus-browser.cjs
+node tests/menu-repeat-browser.cjs
 python3 tools/bundle-ps3-shaders.py --check
 ```
 

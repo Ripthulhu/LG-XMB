@@ -184,15 +184,18 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
       await missing.unroute('**/user-music.mp3');
       await missing.route('**/user-music.mp3',route=>route.fulfill({status:404,body:'Not found'}));
       await settings(missing,'Sound');
-      assert.equal(await missing.locator('#musicFilePath').innerText(),'/media/internal/lg-xmb/background.mp3');
+      assert.equal(await missing.locator('#musicStatus').innerText(),'');
+      assert.equal(await missing.locator('#musicFilePath').count(),0);
       await musicSwitch(missing,'On').click();
       await missing.waitForFunction(()=>C5App.getState().music.phase==='unavailable');
+      assert.equal(await missing.locator('#musicStatus').innerText(),'Check the MP3 at /media/internal/lg-xmb/background.mp3.');
       assert.equal(await missing.locator('audio').count(),0);
       const created=await missing.evaluate(()=>musicTest.audioCreated);await missing.waitForTimeout(300);
       assert.equal(await missing.evaluate(()=>musicTest.audioCreated),created,'No polling for a missing user file');
       await missing.unroute('**/user-music.mp3');
       await missing.route('**/user-music.mp3',route=>route.fulfill({status:200,contentType:'audio/wav',body:require('./music-fixture.cjs')()}));
       await missing.getByRole('button',{name:'Retry playback',exact:true}).click();await playing(missing);
+      assert.equal(await missing.locator('#musicStatus').innerText(),'');
       checks.push('Missing user music is nonfatal, shows its persistent path, makes no automatic retries and can be reloaded after copying a file');
     } finally {await missing.close();}
   }

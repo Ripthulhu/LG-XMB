@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 (function (root) {
   'use strict';
-  var KEY = 'lg-xmb-app-categories-v1';
+  var KEY = 'lg-xmb-app-categories-v1', HIDDEN = 'lg-xmb-hidden-apps-v1';
   var DESTINATIONS = ['photo', 'music', 'video', 'tv', 'apps', 'browser', 'network'];
   function validId(id) { return typeof id === 'string' && id.length <= 128 && /^[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*$/.test(id); }
   function self(id) { return id === 'org.local.openxmb.c5' || id === 'com.webos.app.home'; }
@@ -11,6 +11,13 @@
     this.base = categories.map(function (c) { return c.items.filter(function (i) { return i.action !== 'empty'; }).slice(); });
     this.inventory = new Map(); this.assignments = Object.create(null); this.waitForAbsence = new Set();
     this.empties = Object.create(null);
+    this.hidden = Object.create(null);
+    try {
+      var hiddenRaw = storage.getItem(HIDDEN), hidden = hiddenRaw && hiddenRaw.length <= 262144 ? JSON.parse(hiddenRaw) : null;
+      if (hidden && typeof hidden === 'object' && !Array.isArray(hidden)) Object.keys(hidden).slice(0, 1000).forEach(function (id) {
+        if (validId(id) && !self(id)) this.hidden[id] = title(hidden[id], id);
+      }, this);
+    } catch (ignore) {}
     var saved;
     try { var raw = storage.getItem(KEY); if (raw && raw.length <= 262144) saved = JSON.parse(raw); } catch (ignore) {}
     if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
@@ -25,6 +32,28 @@
   };
   AppCategories.prototype.canAssign = function (item) {
     return !!item && !item.action && validId(item.id) && !self(item.id);
+  };
+  AppCategories.prototype.canHide = function (item) { return this.canAssign(item); };
+  AppCategories.prototype.hiddenApps = function () {
+    return Object.keys(this.hidden).map(function (id) {
+      var item = this.inventory.get(id);
+      return {id: id, title: item ? item.title : this.hidden[id]};
+    }, this).sort(function (a, b) { return a.title.localeCompare(b.title, undefined, {numeric: true, sensitivity: 'base'}) || a.id.localeCompare(b.id); });
+  };
+  AppCategories.prototype.hide = function (item, selections) {
+    if (!this.canHide(item)) throw new Error('Only apps can be hidden.');
+    if (!this.categories.some(function (c) { return c.items.some(function (row) { return row.id === item.id && !row.action; }); }))
+      throw new Error('This app is no longer in the menu.');
+    var next = Object.assign(Object.create(null), this.hidden); next[item.id] = title(item.title, item.id);
+    if (Object.keys(next).length > 1000) throw new Error('Too many hidden apps.');
+    this.storage.setItem(HIDDEN, JSON.stringify(next)); this.hidden = next;
+    return this.rebuild(selections);
+  };
+  AppCategories.prototype.restore = function (id, selections) {
+    if (!Object.prototype.hasOwnProperty.call(this.hidden, id)) return false;
+    var next = Object.assign(Object.create(null), this.hidden); delete next[id];
+    this.storage.setItem(HIDDEN, JSON.stringify(next)); this.hidden = next;
+    return this.rebuild(selections);
   };
   AppCategories.prototype.choices = function () {
     return this.categories.filter(function (c) { return this.destination(c.id); }, this).map(function (c) { return {id: c.id, title: c.title}; });
@@ -62,7 +91,7 @@
     apps.forEach(function (app) {
       if (!app || !validId(app.id) || self(app.id) || next.has(app.id)) return;
       var item = this.inventory.get(app.id), name = title(app.title, app.id);
-      if (!item) item = {id: app.id, title: name, icon: 'apps', type: 'ON YOUR TV', description: 'Open ' + name + '.', discovered: true};
+      if (!item) item = {id: app.id, title: name, icon: app.id === 'org.webosbrew.safeupdate' || app.id === 'org.webosbrew.hbchannel' ? 'brew' : 'application', type: 'ON YOUR TV', description: 'Open ' + name + '.', discovered: true};
       else if (item.title !== name) { item.title = name; item.description = 'Open ' + name + '.'; metadata = true; }
       next.set(app.id, item);
     }, this);
@@ -86,6 +115,9 @@
     // or appending a shared button to Video steals it from Music. Reuse rows
     // within their category so unchanged inventory reads do not repaint them.
     var rows = before.map(function (c) { return new Map(c.items.map(function (item) { return [item.id, item]; })); });
+    this.categories.forEach(function (c, ci) {
+      this.order.order[c.id].forEach(function (item) { if (!rows[ci].has(item.id)) rows[ci].set(item.id, item); });
+    }, this);
     var defaults = this.base.map(function (items) { return new Map(items.map(function (item) { return [item.id, item]; })); });
     var added = lists.map(function () { return new Set(); });
     function put(ci, source) {
@@ -104,19 +136,19 @@
         if (item.action) { put(ci, item); return; }
         if (!byId.has(item.id)) byId.set(item.id, item);
         seen.add(item.id);
-        if (this.order.removed.has(item.id) || this.assignments[item.id]) return;
+        if (this.hidden[item.id] || this.order.removed.has(item.id) || this.assignments[item.id]) return;
         put(ci, item);
       }, this);
     }, this);
     this.inventory.forEach(function (item, id) {
       if (!byId.has(id)) byId.set(id, item);
-      if (seen.has(id) || this.order.removed.has(id) || this.assignments[id]) return;
+      if (this.hidden[id] || seen.has(id) || this.order.removed.has(id) || this.assignments[id]) return;
       var ci = this.categories.findIndex(function (c) { return c.id === 'apps'; });
       if (ci >= 0) put(ci, item);
     }, this);
     Object.keys(this.assignments).forEach(function (id) {
       var item = byId.get(id);
-      if (!item || !this.canAssign(item) || this.order.removed.has(id)) return;
+      if (!item || !this.canAssign(item) || this.hidden[id] || this.order.removed.has(id)) return;
       this.assignments[id].forEach(function (destination) {
         var ci = this.categories.findIndex(function (c) { return c.id === destination; });
         if (ci >= 0) put(ci, item);
@@ -132,6 +164,7 @@
       // Only keep real live/default rows in the sorting history. The DOM uses
       // object identity, so surviving rows can be moved without recreation.
       var retained = new Set(this.base[ci].concat(c.items));
+      this.order.order[c.id].forEach(function (item) { if (this.hidden[item.id]) retained.add(item); }, this);
       this.order.order[c.id] = this.order.order[c.id].filter(function (item) { return item.action !== 'empty' && retained.has(item); });
       this.order.apply(c, before[ci].id);
       var at = c.items.findIndex(function (i) { return i.id === before[ci].id; });

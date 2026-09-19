@@ -43,7 +43,7 @@ async function load(p){
    else throw Error('Unexpected call '+uri);
   };};
  });
- for(const name of ['menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
+ for(const name of ['menu-focus.js','directional-repeat.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.waitForFunction(()=>window.C5App);
  await p.evaluate(()=>{
   catalogHarness.apps({preview:false,apps:[{id:'org.test.two',title:'Beta Tools'},{id:'org.test.one',title:'Alpha Player'},{id:'cdp-30',title:'Plex'}]});
@@ -57,9 +57,11 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
  const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_EXECUTABLE_PATH}:process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{}),args:['--no-sandbox']});
  try{
  for(const size of [{width:1280,height:720},{width:1920,height:1080}]){
- const context=await browser.newContext({viewport:size,bypassCSP:true});const p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));
+ const context=await browser.newContext({viewport:size,bypassCSP:true});const p=await context.newPage();p.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});
  try{
   await load(p);
+  // A resize cancels holds; let the initial viewport layout settle first.
+  await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   await p.keyboard.down('Enter');await p.waitForTimeout(180);assert.equal(await p.evaluate(()=>catalogHarness.launches.length),0);await p.keyboard.up('Enter');await p.waitForFunction(()=>catalogHarness.launches.length===1);checks.push(size.width+': short OK launches exactly on release');
   await navigate(p,'apps','org.test.one');
   const before=await p.evaluate(()=>catalogHarness.launches.length);
@@ -67,13 +69,16 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
   for(let i=0;i<4;i++)await p.keyboard.down('Enter');
   await p.keyboard.up('Enter');assert.equal(await p.evaluate(()=>catalogHarness.launches.length),before);
   await p.waitForFunction(()=>C5App.getState().itemOptions.removable);
-  assert.equal(await p.locator('.item-options-button').count(),6);assert.equal(await p.locator('.item-options-shade').isVisible(),true);
+  assert.equal(await p.locator('.item-options-button').count(),8);assert.equal(await p.locator('.item-options-shade').isVisible(),true);
   assert.equal(await p.evaluate(()=>document.activeElement.dataset.action),'start');
   await p.waitForTimeout(250);const box=await p.locator('.item-options-panel').boundingBox();assert.ok(Math.abs(box.x+box.width-size.width*.94)<2);assert.ok(Math.abs(box.height-size.height*.82)<2);
   await p.screenshot({path:path.join(out,'options-'+size.width+'.png')});checks.push(size.width+': hold opens right panel, consumes repeats/release, keeps target and fits viewport');
-  await p.keyboard.press('ArrowDown');await p.keyboard.press('ArrowDown');await p.keyboard.press('Enter');assert.equal((await state(p)).itemOptions.view,'info');assert.match(await p.locator('.item-options-info').innerText(),/2.4.0/);assert.equal(await p.locator('.item-options-info img').count(),0);
+  for(let i=0;i<4;i++)await p.keyboard.press('ArrowDown');await p.keyboard.press('Enter');assert.equal((await state(p)).itemOptions.view,'info');assert.match(await p.locator('.item-options-info').innerText(),/2.4.0/);assert.equal(await p.locator('.item-options-info img').count(),0);
   await p.keyboard.press('Escape');assert.equal((await state(p)).itemOptions.view,'main');
   for(let i=0;i<12;i++)await p.keyboard.press('Tab');assert.equal(await p.evaluate(()=>document.querySelector('.item-options-panel').contains(document.activeElement)),true);checks.push(size.width+': Information is real metadata; focus and Back stay within panel');
+  await p.locator('[data-action=sort]').click();await p.locator('[data-action=sort-recent]').click();
+  assert.equal(await p.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-menu-order-v1')).apps),'recent');
+  assert.equal((await state(p)).item,'org.test.one');
   await p.locator('[data-action=sort]').click();await p.locator('[data-action=sort-az]').click();
   assert.equal((await state(p)).item,'org.test.one');assert.deepEqual(await p.evaluate(()=>C5Catalog.find(c=>c.id==='apps').items.map(i=>i.title)),['Alpha Player','Beta Tools','Home Hub','Plex']);
   await p.keyboard.press('Escape');await navigate(p,'tv','com.webos.app.hdmi2');await p.keyboard.press('F2');await p.waitForFunction(()=>!C5App.getState().itemOptions.opening);assert.equal((await state(p)).itemOptions.removable,false);
@@ -94,6 +99,18 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
   await p.keyboard.press('Escape');await p.waitForTimeout(250);await row.click({button:'right'});assert.equal((await state(p)).itemOptions.open,true);await p.keyboard.press('Escape');
   const ids=await p.locator('[id]').evaluateAll(nodes=>nodes.map(n=>n.id));assert.equal(new Set(ids).size,ids.length);checks.push(size.width+': right click support and unique accessibility IDs after reorder/delete');
   await p.emulateMedia({reducedMotion:'reduce'});await p.keyboard.press('F2');await p.waitForFunction(()=>!C5App.getState().itemOptions.opening);assert.equal(await p.locator('.item-options-panel').evaluate(el=>getComputedStyle(el).transitionDuration),'0s');await p.keyboard.press('Escape');checks.push(size.width+': system reduced motion has no panel animation');
+  await navigate(p,'apps','org.test.two');await p.keyboard.press('F2');
+  await p.locator('[data-action=sort]').click();await p.locator('[data-action=sort-recent]').click();await p.keyboard.press('Escape');
+  await p.evaluate(()=>{C5TV.launch=()=>Promise.reject(new Error('Launch rejected'));});await p.keyboard.press('Enter');
+  await p.waitForFunction(()=>!C5App.getState().busy);assert.equal(await p.evaluate(()=>localStorage.getItem('lg-xmb-recent-items-v1')),null);
+  await p.evaluate(()=>{C5TV.launch=()=>new Promise(resolve=>window.finishRecentLaunch=resolve);});await p.keyboard.press('Enter');
+  await p.evaluate(()=>{window.dispatchEvent(new Event('pagehide'));finishRecentLaunch({preview:false});});
+  await p.waitForFunction(()=>localStorage.getItem('lg-xmb-recent-items-v1')!==null);
+  await p.evaluate(()=>window.dispatchEvent(new Event('pageshow')));
+  assert.equal(await p.evaluate(()=>C5Catalog.find(c=>c.id==='apps').items[0].id),'org.test.two');
+  assert.equal((await state(p)).item,'org.test.two');
+  assert.deepEqual(await p.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-recent-items-v1'))),['org.test.two']);
+  checks.push(size.width+': recent sort ignores failed launches and records successful replies after Home hides');
  }finally{await context.close();}
  }
  assert.deepEqual(errors,[]);

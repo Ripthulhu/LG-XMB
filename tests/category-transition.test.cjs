@@ -62,11 +62,13 @@ test('destroy is idempotent; an absent bar never prevents the selection update',
   assert.equal(f.updates(),1);assert.equal(f.classes.has('categories-instant'),true);
   const empty=new f.root.LGXMBCategoryTransition();empty.change(1,f.update,true);empty.destroy();assert.equal(f.updates(),2);
 });
-test('horizontal and vertical motion share the 400 ms CSS timing and icon scale transition',()=>{
+test('vertical rows use 240 ms while categories keep 400 ms',()=>{
   assert.match(css,/--navigation-duration:\.4s/);
+  assert.match(css,/--row-navigation-duration:\.24s/);
   for(const selector of ['#categories','.item','.item-icon','.category .category-icon']){
     const blocks=css.replace(/\/\*[\s\S]*?\*\//g,'').split('}').filter(b=>b.slice(0,b.indexOf('{')).trim()===selector);
-    assert.ok(blocks.some(b=>b.includes('transition:transform var(--navigation-duration) var(--ease)')),selector);
+    const variable=selector==='.item'||selector==='.item-icon'?'--row-navigation-duration':'--navigation-duration';
+    assert.ok(blocks.some(b=>b.includes('transition:transform var('+variable+') var(--ease)')),selector);
   }
   assert.doesNotMatch(css,/items-arriving|categories-moving|will-change:/);
 });

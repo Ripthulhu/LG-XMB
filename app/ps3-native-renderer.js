@@ -28,8 +28,6 @@
   function transpose(m) { var out = new Float32Array(16); for (var i = 0; i < 4; i++)
     for (var j = 0; j < 4; j++)
       out[i * 4 + j] = m[j * 4 + i]; return out; }
-  var RETAINED_DAY_NIGHT = Object.freeze({ nightBlend: 0.4999470114707947, nightBrightness: 0.4860590100288391,
-    dawnBegin: 0, dawnEnd: 5.16611, duskBegin: 18.498, duskEnd: 20.3312, daySpread: 2.68038010597229 });
   function Simulation(reference) {
     if (!Core || !reference || reference.format !== 1)
       throw new Error('Local PS3 reference pack missing. Run tools/import-ps3-reference.py.');
@@ -493,19 +491,16 @@
       return false;
     // These controls have whole-second precision. Do not allocate Date,
     // coordinate/uniform objects and JSON strings sixty times per second.
-    var automatic = !!monthly.auto, second = automatic ? Math.floor(Date.now() / 1000) : 0;
-    if (this.monthlyKey && this.monthlyRequestAuto === automatic &&
-        (automatic ? this.monthlyRequestSecond === second :
-         this.monthlyRequestMonth === monthly.month && this.monthlyRequestPeriod === monthly.period)) return true;
-    var coordinates = automatic ? clock.fromLocalDate(new Date(second * 1000)) : clock.calendar(monthly.month, 1, monthly.period === 'night' ? 0 : 12);
+    var automatic = !!monthly.auto || monthly.period==='auto', second = automatic ? Math.floor(Date.now() / 1000) : 0;
+    if(this.monthlyKey && this.monthlyRequestAuto===monthly.auto && this.monthlyRequestMonth===monthly.month &&
+      this.monthlyRequestPeriod===monthly.period && this.monthlyRequestSecond===second)return true;
+    var coordinates = clock.coordinates(new Date(second * 1000),monthly.auto,monthly.month,monthly.period);
     // Day/night controls as retained in the RPCS3 dump's background object,
     // not the menu constructor defaults: night blend 0.5, dawn to 05:10,
     // dusk 18:30 to 20:20, day spread 2.68. The defaults left dawn black.
-    var u = clock.uniforms(coordinates, RETAINED_DAY_NIGHT, 1), key = JSON.stringify(u);
-    this.monthlyRequestAuto = automatic;
-    this.monthlyRequestSecond = second;
-    this.monthlyRequestMonth = monthly.month;
-    this.monthlyRequestPeriod = monthly.period;
+    var u = clock.uniforms(coordinates, clock.retained, 1), key = JSON.stringify(u);
+    this.monthlyRequestAuto=monthly.auto;this.monthlyRequestMonth=monthly.month;
+    this.monthlyRequestPeriod=monthly.period;this.monthlyRequestSecond=second;
     if (key === this.monthlyKey)
       return true;
     this.monthlyKey = key;
@@ -793,6 +788,7 @@
     this.raf = 0;
     this.initRaf = 0;
     this.compileRaf = 0;
+    this.clockTimer = 0;
     this.initialized = false;
     this.resizePending = false;
     this.documentHidden = !!document.hidden;
@@ -937,13 +933,38 @@
     if (monthly) this.canvas.setAttribute('data-ps3-background', 'true');
     else this.canvas.removeAttribute('data-ps3-background');
   };
+  C5Wave.prototype.clockDriven = function () {
+    var s=this.colorSettings;
+    return !!s && ((s.mode==='ps3'||s.mode==='monthly')&&(s.dateMode==='auto'||s.timeMode==='auto') || s.mode==='theme'&&s.themeClock);
+  };
+  C5Wave.prototype.refreshClock = function () {
+    if(!this.colorSettings || (this.clockSecond!=null&&!this.clockDriven()))return;
+    var second=Math.floor(Date.now()/1000);
+    if(this.clockSecond===second)return;
+    this.clockSecond=second;
+    var s=this.colorSettings, date=new Date(second*1000),clock=root.LGXMBPS3BackgroundClock;
+    this.palette=root.LGXMBWaveColors.resolve(s,date);
+    if(this.palette)this.wave=this.palette.tint.slice();
+    else if(this.themeWave){
+      var gain=1;
+      if(s.mode==='theme'&&s.themeClock&&clock){var blend=clock.uniforms(clock.fromLocalDate(date)).values._NightDayBlend;gain=clock.retained.nightBrightness+(1-clock.retained.nightBrightness)*blend;}
+      this.wave=this.themeWave.map(function(v){return v*gain;});
+      this.background=this.themeBackground.map(function(v){return v*gain;});
+    }
+  };
+  C5Wave.prototype.scheduleClock = function () {
+    if(this.clockTimer||!this.reducedMotion||!this.clockDriven()||!this.allowed()||this.mode!=='webgl')return;
+    this.clockTimer=root.setTimeout(function(){this.clockTimer=0;this.draw();}.bind(this),1000);
+  };
   C5Wave.prototype.draw = function () {
     if (!this.allowed() || this.mode !== 'webgl')
       return;
     try {
+      this.refreshClock();
       this.renderer.configure(this.ps3Quality);
       var changed = this.renderer.draw(this.canvas.width, this.canvas.height, this.wave, this.brightness, this.background, this.palette);
       this.syncBackgroundLayer(this.renderer.monthlyActive === true);
+      this.scheduleClock();
       if (changed && this.onRenderStatus)
         this.onRenderStatus();
     }
@@ -952,6 +973,7 @@
     }
   };
   C5Wave.prototype.cancel = function () {
+    if(this.clockTimer)root.clearTimeout(this.clockTimer);this.clockTimer=0;
     if (this.raf)
       root.cancelAnimationFrame(this.raf);
     if (this.initRaf)
@@ -1026,11 +1048,12 @@
     if (this.destroyed)
       return;
     theme = theme || {};
-    this.background = color(theme.background, this.background);
-    this.wave = color(theme.wave, this.wave);
-    this.palette = root.LGXMBWaveColors ? root.LGXMBWaveColors.resolve(theme.colors) : null;
-    if (this.palette)
-      this.wave = this.palette.tint.slice();
+    this.themeBackground = color(theme.background, this.background);
+    this.themeWave = color(theme.wave, this.wave);
+    this.background=this.themeBackground.slice();this.wave=this.themeWave.slice();
+    this.colorSettings=root.LGXMBWaveColors?root.LGXMBWaveColors.normalize(theme.colors):null;
+    this.clockSecond=null;this.refreshClock();
+    if(this.clockTimer)root.clearTimeout(this.clockTimer);this.clockTimer=0;
     this.draw();
   };
   C5Wave.prototype.setStyle = function (o) {

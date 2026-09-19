@@ -44,7 +44,7 @@ test('TV starts with Live TV and retains all four physical inputs', () => {
 test('existing local settings and native TV settings remain accessible', () => {
   const s = load().C5Catalog[0];
   assert.deepEqual(plain(s.items.map(i => i.id)),
-    ['appearance','sound','previews','remote','datetime','com.palm.app.settings','about']);
+    ['appearance','sound','previews','remote','datetime','com.palm.app.settings']);
   assert.equal(s.items.find(i => i.id === 'sound').title, 'Sound');
 });
 test('media categories reuse native apps without undocumented deep links', () => {
