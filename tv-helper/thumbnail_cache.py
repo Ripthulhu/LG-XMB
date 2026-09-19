@@ -14,12 +14,17 @@ import threading
 import time
 import zlib
 from collections import OrderedDict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 HOME_ID = "org.local.openxmb.c5"
+STOCK_HOME_ID = "com.webos.app.home"
 APP_DIR = "/media/developer/apps/usr/palm/applications/" + HOME_ID
 APPINFO = APP_DIR + "/appinfo.json"
+HOME_PAYLOAD_DIR = "/var/lib/lg-xmb-home"
+HOME_MOUNT_DIR = "/usr/palm/applications/" + STOCK_HOME_ID
+HOME_IDENTITY_FILES = ("helper-startup.py", "index.html", "input-preview.js", "tv-bridge.js", "app.js")
 CACHE_DIR = "/tmp/lg-xmb-thumbnails"
 WIDTH, HEIGHT = 480, 270
 # This C5's physical output was independently verified against two DOM/PIG maps.
@@ -34,7 +39,6 @@ URIS = {
     "video": "luna://com.webos.service.videooutput/getStatus",
     "power": "luna://com.webos.service.tvpower/power/getPowerState",
     "capture": "luna://com.webos.service.capture/executeOneShot",
-    "running": "luna://com.webos.applicationManager/running",
 }
 
 
@@ -122,6 +126,111 @@ def check_file(metadata, owner_uid=0):
         raise SafeError("unsafe_file")
 
 
+def inode_identity(metadata):
+    return metadata.st_dev, metadata.st_ino
+
+
+def content_identity(metadata):
+    return (metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_uid,
+            metadata.st_nlink, metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+
+
+@contextmanager
+def preview_directory(path, app_path=False):
+    """Hold and recheck every directory binding; never repair a capture source."""
+    parts = Path(path).parts
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptors = [os.open(parts[0], flags)]
+    try:
+        for part in parts[1:]:
+            fd = os.open(part, flags, dir_fd=descriptors[-1])
+            descriptors.append(fd)
+            info = os.fstat(fd)
+            # LG's shared installation parents may be writable. Our actual app
+            # directory must already have been repaired by checked_app().
+            require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0,
+                    "unsafe_home_preview_directory")
+            if not app_path:
+                check_directory(info)
+        check_directory(os.fstat(descriptors[-1]))
+        yield descriptors[-1]
+        for index, part in enumerate(parts[1:]):
+            named = os.stat(part, dir_fd=descriptors[index], follow_symlinks=False)
+            opened = os.fstat(descriptors[index + 1])
+            require(stat.S_ISDIR(named.st_mode) and
+                    inode_identity(named) == inode_identity(opened), "home_preview_path_changed")
+    finally:
+        for fd in reversed(descriptors):
+            os.close(fd)
+
+
+def read_preview_identity(directory, name, limit=131072, developer_reference=False):
+    """Return immutable bytes and a token that also detects file replacement."""
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    try:
+        before = os.fstat(fd)
+        if developer_reference:
+            # LG may reset installed browser files to 0777 at boot. These are
+            # read-only references, never code we execute or repair. Their bytes
+            # must still match the separate, nonwritable mounted Home payload.
+            require(stat.S_ISREG(before.st_mode) and before.st_uid == 0 and before.st_nlink == 1,
+                    "unsafe_home_preview_reference")
+        else:
+            check_file(before)
+        require(before.st_size <= limit, "home_preview_identity_oversized")
+        raw = bytearray()
+        while len(raw) <= limit:
+            chunk = os.read(fd, min(8192, limit + 1 - len(raw)))
+            if not chunk:
+                break
+            raw.extend(chunk)
+        require(len(raw) <= limit, "home_preview_identity_oversized")
+        named = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        require(content_identity(before) == content_identity(os.fstat(fd)) == content_identity(named),
+                "home_preview_identity_changed")
+        data = bytes(raw)
+        return data, (content_identity(before), hashlib.sha256(data).hexdigest())
+    finally:
+        os.close(fd)
+
+
+def checked_home_preview():
+    """Authorize only our matching payload while it is mounted as stock Home.
+
+    Matching the Home app ID alone would also authorize LG's stock application.
+    Compare the unchanged files used by bootstrap's Home-payload contract, and
+    include their identities in Source so changes invalidate pending captures.
+    """
+    try:
+        with preview_directory(APP_DIR, app_path=True) as developer:
+            with preview_directory(HOME_PAYLOAD_DIR) as payload:
+                with preview_directory(HOME_MOUNT_DIR) as mounted:
+                    directories = tuple(inode_identity(os.fstat(fd))
+                                        for fd in (developer, payload, mounted))
+                    require(directories[1] == directories[2], "home_preview_not_mounted")
+                    original, original_token = read_preview_identity(developer, "appinfo.json", 65536)
+                    raw_home, home_token = read_preview_identity(payload, "appinfo.json", 65536)
+                    require(hashlib.sha256(original).hexdigest() == PIN_APPINFO_SHA256,
+                            "untrusted_app_manifest")
+                    app, home = json.loads(original), json.loads(raw_home)
+                    require(isinstance(app, dict) and isinstance(home, dict) and
+                            app.get("id") == HOME_ID and home.get("id") == STOCK_HOME_ID and
+                            app.get("type") == home.get("type") == "web" and
+                            app.get("main") == home.get("main") == "index.html" and
+                            app.get("version") == home.get("version"), "home_preview_identity_mismatch")
+                    tokens = [original_token, home_token]
+                    for name in HOME_IDENTITY_FILES:
+                        expected, expected_token = read_preview_identity(developer, name,
+                                                                          developer_reference=True)
+                        actual, actual_token = read_preview_identity(payload, name)
+                        require(actual == expected, "home_preview_identity_mismatch")
+                        tokens.extend((expected_token, actual_token))
+                    result = directories, tuple(tokens)
+        return result
+    except (OSError, ValueError, TypeError) as error:
+        raise SafeError("home_preview_unavailable") from error
+
+
 def validate_png(data, width=WIDTH, height=HEIGHT):
     if not 45 <= len(data) <= MAX_IMAGE_BYTES or data[:8] != b"\x89PNG\r\n\x1a\n":
         raise SafeError("invalid_image")
@@ -151,9 +260,14 @@ def validate_png(data, width=WIDTH, height=HEIGHT):
     raise SafeError("invalid_image")
 
 
+def is_home_source(source):
+    return (source.app_id == HOME_ID or
+            (source.app_id == STOCK_HOME_ID and source.home_identity is not None))
+
+
 def home_crop_bounds(source):
     """Map verified physical PIG output to the 1080p capture; round inside it."""
-    if source.app_id != HOME_ID or len(source.mode) != 9:
+    if not is_home_source(source) or len(source.mode) != 9:
         raise SafeError("invalid_home_crop_source")
     width, height, x, y = source.mode[3:7]
     if (any(type(value) is not int for value in (width, height, x, y))
@@ -404,20 +518,7 @@ def ensure_thumbnail_link():
 
 def power_is_active(reply):
     # Fail closed until the caller's exact active state is established.
-    return reply.get("returnValue") is True and reply.get("state") == "Active"
-
-
-def read_process_args(pid):
-    with open("/proc/%s/cmdline" % pid, "rb") as stream:
-        raw = stream.read(16385)
-    if len(raw) > 16384:
-        raise SafeError("invalid_stock_process")
-    return raw.split(b"\0")
-
-
-def verified_stock_args(args):
-    return (isinstance(args, list) and len(args) >= 3
-            and args[:3] == [b"/usr/bin/flutter-client", b"-i", b"com.webos.app.home"])
+    return isinstance(reply, dict) and reply.get("returnValue") is True and reply.get("state") == "Active"
 
 
 @dataclass(frozen=True)
@@ -426,29 +527,46 @@ class Source:
     app_id: str
     context: str
     mode: tuple
+    home_identity: tuple = None
 
 
-def eligible_source(power, foreground, video, allow_home=False):
+def eligible_source(power, foreground, video, allow_home=False, home_identity=None):
     if not power_is_active(power):
         return None
-    if foreground.get("returnValue") is not True or video.get("returnValue") is not True:
+    if (not isinstance(foreground, dict) or not isinstance(video, dict) or
+            foreground.get("returnValue") is not True or video.get("returnValue") is not True):
         return None
     app_id = foreground.get("appId")
-    match = re.fullmatch(r"com\.webos\.app\.hdmi([1-4])", app_id or "")
-    if not match and not (allow_home and app_id == HOME_ID):
+    if not isinstance(app_id, str):
+        return None
+    match = re.fullmatch(r"com\.webos\.app\.hdmi([1-4])", app_id)
+    home = allow_home and (app_id == HOME_ID or
+                          (app_id == STOCK_HOME_ID and home_identity is not None))
+    if not match and not home:
+        return None
+    if not isinstance(video.get("video"), list) or not isinstance(video.get("clients"), list):
         return None
     mains = [v for v in video.get("video", []) if isinstance(v, dict) and v.get("sink") == "MAIN"]
     if len(mains) != 1:
         return None
     value = mains[0]
-    content = re.fullmatch(r"hdmi([1-4])", value.get("contentType", ""))
+    content_type = value.get("contentType")
+    content = re.fullmatch(r"hdmi([1-4])", content_type) if isinstance(content_type, str) else None
     context = value.get("context")
     if (not content or (match and match.group(1) != content.group(1))
             or value.get("appId") != app_id or value.get("connected") is not True
             or value.get("connectedSource") != "HDMI" or value.get("muted") is not False
             or not isinstance(context, str) or not context or context == "unknown"):
         return None
-    rectangle = value.get("displayOutput") or {}
+    rectangle = value.get("displayOutput", {})
+    info = value.get("videoInfo")
+    info = {} if info is None else info
+    if not isinstance(rectangle, dict) or not isinstance(info, dict):
+        return None
+    vrr = info.get("hdmiVrrInfo")
+    vrr = {} if vrr is None else vrr
+    if not isinstance(vrr, dict):
+        return None
     numbers = (value.get("width"), value.get("height"), value.get("frameRate"),
                rectangle.get("width"), rectangle.get("height"))
     if not all(type(v) in (int, float) and v > 0 for v in numbers):
@@ -459,16 +577,17 @@ def eligible_source(power, foreground, video, allow_home=False):
                and c.get("sourceName") == "HDMI"]
     if len(clients) != 1:
         return None
-    info = value.get("videoInfo") or {}
     mode = tuple(numbers) + (rectangle.get("x"), rectangle.get("y"), info.get("hdrType"),
-                            (info.get("hdmiVrrInfo") or {}).get("vrrEnabled"))
-    return Source(int(content.group(1)), app_id, context, mode)
+                            vrr.get("vrrEnabled"))
+    return Source(int(content.group(1)), app_id, context, mode,
+                  home_identity if app_id == STOCK_HOME_ID else None)
 
 
 class Worker:
     def __init__(self, luna, cache, installed=app_installed, clock=time.monotonic,
                  wall=time.time, stop=None, capture_method="VIDEO", allow_home=False,
-                 ensure_link=ensure_thumbnail_link, app_ready=None):
+                 ensure_link=ensure_thumbnail_link, app_ready=None,
+                 verify_home=checked_home_preview):
         if capture_method not in ("BLENDED", "VIDEO") or (allow_home and capture_method != "VIDEO"):
             raise SafeError("unverified_home_capture_mode")
         self.luna, self.cache, self.installed = luna, cache, installed
@@ -477,6 +596,7 @@ class Worker:
         self.capture_method, self.allow_home = capture_method, allow_home
         self.ensure_link = ensure_link
         self.app_ready, self.app_missing_since = app_ready, None
+        self.verify_home = verify_home
         self.observed, self.since = None, 0
         self.attempts = OrderedDict()
         self.last_capture = {}
@@ -486,12 +606,17 @@ class Worker:
         if not power_is_active(power):
             return None
         foreground = self.luna("foreground", {})
-        app_id = foreground.get("appId")
-        if not (re.fullmatch(r"com\.webos\.app\.hdmi[1-4]", app_id or "")
-                or (self.allow_home and app_id == HOME_ID)):
+        if not isinstance(foreground, dict):
             return None
+        app_id = foreground.get("appId")
+        if not isinstance(app_id, str):
+            return None
+        if not (re.fullmatch(r"com\.webos\.app\.hdmi[1-4]", app_id)
+                or (self.allow_home and app_id in (HOME_ID, STOCK_HOME_ID))):
+            return None
+        home_identity = self.verify_home() if app_id == STOCK_HOME_ID else None
         video = self.luna("video", {})
-        return eligible_source(power, foreground, video, self.allow_home)
+        return eligible_source(power, foreground, video, self.allow_home, home_identity)
 
     def status(self, state, source=None, error=None):
         value = {"version": 1, "state": state, "updatedAt": int(self.wall()),
@@ -502,12 +627,46 @@ class Worker:
             value["error"] = error
         self.cache.status(value)
 
+    def source_unchanged(self, source):
+        """Recheck foreground, signal and takeover identity before publishing."""
+        after = None if self.stop.is_set() else self.snapshot()
+        if after == source and not self.stop.is_set() and self.installed():
+            return True
+        self.observed = after
+        self.since = self.clock()
+        self.status("discarded_source_changed")
+        return False
+
+    def capture(self, source):
+        """Capture once, crop Home's owned rectangle, then publish atomically."""
+        target = self.cache.prepare()
+        try:
+            home = is_home_source(source)
+            if home:
+                home_crop_bounds(source)
+            self.luna("capture", {"path": target, "method": self.capture_method,
+                                  "width": PIG_CAPTURE_WIDTH if home else WIDTH,
+                                  "height": PIG_CAPTURE_HEIGHT if home else HEIGHT,
+                                  "format": "PNG"})
+            if not self.source_unchanged(source):
+                return
+            if home:
+                self.cache.crop_home(source)
+                # The first lazy OpenCV import can take seconds on this TV.
+                if not self.source_unchanged(source):
+                    return
+            self.cache.publish(source.port)
+            self.last_capture["hdmi%d" % source.port] = int(self.wall())
+            self.status("captured", source)
+        finally:
+            self.cache.remove_temp()
+
     def step(self):
         if self.stop.is_set():
             return False
         if self.app_ready is not None:
             try:
-                # Only the opt-in controller may repair its pinned app metadata.
+                # Repair only the exact installed app's pinned metadata.
                 if self.app_ready() is not True:
                     raise SafeError("app_metadata_rejected")
             except FileNotFoundError:
@@ -560,35 +719,7 @@ class Worker:
             self.attempts.move_to_end(key)
             while len(self.attempts) > 32:
                 self.attempts.popitem(last=False)
-            target = self.cache.prepare()
-            try:
-                is_home = source.app_id == HOME_ID
-                if is_home:
-                    home_crop_bounds(source)
-                self.luna("capture", {"path": target, "method": self.capture_method,
-                                      "width": PIG_CAPTURE_WIDTH if is_home else WIDTH,
-                                      "height": PIG_CAPTURE_HEIGHT if is_home else HEIGHT,
-                                      "format": "PNG"})
-                after = None if self.stop.is_set() else self.snapshot()
-                if after != source or self.stop.is_set() or not self.installed():
-                    self.observed = after
-                    self.since = self.clock()
-                    self.status("discarded_source_changed")
-                    return True
-                if is_home:
-                    self.cache.crop_home(source)
-                    # The first lazy OpenCV import can take seconds on this TV.
-                    after = None if self.stop.is_set() else self.snapshot()
-                    if after != source or self.stop.is_set() or not self.installed():
-                        self.observed = after
-                        self.since = self.clock()
-                        self.status("discarded_source_changed")
-                        return True
-                self.cache.publish(source.port)
-                self.last_capture["hdmi%d" % source.port] = int(self.wall())
-                self.status("captured", source)
-            finally:
-                self.cache.remove_temp()
+            self.capture(source)
         except SafeError as error:
             self.observed = None
             self.status("skipped", source, str(error))

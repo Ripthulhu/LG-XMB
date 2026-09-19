@@ -6,6 +6,16 @@ const path=require('node:path');
 const os=require('node:os');
 const {createHash}=require('node:crypto');
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+test('helper inventory rejects missing entry points and noncanonical paths',async()=>{
+  const {validateHelperSources,helperSources}=await import('../tools/stage-helper.mjs');
+  assert.doesNotThrow(()=>validateHelperSources(helperSources));
+  for(const name of Object.keys(helperSources)){
+    const incomplete={...helperSources};delete incomplete[name];
+    assert.throws(()=>validateHelperSources(incomplete),/entry points/);
+  }
+  for(const source of ['tv-helper/../outside.py','tv-helper/..\\..\\outside.py','tv-helper//capture.py','C:/capture.py'])
+    assert.throws(()=>validateHelperSources({...helperSources,'extra.py':source}),/Invalid helper source/);
+});
 test('package staging includes each helper and binds it to the exact manifest',async()=>{
   const {stageHelper,helperSources}=await import('../tools/stage-helper.mjs');
   const root=path.resolve(__dirname,'..'),temp=fs.mkdtempSync(path.join(os.tmpdir(),'lg-xmb-stage-'));

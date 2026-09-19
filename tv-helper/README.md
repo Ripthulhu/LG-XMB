@@ -14,6 +14,7 @@ The helper ships inside the IPK. See
 | `app/helper-startup.py` | Verify the bundle, prepare paths and start or reuse the worker |
 | `tv-helper/thumbnail_cache.py` | Poll eligible HDMI sources and capture thumbnails |
 | `tv-helper/recovery/stop_thumbnail_helper.py` | Stop recognised workers and remove recognised startup hooks |
+| `tv-helper/bundle-sources.json` | Shared source inventory for packaging and verification |
 | `tools/stage-helper.mjs` | Copy helper sources and generate package hashes |
 
 The bootstrap runs through Homebrew Channel's existing `exec` service. It starts
@@ -41,6 +42,12 @@ developer app as `thumbnails`. The cache is temporary. Changed, disconnected or
 muted sources aren't published. Atomic replacement preserves an earlier picture
 when a new attempt fails.
 
+Live previews can also be captured when LG-XMB runs as `com.webos.app.home`.
+The worker verifies that the active Home mount is our protected payload, with
+the same version and preview code as the pinned developer app. Matching the
+app ID alone is insufficient. File identities are rechecked after capture and
+cropping; a changed mount or file discards the pending picture.
+
 ## Verification and state
 
 The bootstrap verifies root ownership, anchored paths, file types and the
@@ -56,6 +63,16 @@ stops the worker.
 locks prevent overlapping starts. The root-only startup log is
 `/var/lib/webosbrew/lg-xmb-startup.log`, bounded to 16 KiB. Check capture status
 as well as that log: a launch request isn't proof that a picture was captured.
+
+The frontend checks the heartbeat when Home resumes. A previously confirmed
+worker gets ten seconds to wake; a stale, stopped or explicitly missing status
+then permits one setup attempt. Ambiguous read or setup failures require manual
+Retry. Input preview settings refresh health while open and stop polling when
+closed or hidden. Recovery refreshes the selected cached picture once.
+
+To add a packaged helper module, update `bundle-sources.json`. The packager
+generates the hashes and pins the complete manifest into the bootstrap. The
+bootstrap verifies every listed file before loading its named entry points.
 
 ## Audio links
 
@@ -77,6 +94,7 @@ A failure in optional audio preparation doesn't block capture setup.
 python3 -B -m unittest discover -s tests -p 'test_*.py'
 python3 -B -m unittest discover -s tv-helper -p 'test_*.py'
 python3 -B -m unittest discover -s tv-helper/recovery -p 'test_*.py'
+npm run test:helper
 ```
 
 Run from the repository root. Ownership tests need an isolated Linux root

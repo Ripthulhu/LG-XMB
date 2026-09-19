@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import copy
 import hashlib
 import importlib.util
 import io
@@ -17,6 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+HELPER_SOURCES = json.loads((ROOT / 'tv-helper/bundle-sources.json').read_text(encoding='utf-8'))
 spec = importlib.util.spec_from_file_location('startup', ROOT / 'app/helper-startup.py')
 startup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(startup)
@@ -73,14 +73,12 @@ class SetupFixture(unittest.TestCase):
         os_view.fchown = change_owner
         os_view.geteuid = lambda: 0
         self.patches = patch.multiple(startup, os=os_view, APP_DIR=str(self.app), BASE=str(self.base), MUSIC_DIR=str(self.music),
-            LEGACY_BASE=str(self.legacy), CACHE=self.cache, LEGACY_CACHE=self.old_cache,
+            HOME_PAYLOAD_DIR=str(self.root / 'absent-home'), CACHE=self.cache, LEGACY_CACHE=self.old_cache,
             LOG_DIR=str(self.log), BUNDLE_SHA256='fixture')
         self.patches.start()
         self.addCleanup(self.patches.stop)
         # Real file metadata and byte checks; no TV services or processes.
-        self.config = {'schema': 1, 'revision': 0, 'enabled': {'home': False}, 'saved': {}}
-        self.control = SimpleNamespace(PIN_APPINFO_SHA256='', checked_app=lambda: None,
-            default_config=lambda: copy.deepcopy(self.config), valid_config=self.validate_config)
+        self.capture = SimpleNamespace(PIN_APPINFO_SHA256='', checked_app=lambda: None)
         self.stops = []
         self.recovery = SimpleNamespace(HOOK_NAME='60-lg-xmb', HOOK_TARGET=str(self.app / 'helper-startup.py'),
             HELPER=str(self.bundle / 'thumbnail_cache.py').encode(),
@@ -89,15 +87,9 @@ class SetupFixture(unittest.TestCase):
         (self.app / 'appinfo.json').write_bytes(b'{"id":"org.local.openxmb.c5"}\n')
         (self.app / 'helper-startup.py').write_text('#!/bin/sh\nexit 0\n')
         (self.app / 'helper-startup.py').chmod(0o755)
-        for name in startup.FILES:
+        for name in HELPER_SOURCES:
             (self.bundle / name).write_text('# fixture\n')
         self.update_manifest()
-
-    @staticmethod
-    def validate_config(value):
-        if not isinstance(value, dict) or value.get('schema') != 1 or not isinstance(value.get('saved'), dict):
-            raise ValueError('bad fixture config')
-        return value
 
     def read_hook(self, directory):
         try:
@@ -108,15 +100,19 @@ class SetupFixture(unittest.TestCase):
             raise startup.SetupError('startup_hook_conflict')
         return (meta.st_ino,), self.recovery.HOOK_TARGET
 
-    def update_manifest(self):
-        self.control.PIN_APPINFO_SHA256 = digest((self.app / 'appinfo.json').read_bytes())
-        manifest = {'schema': 1, 'appinfoSha256': self.control.PIN_APPINFO_SHA256,
-                    'files': {name: digest((self.bundle / name).read_bytes()) for name in startup.FILES}}
+    def update_manifest(self, extra_files=()):
+        self.capture.PIN_APPINFO_SHA256 = digest((self.app / 'appinfo.json').read_bytes())
+        manifest = {'schema': 1, 'appinfoSha256': self.capture.PIN_APPINFO_SHA256,
+                    'files': {name: digest((self.bundle / name).read_bytes())
+                              for name in [*HELPER_SOURCES, *extra_files]}}
+        self.write_manifest(manifest)
+
+    def write_manifest(self, manifest):
         (self.bundle / 'bundle.json').write_text(json.dumps(manifest))
         startup.BUNDLE_SHA256 = digest((self.bundle / 'bundle.json').read_bytes())
 
     def modules(self, name, raw, path):
-        return self.control if name == 'lg_xmb_control' else self.recovery
+        return {'lg_xmb_capture': self.capture, 'lg_xmb_recovery': self.recovery}[name]
 
     def run_setup(self, running=True):
         with patch.object(startup, 'load_module', side_effect=self.modules), \
@@ -124,12 +120,15 @@ class SetupFixture(unittest.TestCase):
             result = startup.start()
         return result, launch
 
-    def test_clean_install_without_old_helper_creates_safe_config_and_app_owned_links(self):
+    def test_clean_install_records_bundle_and_creates_app_owned_links(self):
         result, launch = self.run_setup()
         self.assertTrue(result['ready'])
         self.assertTrue(result['captureRunning'])
-        self.assertEqual(json.loads((self.base / 'background.json').read_text()), self.config)
-        self.assertEqual(stat.S_IMODE((self.base / 'background.json').stat().st_mode), 0o600)
+        record = self.base / 'installed.json'
+        self.assertEqual(json.loads(record.read_text()),
+                         {'bundle': startup.BUNDLE_SHA256, 'legacyMigrated': True})
+        self.assertEqual(stat.S_IMODE(record.stat().st_mode), 0o600)
+        self.assertFalse((self.base / 'background.json').exists())
         self.assertEqual(os.readlink(self.app / 'thumbnails'), self.cache)
         self.assertEqual(os.readlink(self.log / 'init.d/60-lg-xmb'), self.recovery.HOOK_TARGET)
         self.assertFalse(self.legacy.exists())
@@ -203,40 +202,28 @@ class SetupFixture(unittest.TestCase):
         self.assertFalse((self.base / 'music').exists())
         self.assertIn('music_path_unavailable', (self.log / startup.LOG_NAME).read_text())
 
-    def test_existing_settings_and_rollback_values_migrate_byte_for_byte(self):
+    def test_old_controller_state_is_preserved_without_migration(self):
         self.legacy.mkdir()
         raw = b'{"schema":1,"revision":9,"enabled":{"home":true},"saved":{"home":{"enabled":true,"permanentRestore":true}}}\n'
         (self.legacy / 'background.json').write_bytes(raw)
         self.run_setup()
-        self.assertEqual((self.base / 'background.json').read_bytes(), raw)
+        self.assertFalse((self.base / 'background.json').exists())
         self.assertEqual((self.legacy / 'background.json').read_bytes(), raw)
         self.assertEqual(self.stops[0], {'legacy_only': True})
 
-    def test_migration_receipt_does_not_reimport_stale_legacy_choices(self):
-        self.legacy.mkdir()
-        (self.legacy / 'background.json').write_text(json.dumps(self.config))
-        self.run_setup()
-        current = dict(self.config, revision=10)
-        (self.base / 'background.json').write_text(json.dumps(current))
-        self.run_setup()
-        self.assertEqual(json.loads((self.base / 'background.json').read_text()), current)
-
-    def test_different_existing_configs_are_preserved_and_reported(self):
+    def test_unrelated_controller_files_do_not_block_or_change_during_setup(self):
+        # Capture setup no longer owns the removed background controller's
+        # configuration. It must preserve old recovery data without parsing it.
         self.base.mkdir()
         self.legacy.mkdir()
-        (self.base / 'background.json').write_text(json.dumps(self.config))
-        (self.legacy / 'background.json').write_text(json.dumps(dict(self.config, revision=8)))
-        before = [(p / 'background.json').read_bytes() for p in (self.base, self.legacy)]
-        with self.assertRaisesRegex(startup.SetupError, 'legacy_config_conflict'):
-            self.run_setup()
-        self.assertEqual([(p / 'background.json').read_bytes() for p in (self.base, self.legacy)], before)
-
-    def test_invalid_config_is_not_reset(self):
-        self.base.mkdir()
-        (self.base / 'background.json').write_text('{"invalid":true}')
-        with self.assertRaises(ValueError):
-            self.run_setup()
-        self.assertEqual((self.base / 'background.json').read_text(), '{"invalid":true}')
+        files = [directory / 'background.json' for directory in (self.base, self.legacy)]
+        files[0].write_bytes(b'not valid JSON')
+        files[1].write_bytes(b'{"saved":{"home":{"enabled":true}}}\n')
+        before = [(file.read_bytes(), file.stat().st_ino) for file in files]
+        for _ in range(2):
+            result, _ = self.run_setup()
+            self.assertTrue(result['ready'])
+            self.assertEqual([(file.read_bytes(), file.stat().st_ino) for file in files], before)
 
     def test_old_thumbnail_link_is_migrated_without_deleting_pictures(self):
         target = Path(self.old_cache)
@@ -269,40 +256,85 @@ class SetupFixture(unittest.TestCase):
         launch.assert_not_called()
         self.assertEqual(self.stops, [{'legacy_only': True}])
 
-    def test_bundle_upgrade_stops_previous_generation_and_preserves_config(self):
+    def test_bundle_upgrade_stops_previous_generation_and_preserves_user_music(self):
         self.run_setup()
-        raw = (self.base / 'background.json').read_bytes()
+        track = self.music / 'background.mp3'
+        track.write_bytes(b'user recording')
+        before = (track.read_bytes(), track.stat().st_ino)
+        old_bundle = json.loads((self.base / 'installed.json').read_text())['bundle']
         self.stops.clear()
         (self.bundle / 'thumbnail_cache.py').write_text('# next reviewed fixture\n')
         self.update_manifest()
         self.run_setup()
         self.assertEqual(self.stops, [{'legacy_only': True}, {}])
-        self.assertEqual((self.base / 'background.json').read_bytes(), raw)
+        self.assertEqual((track.read_bytes(), track.stat().st_ino), before)
+        self.assertNotEqual(old_bundle, startup.BUNDLE_SHA256)
+        self.assertEqual(json.loads((self.base / 'installed.json').read_text())['bundle'],
+                         startup.BUNDLE_SHA256)
 
-    def test_capture_start_failure_does_not_disable_on_demand_home_controls(self):
+    def test_capture_start_failure_reports_no_worker_but_prepares_audio_links(self):
         result, _ = self.run_setup(running=False)
         self.assertTrue(result['ready'])
         self.assertFalse(result['captureRunning'])
+        self.assertEqual(os.readlink(self.app / 'user-music.mp3'), str(self.music / 'background.mp3'))
+        self.assertTrue((self.app / 'user-sounds/snd_cursor.wav').is_symlink())
 
-    def test_missing_bundle_never_launches_or_initializes_config(self):
+    def test_missing_bundle_never_launches_or_records_installation(self):
         (self.bundle / 'thumbnail_cache.py').unlink()
         with self.assertRaisesRegex(startup.SetupError, 'bundle_incomplete'):
             self.run_setup()
-        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse(os.path.lexists(self.app / 'user-music.mp3'))
         self.assertFalse((self.base / 'installed.json').exists())
 
     def test_changed_bundle_bytes_are_rejected(self):
         (self.bundle / 'thumbnail_cache.py').write_text('# changed bytes\n')
         with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
             self.run_setup()
-        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse(os.path.lexists(self.app / 'user-music.mp3'))
         self.assertFalse((self.base / 'installed.json').exists())
+
+    def test_additional_pinned_module_is_verified_before_any_module_load(self):
+        module = self.bundle / 'audio_paths.py'
+        module.write_bytes(b'# optional module fixture\n')
+        self.update_manifest(extra_files=(module.name,))
+        with patch.object(startup, 'load_module', side_effect=self.modules) as load:
+            capture, recovery, bundle = startup.load_bundle()
+            self.assertIs(capture, self.capture)
+            self.assertIs(recovery, self.recovery)
+            self.assertEqual(bundle, startup.BUNDLE_SHA256)
+            self.assertEqual(load.call_count, 2)
+        module.write_bytes(b'# changed after packaging\n')
+        with patch.object(startup, 'load_module') as load:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
+                startup.load_bundle()
+            load.assert_not_called()
+
+    def test_pinned_inventory_cannot_read_outside_the_helper_directory(self):
+        manifest = json.loads((self.bundle / 'bundle.json').read_text())
+        for name in ('../foreign.py', '/foreign.py', 'nested/module.py'):
+            with self.subTest(name=name), patch.object(startup, 'load_module') as load:
+                invalid = dict(manifest, files=dict(manifest['files'], **{name: '0' * 64}))
+                self.write_manifest(invalid)
+                with self.assertRaisesRegex(startup.SetupError, 'invalid_helper_bundle'):
+                    startup.load_bundle()
+                load.assert_not_called()
+
+    def test_pinned_inventory_still_requires_both_entry_points(self):
+        manifest = json.loads((self.bundle / 'bundle.json').read_text())
+        for name in ('thumbnail_cache.py', 'stop_thumbnail_helper.py'):
+            with self.subTest(name=name), patch.object(startup, 'load_module') as load:
+                invalid = dict(manifest, files={key: value for key, value in manifest['files'].items()
+                                               if key != name})
+                self.write_manifest(invalid)
+                with self.assertRaisesRegex(startup.SetupError, 'invalid_helper_bundle'):
+                    startup.load_bundle()
+                load.assert_not_called()
 
     def test_changed_app_manifest_is_rejected(self):
         (self.app / 'appinfo.json').write_text('{"id":"foreign"}')
         with self.assertRaisesRegex(startup.SetupError, 'untrusted_app_manifest'):
             self.run_setup()
-        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse(os.path.lexists(self.app / 'user-music.mp3'))
         self.assertFalse((self.base / 'installed.json').exists())
 
     def test_symlinked_bundle_member_is_rejected_without_following_it(self):
@@ -357,7 +389,7 @@ class SetupFixture(unittest.TestCase):
             self.run_setup()
         self.assertFalse((self.root / 'foreign').exists())
 
-    def test_busy_setup_has_a_bounded_wait_without_modifying_configuration(self):
+    def test_busy_setup_has_a_bounded_wait_without_preparing_paths_or_state(self):
         import fcntl
         self.base.mkdir()
         with (self.base / 'setup.lock').open('w') as lock:
@@ -367,16 +399,21 @@ class SetupFixture(unittest.TestCase):
                  self.assertRaisesRegex(startup.SetupError, 'setup_in_progress'):
                 self.run_setup()
             load.assert_not_called()
-        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse((self.base / 'installed.json').exists())
+        self.assertFalse(os.path.lexists(self.app / 'thumbnails'))
 
-    def test_app_removal_breaks_boot_link_without_removing_recovery_values(self):
+    def test_app_removal_breaks_boot_link_without_removing_user_music_or_install_record(self):
         self.run_setup()
+        track = self.music / 'background.mp3'
+        track.write_bytes(b'user recording')
+        record = (self.base / 'installed.json').read_bytes()
         link = self.log / 'init.d/60-lg-xmb'
         self.assertTrue(link.exists())
         shutil.rmtree(self.app)
         self.assertTrue(link.is_symlink())
         self.assertFalse(link.exists())
-        self.assertTrue((self.base / 'background.json').exists())
+        self.assertEqual(track.read_bytes(), b'user recording')
+        self.assertEqual((self.base / 'installed.json').read_bytes(), record)
         if shutil.which('run-parts'):
             result = subprocess.run(['run-parts', '--test', str(self.log / 'init.d')], capture_output=True, text=True)
             self.assertNotIn('60-lg-xmb', result.stdout)
@@ -425,7 +462,8 @@ class SetupFixture(unittest.TestCase):
         self.bundle.chmod(0o777)
         self.run_setup()
         self.assertEqual(stat.S_IMODE(self.bundle.stat().st_mode), 0o755)
-        self.assertEqual(self.log_records()[-1]['event'], 'helper_directory_repaired')
+        self.assertEqual(len([entry for entry in self.log_records()
+                              if entry['event'] == 'helper_directory_repaired']), 1)
         self.assertEqual(self.chowns, [])
 
     def test_ownership_mismatch_is_reported_distinctly_without_chown(self):
@@ -440,7 +478,7 @@ class SetupFixture(unittest.TestCase):
         self.assertEqual(reply['errorCode'], 'helper_owner_mismatch')
         self.assertEqual(self.log_records()[-1]['uid'], 1001)
         chown.assert_not_called()
-        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse(os.path.lexists(self.app / 'thumbnails'))
         self.assertFalse((self.base / 'installed.json').exists())
 
     def test_missing_bundle_logs_without_a_running_capture_worker(self):
@@ -501,8 +539,7 @@ class SetupFixture(unittest.TestCase):
         before = {p.name: p.read_bytes() for p in self.bundle.iterdir()}
         parent_mode = self.root.stat().st_mode
         self.base.mkdir()
-        saved = dict(self.config, revision=4, saved={'home': {'enabled': True}})
-        raw = (json.dumps(saved) + '\n').encode()
+        raw = b'{"saved":{"home":{"enabled":true}}}\n'
         (self.base / 'background.json').write_bytes(raw)
         result, launch = self.run_setup()
         self.assertTrue(result['ready'])
@@ -514,7 +551,7 @@ class SetupFixture(unittest.TestCase):
         self.assertEqual({p.name: p.read_bytes() for p in self.bundle.iterdir()}, before)
         self.assertEqual((self.base / 'background.json').read_bytes(), raw)
         launch.assert_called_once()
-        event = self.log_records()[-1]
+        event, = [entry for entry in self.log_records() if entry['event'] == 'helper_directory_repaired']
         self.assertEqual((event['event'], event['fromUid'], event['fromGid']),
                          ('helper_directory_repaired', 1001, 1001))
         self.run_setup()
@@ -552,17 +589,26 @@ class SetupFixture(unittest.TestCase):
             startup.load_bundle()
         self.assertEqual(self.chowns, [])
 
-    def test_foreign_owned_or_writable_members_are_not_repaired(self):
+    def test_foreign_owned_members_are_not_adopted_during_legacy_directory_repair(self):
         self.set_legacy_owner()
         member = self.bundle / 'thumbnail_cache.py'
         self.owners[member] = (1001, 1001)
-        with self.assertRaises(startup.SetupError):
-            startup.load_bundle()
-        self.owners[member] = (0, 0)
         member.chmod(0o666)
         with self.assertRaises(startup.SetupError):
             startup.load_bundle()
+        self.assertEqual(stat.S_IMODE(member.stat().st_mode), 0o666)
         self.assertEqual(self.chowns, [])
+
+    def test_verified_writable_members_survive_legacy_directory_repair(self):
+        self.set_legacy_owner()
+        member = self.bundle / 'thumbnail_cache.py'
+        before = member.read_bytes()
+        member.chmod(0o666)
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual(member.read_bytes(), before)
+        self.assertEqual(stat.S_IMODE(member.stat().st_mode), 0o644)
+        self.assertEqual(self.chowns, [(self.bundle, 0, 0)])
 
     def test_legacy_directory_with_extra_entries_is_not_adopted(self):
         self.set_legacy_owner()
@@ -664,7 +710,7 @@ class SetupFixture(unittest.TestCase):
         finally:
             os.close(descriptor)
             os.close(directory)
-        self.assertFalse((self.base / 'background.json').exists())
+        self.assertFalse((self.base / 'installed.json').exists())
 
     def test_reused_worker_does_not_rewrite_installation_record(self):
         self.run_setup()
@@ -700,9 +746,10 @@ class SetupFixture(unittest.TestCase):
         stops = self.root / 'stops.fixture'
         if upgrade:
             self.run_setup()
+            (self.music / 'background.mp3').write_bytes(b'user recording')
             (self.bundle / 'thumbnail_cache.py').write_text('# upgraded fixture\n')
             self.update_manifest()
-        saved = (self.base / 'background.json').read_bytes() if upgrade else None
+        saved = (self.music / 'background.mp3').read_bytes() if upgrade else None
         def stop(**kwargs):
             if not kwargs.get('legacy_only'):
                 with stops.open('a') as file:
@@ -760,8 +807,10 @@ class SetupFixture(unittest.TestCase):
             self.assertEqual(results, [{'error': 'fixture_start_failure'} if fail_first else expected, expected])
             self.assertEqual(launches.read_text(), 'launch\n')
             self.assertEqual(stops.read_text(), 'stop\n' * (2 if fail_first else 1))
+            self.assertEqual(json.loads((self.base / 'installed.json').read_text())['bundle'],
+                             startup.BUNDLE_SHA256)
             if saved is not None:
-                self.assertEqual((self.base / 'background.json').read_bytes(), saved)
+                self.assertEqual((self.music / 'background.mp3').read_bytes(), saved)
             events = [entry['event'] for entry in self.log_records()]
             self.assertIn('setup_waiting', events)
             self.assertIn('setup_resumed', events)
@@ -778,7 +827,7 @@ class SetupFixture(unittest.TestCase):
     def test_simultaneous_clean_setups_start_one_worker_and_both_succeed(self):
         self.concurrent_setup()
 
-    def test_simultaneous_upgrade_setups_restart_once_and_preserve_settings(self):
+    def test_simultaneous_upgrade_setups_restart_once_and_preserve_user_music(self):
         self.concurrent_setup(upgrade=True)
 
     def test_waiter_revalidates_after_an_unsuccessful_owner_instead_of_assuming_ready(self):

@@ -15,13 +15,12 @@ class UninstallTests(unittest.TestCase):
             return True
         luna = Mock(return_value={'returnValue': True, 'state': 'Standby'})
         cache = Mock()
-        controller = Mock(last_status={})
         link = Mock()
         worker = tc.Worker(luna, cache, installed=lambda: present[0],
                            clock=lambda: now[0], wall=lambda: 0,
                            ensure_link=link, app_ready=app_ready)
         self.assertTrue(worker.step())
-        luna.reset_mock(); controller.reset_mock(); link.reset_mock()
+        luna.reset_mock(); link.reset_mock()
         present[0] = False
         now[0] = 5
         self.assertTrue(worker.step())
@@ -31,7 +30,6 @@ class UninstallTests(unittest.TestCase):
         self.assertFalse(worker.step())
         self.assertEqual(cache.status.call_args.args[0]['state'], 'app_unavailable')
         luna.assert_not_called()
-        controller.observe.assert_not_called()
         link.assert_not_called()
 
     def test_boot_mount_grace_still_allows_app_to_appear(self):

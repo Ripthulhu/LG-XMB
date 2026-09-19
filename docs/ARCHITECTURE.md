@@ -26,7 +26,7 @@ page structure. Read the controller only when a change crosses feature boundarie
 | TV APIs | `app/tv-bridge.js`, `app/app-manager.js`, `app/system-time.js` | Bounded native requests for launch/input/audio, app information/removal and clock settings |
 | HDMI pictures | `app/thumbnail.js`, `app/input-preview.js` | Cached images and optional live video; separate lifecycles |
 | Audio | `app/background-music.js`, `app/menu-sounds.js` | Playback, availability, suspension and recovery |
-| Helper client | `app/helper.js` | Request verified helper setup and read capture readiness |
+| Helper client | `app/helper.js` | Verified setup, capture health reads and bounded resume recovery |
 | Page styling | `app/style.css`, `app/date-time-settings.css` | Layout, typography, shared controls and date/time controls |
 
 Feature modules expose a small `C5…` or `LGXMB…` browser global. Modules that can
@@ -105,6 +105,31 @@ replies must not move it.
 status handling remain in the launcher, with playback in the audio modules.
 Keep new feature-specific rendering in a module and let the launcher provide
 its dependencies.
+
+### Helper lifecycle and status
+
+`app/helper.js` owns native setup and capture health; `app/app.js` owns the
+Settings text and focus. Setup readiness is not proof that the capture worker
+is still running. Read `captureHealth` separately from `ready` and the last
+setup result's `captureRunning` value.
+
+The launcher calls `resume()`, `suspend()` and `destroy()` with its page
+lifecycle. Resume events are deduplicated. A previously confirmed worker gets
+10 seconds to refresh its heartbeat before one recovery attempt for a stopped,
+stale or explicitly missing status file. Uncertain setup failures require
+manual Retry; they must not become an automatic setup loop. Suspension cancels
+health reads and delayed recovery, and late responses cannot update a new session.
+
+Input preview Settings uses `watchCapture(true)` for five-second, read-only
+health checks and turns it off when the panel closes. Health changes emit
+`lg-xmb-helper-status`. Successful recovery separately emits
+`lg-xmb-helper-recovered`, which refreshes the selected cached picture and audio
+links once. Ordinary heartbeat reads must not reload media or move focus.
+When Retry disappears, move focus off that button before hiding it.
+
+Run `npm run test:helper` for the helper and thumbnail unit tests plus the
+Settings/lifecycle browser checks. These use local fixtures, not a TV. Native
+capture and recovery still need device validation.
 
 ### Background and animation
 

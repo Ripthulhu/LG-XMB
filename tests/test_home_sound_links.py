@@ -127,6 +127,98 @@ class HomeSoundLinks(unittest.TestCase):
         self.sync_payload(); code = self.home / 'menu-sounds.js'; code.chmod(0o666)
         self.assertFalse(startup.prepare_user_sounds()); self.assertEqual(code.stat().st_mode & 0o777, 0o666)
 
+    def test_boot_reset_developer_references_and_aliases_are_supported(self):
+        self.sync_payload(); self.assertTrue(startup.prepare_user_sounds())
+        links = {str(p): p.lstat().st_ino for root in (self.dev, self.home)
+                 for p in (root / 'user-sounds').iterdir()}
+        references = [self.dev / name for name in ('helper-startup.py', 'index.html', 'menu-sounds.js')]
+        for reference in references:
+            reference.chmod(0o777)
+        before = [(p.read_bytes(), startup.sound_entry_identity(p.stat())) for p in references]
+        (self.dev / 'user-sounds').chmod(0o777)
+        self.assertTrue(startup.prepare_user_sounds())
+        self.assert_links(self.dev); self.assert_links(self.home)
+        self.assertEqual((self.dev / 'user-sounds').stat().st_mode & 0o777, 0o755)
+        self.assertEqual({str(p): p.lstat().st_ino for root in (self.dev, self.home)
+                          for p in (root / 'user-sounds').iterdir()}, links)
+        self.assertEqual([(p.read_bytes(), startup.sound_entry_identity(p.stat())) for p in references], before)
+
+    def test_writable_developer_reference_still_requires_matching_bytes(self):
+        self.sync_payload()
+        reference = self.dev / 'helper-startup.py'; reference.chmod(0o777)
+        reference.write_bytes(b'changed developer code')
+        self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual(reference.read_bytes(), b'changed developer code')
+        self.assertEqual(reference.stat().st_mode & 0o777, 0o777)
+        self.assertFalse((self.home / 'user-sounds').exists())
+
+    def test_writable_developer_manifest_remains_rejected(self):
+        self.sync_payload(); manifest = self.dev / 'appinfo.json'; manifest.chmod(0o777)
+        self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual(manifest.stat().st_mode & 0o777, 0o777)
+        self.assertFalse((self.home / 'user-sounds').exists())
+
+    def test_writable_home_alias_directory_is_not_repaired(self):
+        self.sync_payload(); directory = self.home / 'user-sounds'; directory.mkdir(); directory.chmod(0o777)
+        self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual(directory.stat().st_mode & 0o777, 0o777)
+        self.assertEqual(list(directory.iterdir()), [])
+
+    def test_developer_reference_symlink_is_not_followed(self):
+        self.sync_payload(); reference = self.dev / 'index.html'; reference.unlink()
+        reference.symlink_to(self.home / 'index.html')
+        self.assertFalse(startup.prepare_user_sounds())
+        self.assertTrue(reference.is_symlink())
+        self.assertFalse((self.home / 'user-sounds').exists())
+
+    def test_developer_reference_hardlink_is_rejected(self):
+        self.sync_payload(); reference = self.dev / 'index.html'; reference.chmod(0o777)
+        os.link(reference, self.dev / 'extra-link')
+        self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual(reference.stat().st_nlink, 2)
+        self.assertFalse((self.home / 'user-sounds').exists())
+
+    def test_developer_reference_foreign_owner_is_not_repaired(self):
+        self.sync_payload(); reference = self.dev / 'index.html'; reference.chmod(0o777)
+        os.chown(reference, 1001, 1001)
+        self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual((reference.stat().st_uid, reference.stat().st_mode & 0o777), (1001, 0o777))
+        self.assertFalse((self.home / 'user-sounds').exists())
+
+    def test_writable_developer_reference_changed_during_read_is_rejected(self):
+        self.sync_payload(); reference = self.dev / 'index.html'; reference.chmod(0o777)
+        original, inode = reference.read_bytes(), reference.stat().st_ino
+        read = os.read
+        changed = False
+        def change(fd, size):
+            nonlocal changed
+            if not changed and os.fstat(fd).st_ino == inode:
+                changed = True
+                reference.write_bytes(original + b'changed')
+            return read(fd, size)
+        with patch.object(startup.os, 'read', side_effect=change):
+            with self.assertRaisesRegex(startup.SetupError, 'sound_payload_identity_changed'):
+                startup.checked_sound_home_payload()
+        self.assertFalse((self.home / 'user-sounds').exists())
+
+    def test_equal_reference_replaced_during_read_is_rejected(self):
+        self.sync_payload(); reference = self.dev / 'index.html'; reference.chmod(0o777)
+        replacement = self.dev / 'replacement.html'; replacement.write_bytes(reference.read_bytes())
+        replacement.chmod(0o777)
+        inode, read = reference.stat().st_ino, os.read
+        changed = False
+        def replace(fd, size):
+            nonlocal changed
+            result = read(fd, size)
+            if not changed and os.fstat(fd).st_ino == inode:
+                changed = True
+                replacement.replace(reference)
+            return result
+        with patch.object(startup.os, 'read', side_effect=replace):
+            with self.assertRaisesRegex(startup.SetupError, 'sound_payload_identity_changed'):
+                startup.checked_sound_home_payload()
+        self.assertFalse((self.home / 'user-sounds').exists())
+
     def test_foreign_owner_rejected(self):
         self.sync_payload(); os.chown(self.home, 1001, 1001)
         self.assertFalse(startup.prepare_user_sounds()); self.assertEqual(self.home.stat().st_uid, 1001)

@@ -483,6 +483,7 @@
     if (!modalOpen || modalType !== type) clearToast();
     if (modalType === 'remote') C5RemoteSettings.close();
     if (modalType === 'datetime') dateTimeSettings.close();
+    watchHelperStatus(false);
     stopInputPreview();
     modalType = type;
     $('modal').classList.toggle(
@@ -756,23 +757,47 @@
   }
   window.addEventListener('keydown', musicGesture);
   window.addEventListener('click', musicGesture);
+  function helperStatusMessage(state) {
+    if (preferences.previewMode !== 'cached' || state.captureHealth === 'running') return '';
+    if (state.phase === 'starting') return 'Preparing preview helper...';
+    if (state.captureRecovering) return '';
+    if (state.phase === 'failed') return 'Preview helper unavailable. Retry setup.';
+    if (state.phase === 'waiting') return 'Preview helper is still starting.';
+    if (state.ready && !state.captureRunning) return 'Preview capture did not start.';
+    return (
+      {
+        stale: 'Cached preview helper is not responding.',
+        stopped: 'Cached preview helper stopped.',
+        missing: 'Preview status is missing. Retry setup.',
+        skipped: 'Cached preview could not be updated.',
+        waiting: 'Preview helper is still starting.',
+        unknown: state.ready ? 'Preview status unavailable. Retry setup.' : ''
+      }[state.captureHealth] || ''
+    );
+  }
   function updateHelperStatus() {
     var status = $('helperStatus'),
       retry = $('retryHelper');
     if (!status || !window.LGXMBHelper) return;
-    var state = LGXMBHelper.getState();
-    var health = state.captureHealth,
-      cached = preferences.previewMode === 'cached';
-    var message = cached
-      ? {
-          stale: 'Cached preview helper is not responding.',
-          stopped: 'Cached preview helper stopped.',
-          skipped: 'Cached preview could not be updated.',
-          unknown: state.phase === 'failed' ? 'Helper setup could not be confirmed.' : ''
-        }[health] || ''
-      : '';
+    var state = LGXMBHelper.getState(),
+      message = helperStatusMessage(state);
     statusText(status, message);
-    if (retry) retry.hidden = !message;
+    if (retry) {
+      var hidden = !message || state.phase === 'starting';
+      if (hidden && document.activeElement === retry) {
+        var choice = $('modalContent').querySelector('[aria-pressed="true"]');
+        if (choice) LGXMBMenuFocus(choice);
+      }
+      retry.hidden = hidden;
+    }
+  }
+  function watchHelperStatus(value) {
+    if (window.LGXMBHelper && typeof LGXMBHelper.watchCapture === 'function')
+      LGXMBHelper.watchCapture(value);
+  }
+  function helperLifecycle(method) {
+    if (C5TV.isTV() && window.LGXMBHelper && typeof LGXMBHelper[method] === 'function')
+      LGXMBHelper[method]();
   }
   function helperStatusPanel() {
     if (!C5TV.isTV() || !window.LGXMBHelper) return;
@@ -795,8 +820,21 @@
     });
     retry.id = 'retryHelper';
     reserveAction(retry);
+    watchHelperStatus(true);
     LGXMBHelper.checkCapture().then(updateHelperStatus);
     updateHelperStatus();
+  }
+  function refreshHelperAssets(generation) {
+    if (preferences.sound) sounds.retry();
+    if (
+      (generation === undefined || generation === launchGeneration) &&
+      pageActive &&
+      !document.hidden &&
+      !busy &&
+      currentPort() &&
+      preferences.previewMode === 'cached'
+    )
+      thumbnail.refresh();
   }
   function startHelper() {
     if (!C5TV.isTV() || !window.LGXMBHelper) return;
@@ -804,22 +842,16 @@
     LGXMBHelper.ensure().then(
       function () {
         // The aliases may have appeared after the first attempted preload.
-        if (preferences.sound) sounds.retry();
-        if (
-          pageActive &&
-          !document.hidden &&
-          !busy &&
-          generation === launchGeneration &&
-          currentPort() &&
-          preferences.previewMode === 'cached'
-        )
-          thumbnail.refresh();
+        refreshHelperAssets(generation);
       },
       function () {
-        /* Settings show the specific setup error; navigation stays usable. */
+        /* Settings show setup failures; navigation stays usable. */
       }
     );
   }
+  document.addEventListener('lg-xmb-helper-recovered', function () {
+    refreshHelperAssets();
+  });
   document.addEventListener('lg-xmb-helper-status', updateHelperStatus);
   function closeModal(quiet) {
     if (directionRepeat) directionRepeat.cancel();
@@ -836,6 +868,7 @@
     }
     if (modalType === 'remote') C5RemoteSettings.close();
     if (modalType === 'datetime') dateTimeSettings.close();
+    watchHelperStatus(false);
     modalOpen = false;
     $('modalBackdrop').hidden = true;
     document.querySelector('.screen').classList.remove('modal-dimmed');
@@ -1292,8 +1325,10 @@
     restoreFocus();
     if (!wasActive || refreshStill) refreshInputLabels();
     if (C5TV.isTV()) appRefresh.resume();
+    helperLifecycle('resume');
   }
   function suspendPage() {
+    helperLifecycle('suspend');
     directionRepeat.cancel();
     appRefresh.pause();
     if (modalType === 'datetime') {
@@ -1350,6 +1385,7 @@
   if (C5TV.isTV()) appRefresh.resume();
   refreshInputLabels();
   startHelper();
+  helperLifecycle('resume');
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
       suspendPage();
@@ -1366,6 +1402,7 @@
   window.addEventListener('beforeunload', function () {
     clearInterval(clockTimer);
     suspendPage();
+    helperLifecycle('destroy');
     appRefresh.destroy();
     categoryTransition.destroy();
     itemOptions.destroy();

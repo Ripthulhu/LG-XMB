@@ -43,9 +43,9 @@
   function object(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
   }
-  function emit() {
+  function emit(type) {
     if (root.document && typeof root.Event === 'function')
-      root.document.dispatchEvent(new root.Event('lg-xmb-helper-status'));
+      root.document.dispatchEvent(new root.Event(type || 'lg-xmb-helper-status'));
   }
   function parse(raw) {
     var outer, value;
@@ -104,6 +104,7 @@
     return { ready: true, captureRunning: value.captureRunning };
   }
   function ensure() {
+    if (destroyed) return Promise.reject(problem('EXEC_UNAVAILABLE'));
     if (confirmed) return Promise.resolve(confirmed);
     if (pending) return pending;
     // A bounded lock wait can expire before another setup finishes. This is
@@ -168,73 +169,206 @@
     );
     return pending;
   }
+  // Setup readiness and capture health are separate. A verified setup can outlive
+  // its worker, and a working capture can outlive an unconfirmed setup reply.
   var captureHealth = 'unknown',
-    captureCheck = null;
+    captureCheck = null,
+    captureRead = null,
+    active = false,
+    watching = false,
+    destroyed = false,
+    lifecycle = 0,
+    watchTimer = null,
+    resumeTimer = null;
+  var HEALTH_INTERVAL = 5000,
+    RESUME_GRACE = 10000;
+
+  function captureState(value) {
+    if (
+      !object(value) ||
+      value.version !== 1 ||
+      !Number.isFinite(value.updatedAt) ||
+      typeof value.state !== 'string'
+    )
+      return 'unknown';
+    var age = Date.now() / 1000 - value.updatedAt;
+    if (age < -5 || age > 30) return 'stale';
+    if (
+      ['idle', 'settling', 'waiting', 'captured', 'discarded_source_changed'].indexOf(
+        value.state
+      ) >= 0
+    )
+      return 'running';
+    if (['stopped', 'app_absent', 'app_rejected', 'app_unavailable'].indexOf(value.state) >= 0)
+      return 'stopped';
+    if (value.state === 'waiting_for_app') return 'waiting';
+    if (value.state === 'skipped') return 'skipped';
+    return 'unknown';
+  }
+
   function checkCapture() {
+    if (destroyed) return Promise.resolve('unknown');
     if (captureCheck) return captureCheck;
-    captureHealth = 'checking';
+    var read = { cancelled: false, cancel: null };
+    captureRead = read;
     captureCheck = new Promise(function (resolve) {
       var xhr,
         done = false;
       function finish(value) {
         if (done) return;
         done = true;
-        captureHealth = value;
+        if (!read.cancelled) {
+          captureHealth = value;
+        }
         resolve(value);
       }
+      read.cancel = function () {
+        read.cancelled = true;
+        finish('unknown');
+        if (xhr) {
+          xhr.onload = xhr.onerror = xhr.ontimeout = xhr.onabort = null;
+          try {
+            xhr.abort();
+          } catch (ignore) {}
+        }
+      };
       try {
         xhr = new root.XMLHttpRequest();
         xhr.open('GET', 'thumbnails/status.json?t=' + Date.now(), true);
         xhr.timeout = 3000;
         xhr.onload = function () {
           try {
-            if ((xhr.status !== 0 && xhr.status !== 200) || xhr.responseText.length > 16384)
-              throw Error();
-            var value = JSON.parse(xhr.responseText),
-              age = Date.now() / 1000 - value.updatedAt;
-            if (
-              !object(value) ||
-              value.version !== 1 ||
-              !Number.isFinite(value.updatedAt) ||
-              typeof value.state !== 'string'
-            )
-              throw Error();
-            if (age < -5 || age > 30) {
-              finish('stale');
+            if (xhr.status === 404) {
+              finish('missing');
               return;
             }
-            if (
-              ['idle', 'settling', 'waiting', 'captured', 'discarded_source_changed'].indexOf(
-                value.state
-              ) >= 0
-            )
-              finish('running');
-            else if (
-              ['stopped', 'app_absent', 'app_rejected', 'app_unavailable'].indexOf(value.state) >= 0
-            )
-              finish('stopped');
-            else if (value.state === 'skipped') finish('skipped');
-            else finish('unknown');
+            if ((xhr.status !== 0 && xhr.status !== 200) || xhr.responseText.length > 16384)
+              throw Error();
+            finish(captureState(JSON.parse(xhr.responseText)));
           } catch (ignore) {
             finish('unknown');
           }
         };
-        xhr.onerror = xhr.ontimeout = function () {
-          finish('unknown');
-        };
+        xhr.onerror =
+          xhr.ontimeout =
+          xhr.onabort =
+            function () {
+              finish('unknown');
+            };
         xhr.send();
       } catch (ignore) {
         finish('unknown');
       }
     }).then(function (value) {
-      captureCheck = null;
+      if (captureRead === read) {
+        captureRead = null;
+        captureCheck = null;
+        if (!read.cancelled) emit();
+      }
       return value;
     });
     return captureCheck;
   }
+
+  function cancelCaptureRead() {
+    var read = captureRead;
+    captureRead = null;
+    captureCheck = null;
+    if (read && read.cancel) read.cancel();
+  }
+
+  function clearHealthTimers() {
+    if (watchTimer !== null) root.clearTimeout(watchTimer);
+    if (resumeTimer !== null) root.clearTimeout(resumeTimer);
+    watchTimer = resumeTimer = null;
+  }
+
+  function pollCapture() {
+    var generation = lifecycle;
+    return checkCapture().then(function (health) {
+      if (active && watching && generation === lifecycle && watchTimer === null) {
+        watchTimer = root.setTimeout(function () {
+          watchTimer = null;
+          pollCapture();
+        }, HEALTH_INTERVAL);
+      }
+      return health;
+    });
+  }
+
+  function watchCapture(value) {
+    watching = !!value;
+    if (watchTimer !== null) root.clearTimeout(watchTimer);
+    watchTimer = null;
+    if (active && watching) pollCapture();
+  }
+
+  function retry() {
+    if (pending) return pending;
+    // A manual retry also supersedes any delayed resume recovery.
+    if (resumeTimer !== null) root.clearTimeout(resumeTimer);
+    resumeTimer = null;
+    // Do not reuse a heartbeat read begun before the new setup attempt.
+    cancelCaptureRead();
+    failure = null;
+    confirmed = null;
+    var generation = lifecycle,
+      operation = ensure();
+    operation.then(
+      function () {
+        if (active && generation === lifecycle) emit('lg-xmb-helper-recovered');
+      },
+      function () {}
+    );
+    return operation;
+  }
+
+  function resume() {
+    if (active || destroyed || (root.document && root.document.hidden)) return;
+    active = true;
+    var generation = ++lifecycle,
+      hadWorker = !!(confirmed && confirmed.captureRunning);
+    pollCapture();
+    if (!hadWorker) return;
+    // A suspended worker needs time to publish a fresh heartbeat. Recheck once
+    // after that grace; never loop retries or retry an uncertain setup RPC.
+    resumeTimer = root.setTimeout(function () {
+      resumeTimer = null;
+      if (!active || generation !== lifecycle) return;
+      checkCapture().then(function (health) {
+        if (
+          !active ||
+          generation !== lifecycle ||
+          !confirmed ||
+          failure ||
+          pending ||
+          ['stale', 'stopped', 'missing'].indexOf(health) < 0
+        )
+          return;
+        retry().then(
+          function () {
+            if (active && generation === lifecycle) pollCapture();
+          },
+          function () {
+            // The failure stays sticky until the user chooses Retry setup.
+          }
+        );
+      });
+    }, RESUME_GRACE);
+  }
+
+  function suspend() {
+    active = false;
+    lifecycle++;
+    clearHealthTimers();
+    cancelCaptureRead();
+  }
+
   function status() {
     return {
       captureHealth: captureHealth,
+      captureChecking: !!captureRead,
+      captureRecovering: resumeTimer !== null,
       phase: phase,
       ready: !!confirmed,
       captureRunning: !!(confirmed && confirmed.captureRunning),
@@ -257,11 +391,14 @@
       return !!confirmed;
     },
     getState: status,
-    retry: function () {
-      if (pending) return pending;
-      failure = null;
-      confirmed = null;
-      return ensure();
+    retry: retry,
+    resume: resume,
+    suspend: suspend,
+    watchCapture: watchCapture,
+    destroy: function () {
+      destroyed = true;
+      watching = false;
+      suspend();
     }
   });
 })(typeof window !== 'undefined' ? window : globalThis);

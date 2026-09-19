@@ -14,6 +14,7 @@
     "tools:download": "node tools/dev-tools.cjs",
     "test:music": "node tests/background-music-browser.cjs",
     "test:menu": "node tests/menu-browser.cjs",
+    "test:helper": "node --test tests/helper.test.cjs tests/thumbnail.test.cjs && node tests/helper-status-browser.cjs",
     "format": "prettier --write \"app/*.js\" \"app/*.css\" app/index.html",
     "format:check": "prettier --check \"app/*.js\" \"app/*.css\" app/index.html"
   },

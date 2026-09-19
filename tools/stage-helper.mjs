@@ -3,13 +3,26 @@ import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const helperSources = Object.freeze({
-  'thumbnail_cache.py': 'tv-helper/thumbnail_cache.py',
-  'stop_thumbnail_helper.py': 'tv-helper/recovery/stop_thumbnail_helper.py'
-});
+// Build and package verification share this inventory. Runtime filenames come
+// from the independently pinned bundle manifest, never a second hand-kept list.
+export const helperSources = Object.freeze(JSON.parse(
+  fs.readFileSync(new URL('../tv-helper/bundle-sources.json', import.meta.url), 'utf8')
+));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
+export function validateHelperSources(sources) {
+  if (!sources || typeof sources !== 'object' || Array.isArray(sources) ||
+      !['thumbnail_cache.py', 'stop_thumbnail_helper.py'].every(name => Object.hasOwn(sources, name)))
+    throw new Error('Helper inventory must include the capture and recovery entry points.');
+  for (const [name, relative] of Object.entries(sources)) {
+    if (!/^[a-z][a-z0-9_]*\.py$/.test(name) || typeof relative !== 'string' ||
+        !/^tv-helper\/(?:[a-z][a-z0-9_-]*\/)*[a-z][a-z0-9_]*\.py$/.test(relative))
+      throw new Error(`Invalid helper source entry: ${name}`);
+  }
+}
+
 export function stageHelper(projectDir, appDir) {
+  validateHelperSources(helperSources);
   const appinfo = fs.readFileSync(path.join(appDir, 'appinfo.json'));
   const manifest = {schema: 1, appinfoSha256: sha256(appinfo), files: {}};
   const destination = path.join(appDir, 'helper');

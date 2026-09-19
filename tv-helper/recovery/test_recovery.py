@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import errno
+import io
 import stat
 import unittest
 from types import SimpleNamespace
@@ -9,6 +10,55 @@ import stop_thumbnail_helper as recovery
 
 
 class RecoveryGuards(unittest.TestCase):
+    def test_helper_arguments_accept_only_the_two_reviewed_scripts(self):
+        for script in (recovery.HELPER, recovery.LEGACY_HELPER):
+            for interpreter in (b"python3", recovery.PYTHON.encode()):
+                for flags in ([], [b"-I", b"-B"]):
+                    raw = b"\0".join([interpreter] + flags + [script, b"--allow-home-preview", b""])
+                    self.assertEqual(recovery.helper_argument(raw), script)
+        for argv in ([b"python3"], [b"/other/python3", recovery.HELPER],
+                     [b"python3", b"-c", recovery.HELPER],
+                     [b"python3", recovery.HELPER + b".old"],
+                     [b"python3", b"/foreign.py", recovery.HELPER]):
+            self.assertIsNone(recovery.helper_argument(b"\0".join(argv) + b"\0"))
+
+    def test_process_identity_reads_owner_interpreter_and_birth(self):
+        argv = b"\0".join([recovery.PYTHON.encode(), b"-I", b"-B", recovery.HELPER, b""])
+        def opened(path, *args, **kwargs):
+            if path.endswith("/cmdline"):
+                return io.BytesIO(argv)
+            self.assertEqual(path, "/proc/123/stat")
+            # Parentheses in the process name must not shift the start-time field.
+            return io.StringIO("123 (worker (name)) S " + "0 " * 18 + "987 0 0")
+        with patch.object(recovery.os, "stat", return_value=SimpleNamespace(st_uid=0)), \
+             patch.object(recovery.os.path, "samefile", return_value=True) as interpreter, \
+             patch("builtins.open", side_effect=opened):
+            self.assertEqual(recovery.process_identity(123), (123, 987, argv))
+        interpreter.assert_called_once_with("/proc/123/exe", recovery.PYTHON)
+
+    def test_foreign_owner_unrelated_script_and_zombie_are_not_helpers(self):
+        valid = b"\0".join([recovery.PYTHON.encode(), recovery.HELPER, b""])
+        for uid, raw, state in ((1001, valid, "S"), (0, b"python3\0/foreign.py\0", "S"),
+                                (0, valid, "Z")):
+            with self.subTest(uid=uid, raw=raw, state=state), \
+                 patch.object(recovery.os, "stat", return_value=SimpleNamespace(st_uid=uid)), \
+                 patch.object(recovery.os.path, "samefile", return_value=True), \
+                 patch("builtins.open", side_effect=lambda path, *a, **kw:
+                       io.BytesIO(raw) if path.endswith("cmdline") else
+                       io.StringIO("123 (worker) " + state + " " + "0 " * 18 + "987")):
+                self.assertIsNone(recovery.process_identity(123))
+
+    def test_mismatched_interpreter_refuses_and_disappearing_process_is_absent(self):
+        raw = b"\0".join([recovery.PYTHON.encode(), recovery.HELPER, b""])
+        with patch.object(recovery.os, "stat", return_value=SimpleNamespace(st_uid=0)), \
+             patch.object(recovery.os.path, "samefile", return_value=False), \
+             patch("builtins.open", return_value=io.BytesIO(raw)):
+            with self.assertRaisesRegex(RuntimeError, "different interpreter"):
+                recovery.process_identity(123)
+        for error in (FileNotFoundError(), ProcessLookupError()):
+            with patch.object(recovery.os, "stat", side_effect=error):
+                self.assertIsNone(recovery.process_identity(123))
+
     def test_root_regular_file_only(self):
         def entry(mode=stat.S_IFREG | 0o755, uid=0, links=1):
             return SimpleNamespace(st_mode=mode, st_uid=uid, st_nlink=links)

@@ -12,11 +12,12 @@ from ipk_archive import read_ipk
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = 'usr/palm/applications/org.local.openxmb.c5/'
-SOURCES = {'thumbnail_cache.py': 'tv-helper/thumbnail_cache.py',
-           'stop_thumbnail_helper.py': 'tv-helper/recovery/stop_thumbnail_helper.py'}
+SOURCES = json.loads((ROOT / 'tv-helper/bundle-sources.json').read_text(encoding='utf-8'))
 
 
 def verify(filename):
+    if not {'thumbnail_cache.py', 'stop_thumbnail_helper.py'}.issubset(SOURCES):
+        raise ValueError('Helper inventory is missing a required entry point')
     members = read_ipk(Path(filename).read_bytes())
     with tarfile.open(fileobj=io.BytesIO(members['data.tar.gz']), mode='r:gz') as archive:
         entries = {}

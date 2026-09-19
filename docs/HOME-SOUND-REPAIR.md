@@ -27,6 +27,17 @@ Reopen Home after both copies are updated. Normal helper setup rechecks
 links to the nine recognised filenames under `/media/internal/lg-xmb/Sounds/`.
 Existing exact, root-owned links are kept.
 
+LG can reset the developer app tree to mode `0777` during a cold boot. Setup
+repairs its `user-sounds/` directory to `0755` only after verifying every existing
+entry is one of our exact sound links. It preserves the links and WAV files.
+The protected Home directory is never repaired this way.
+
+Developer code used for the Home identity comparison may also have reset modes.
+Setup reads those files without executing or changing them, checks that they
+stay unchanged during the read, and compares their bytes with the protected
+Home copy. Root ownership, regular files, single links, and strict Home
+permissions are still required.
+
 Then select **Settings → Sound → Reload sounds**. Reload clears audio
 buffers and rereads clips; it doesn't run filesystem repair. A still-running
 page after an in-place file sync needs normal helper setup before reloading

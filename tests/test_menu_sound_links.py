@@ -58,9 +58,105 @@ class SoundLinks(unittest.TestCase):
     def test_unexpected_file_disables_only_optional_setup(self):
         d=self.app/'user-sounds';d.mkdir();(d/'unknown').write_text('keep')
         self.assertFalse(startup.prepare_user_sounds());self.assertEqual((d/'unknown').read_text(),'keep')
-    def test_writable_alias_directory_is_rejected(self):
+    def test_empty_writable_developer_alias_directory_is_repaired(self):
         d=self.app/'user-sounds';d.mkdir();d.chmod(0o777)
-        self.assertFalse(startup.prepare_user_sounds());self.assertEqual(d.stat().st_mode & 0o777,0o777)
+        self.assertTrue(startup.prepare_user_sounds())
+        self.assertEqual(d.stat().st_mode & 0o777, 0o755)
+        self.assertEqual({p.name for p in d.iterdir()}, set(startup.SOUND_FILES))
+
+    def test_boot_mode_repair_preserves_links_and_user_recording(self):
+        self.assertTrue(startup.prepare_user_sounds())
+        directory = self.app / 'user-sounds'
+        (self.data / 'Sounds').mkdir(parents=True)
+        track = self.data / 'Sounds/snd_cursor.wav'
+        track.write_bytes(b'user recording'); track.chmod(0o640)
+        before = (track.read_bytes(), track.stat().st_mode, track.stat().st_ino)
+        links = {p.name: p.lstat().st_ino for p in directory.iterdir()}
+        directory.chmod(0o777)
+        for _ in range(2):
+            self.assertTrue(startup.prepare_user_sounds())
+            self.assertEqual(directory.stat().st_mode & 0o777, 0o755)
+            self.assertEqual({p.name: p.lstat().st_ino for p in directory.iterdir()}, links)
+            self.assertEqual((track.read_bytes(), track.stat().st_mode, track.stat().st_ino), before)
+
+    def test_writable_directory_with_foreign_entries_is_not_repaired(self):
+        for kind in ('regular', 'wrong-target', 'unknown-name', 'foreign-owner', 'hardlink'):
+            with self.subTest(kind=kind):
+                app = self.root / kind; app.mkdir(mode=0o755)
+                directory = app / 'user-sounds'; directory.mkdir(); directory.chmod(0o777)
+                entry = directory / ('unknown.wav' if kind == 'unknown-name' else 'snd_cursor.wav')
+                if kind == 'regular':
+                    entry.write_bytes(b'keep')
+                else:
+                    entry.symlink_to('/wrong' if kind == 'wrong-target' else self.data / 'Sounds' / entry.name)
+                if kind == 'foreign-owner':
+                    os.chown(entry, 1001, 1001, follow_symlinks=False)
+                if kind == 'hardlink':
+                    os.link(entry, app / 'extra-link', follow_symlinks=False)
+                before = entry.lstat()
+                with patch.object(startup, 'APP_DIR', str(app)):
+                    self.assertFalse(startup.prepare_user_sounds())
+                self.assertEqual(directory.stat().st_mode & 0o777, 0o777)
+                self.assertEqual((entry.lstat().st_ino, entry.lstat().st_uid), (before.st_ino, before.st_uid))
+                self.assertEqual(len(list(directory.iterdir())), 1)
+
+    def test_writable_foreign_owned_directory_is_not_adopted(self):
+        directory = self.app / 'user-sounds'; directory.mkdir(); directory.chmod(0o777)
+        os.chown(directory, 1001, 1001)
+        self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual((directory.stat().st_mode & 0o777, directory.stat().st_uid), (0o777, 1001))
+
+    def test_directory_replacement_during_repair_is_not_followed(self):
+        directory = self.app / 'user-sounds'; directory.mkdir(); directory.chmod(0o777)
+        foreign = self.app / 'foreign'; foreign.mkdir(); foreign.chmod(0o777)
+        (foreign / 'keep').write_bytes(b'keep')
+        inode = directory.stat().st_ino
+        chmod = os.fchmod
+        def replace(fd, mode):
+            chmod(fd, mode)
+            if os.fstat(fd).st_ino == inode:
+                directory.rename(self.app / 'previous')
+                foreign.rename(directory)
+        with patch.object(startup.os, 'fchmod', side_effect=replace):
+            self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual(directory.stat().st_mode & 0o777, 0o777)
+        self.assertEqual((directory / 'keep').read_bytes(), b'keep')
+        self.assertEqual(len(list(directory.iterdir())), 1)
+
+    def test_entry_changed_during_repair_is_not_overwritten(self):
+        directory = self.app / 'user-sounds'; directory.mkdir(); directory.chmod(0o777)
+        entry = directory / 'snd_cursor.wav'; entry.symlink_to(self.data / 'Sounds' / entry.name)
+        chmod = os.fchmod
+        def change(fd, mode):
+            chmod(fd, mode)
+            entry.unlink(); entry.symlink_to('/foreign')
+        with patch.object(startup.os, 'fchmod', side_effect=change):
+            self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual(os.readlink(entry), '/foreign')
+        self.assertEqual(len(list(directory.iterdir())), 1)
+
+    def test_app_replacement_during_repair_is_not_followed(self):
+        directory = self.app / 'user-sounds'; directory.mkdir(); directory.chmod(0o777)
+        replacement = self.root / 'replacement'; replacement.mkdir(mode=0o755)
+        foreign = replacement / 'user-sounds'; foreign.mkdir(); foreign.chmod(0o777)
+        (foreign / 'keep').write_bytes(b'keep')
+        chmod = os.fchmod
+        def replace_app(fd, mode):
+            chmod(fd, mode)
+            self.app.rename(self.root / 'previous-app')
+            replacement.rename(self.app)
+        with patch.object(startup.os, 'fchmod', side_effect=replace_app):
+            self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual(directory.stat().st_mode & 0o777, 0o777)
+        self.assertEqual((directory / 'keep').read_bytes(), b'keep')
+        self.assertEqual(len(list(directory.iterdir())), 1)
+
+    def test_failed_mode_repair_does_not_create_links(self):
+        directory = self.app / 'user-sounds'; directory.mkdir(); directory.chmod(0o777)
+        with patch.object(startup.os, 'fchmod'):
+            self.assertFalse(startup.prepare_user_sounds())
+        self.assertEqual(list(directory.iterdir()), [])
+        self.assertEqual(directory.stat().st_mode & 0o777, 0o777)
     def test_foreign_owner_link_is_rejected(self):
         self.assertTrue(startup.prepare_user_sounds());p=self.app/'user-sounds/snd_cursor.wav'
         os.chown(p,1001,1001,follow_symlinks=False)

@@ -192,6 +192,74 @@ class WorkerTests(unittest.TestCase):
         self.assertFalse(self.cache.published)
         self.assertFalse(self.cache.temporary)
 
+    def test_takeover_preview_requires_verified_active_payload(self):
+        self.luna.data = fixture(app_id=tc.STOCK_HOME_ID)
+        self.worker.allow_home = True
+        self.worker.verify_home = Mock(side_effect=tc.SafeError("home_preview_not_mounted"))
+        self.tick(0)
+        self.tick(5)
+        self.assertFalse(self.luna.captures)
+        self.assertFalse(self.cache.published)
+        self.worker.verify_home = Mock(return_value=("verified-mount", "verified-files"))
+        self.tick(10)
+        self.tick(15)
+        self.assertEqual(self.cache.published, [1])
+        self.assertEqual(len(self.cache.cropped), 1)
+        self.assertEqual(self.luna.captures[0]["width"], tc.PIG_CAPTURE_WIDTH)
+        self.assertEqual(self.worker.verify_home.call_count, 4)
+        self.tick(20)
+        self.assertEqual(len(self.luna.captures), 1)
+
+    def test_takeover_payload_replacement_restarts_settling(self):
+        self.luna.data = fixture(app_id=tc.STOCK_HOME_ID)
+        self.worker.allow_home = True
+        self.worker.verify_home = Mock(return_value=("original",))
+        self.tick(0)
+        self.worker.verify_home.return_value = ("replacement",)
+        self.tick(5)
+        self.tick(9)
+        self.assertFalse(self.luna.captures)
+        self.tick(10)
+        self.assertEqual(self.cache.published, [1])
+
+    def test_takeover_change_after_capture_or_crop_discards(self):
+        for during_crop in (False, True):
+            for changed in (True, False):
+                with self.subTest(during_crop=during_crop, changed=changed):
+                    self.setUp()
+                    self.luna.data = fixture(app_id=tc.STOCK_HOME_ID)
+                    self.worker.allow_home = True
+                    self.worker.verify_home = Mock(return_value=("original",))
+                    def replace():
+                        if changed:
+                            self.worker.verify_home.return_value = ("replacement",)
+                        else:
+                            self.worker.verify_home.side_effect = tc.SafeError("home_preview_not_mounted")
+                    if during_crop:
+                        self.cache.on_crop = replace
+                    else:
+                        self.luna.on_capture = replace
+                    self.tick(0)
+                    self.tick(5)
+                    self.assertFalse(self.cache.published)
+                    self.assertFalse(self.cache.temporary)
+                    self.assertEqual(len(self.cache.cropped), int(during_crop))
+
+    def test_malformed_video_reply_recovers_on_later_poll(self):
+        valid = fixture()
+        for field, value in (("videoInfo", "temporarily-unavailable"),
+                             ("videoInfo", {"hdmiVrrInfo": "temporarily-unavailable"}),
+                             ("displayOutput", "temporarily-unavailable")):
+            with self.subTest(field=field, value=value):
+                self.setUp()
+                self.luna.data["video"]["video"][0][field] = value
+                self.assertTrue(self.tick(0))
+                self.assertFalse(self.luna.captures)
+                self.luna.data = copy.deepcopy(valid)
+                self.tick(5)
+                self.tick(10)
+                self.assertEqual(self.cache.published, [1])
+
     def test_invalid_home_rectangle_does_not_capture(self):
         self.luna.data = fixture(app_id=tc.HOME_ID)
         self.worker.allow_home = True
@@ -232,6 +300,25 @@ class WorkerTests(unittest.TestCase):
 
 
 class EligibilityTests(unittest.TestCase):
+    def test_stock_home_is_not_eligible_by_app_id_alone(self):
+        data = fixture(app_id=tc.STOCK_HOME_ID)
+        self.assertIsNone(tc.eligible_source(**data, allow_home=True))
+        self.assertIsNone(tc.eligible_source(**data, home_identity=("verified",)))
+        source = tc.eligible_source(**data, allow_home=True, home_identity=("verified",))
+        self.assertEqual(source.home_identity, ("verified",))
+        self.assertEqual(tc.home_crop_bounds(source), (0, 0, 1920, 1080))
+
+    def test_malformed_collections_and_app_ids_are_ineligible(self):
+        for key in ("video", "clients"):
+            for value in (None, "unavailable", {}, 42):
+                data = fixture()
+                data["video"][key] = value
+                self.assertIsNone(tc.eligible_source(**data))
+        for value in (None, [], 42):
+            data = fixture()
+            data["foreground"]["appId"] = value
+            self.assertIsNone(tc.eligible_source(**data))
+
     def test_rejects_mismatch_muted_inactive_and_missing_signal(self):
         changes = [
             {"appId": tc.HOME_ID}, {"connected": False}, {"muted": True},

@@ -31,7 +31,8 @@ WORKER_LOCK_NAME = "lg-xmb-worker.lock"
 LOG_LIMIT = 16384
 SETUP_WAIT_SECONDS = 30  # Below the frontend RPC deadline; never wait indefinitely.
 PYTHON = "/usr/bin/python3"
-FILES = ("thumbnail_cache.py", "stop_thumbnail_helper.py")
+CAPTURE_MODULE = "thumbnail_cache.py"
+RECOVERY_MODULE = "stop_thumbnail_helper.py"
 BUNDLE_SHA256 = "@BUNDLE_SHA256@"  # Replaced by the packager, not read from helper/.
 LEGACY_HELPER_OWNER = (1001, 1001)  # CI runner IDs shipped in the early 0.1.12 IPKs.
 
@@ -166,7 +167,10 @@ def read_bundle(app, directory):
     require(isinstance(manifest, dict) and manifest.get("schema") == 1,
             "invalid_helper_bundle")
     hashes = manifest.get("files")
-    require(isinstance(hashes, dict) and set(hashes) == set(FILES),
+    # The build pin authenticates the complete inventory, including any future
+    # modules. Entry points remain explicit; paths can only be flat Python names.
+    require(isinstance(hashes, dict) and {CAPTURE_MODULE, RECOVERY_MODULE}.issubset(hashes)
+            and all(re.fullmatch(r"[a-z][a-z0-9_]*\.py", name) for name in hashes),
             "invalid_helper_bundle")
     require(all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h)
                 for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
@@ -174,15 +178,15 @@ def read_bundle(app, directory):
     appinfo = read_file(app, "appinfo.json", 65536, app_file=True)
     require(hashlib.sha256(appinfo).hexdigest() == manifest["appinfoSha256"],
             "untrusted_app_manifest")
-    sources = {name: read_file(directory, name) for name in FILES}
+    sources = {name: read_file(directory, name) for name in hashes}
     require(all(hashlib.sha256(sources[name]).hexdigest() == hashes[name]
-                for name in FILES), "helper_bundle_mismatch")
+                for name in hashes), "helper_bundle_mismatch")
     return manifest, raw, appinfo, sources
 
 
 def repair_helper_directory(app, directory, original, bundle):
     """Recover only a verified app-owned directory left by an earlier install."""
-    expected = {"bundle.json", *FILES}
+    expected = {"bundle.json", *bundle[0]["files"]}
 
     def check_binding():
         # Hold the original directory descriptor: never chown a symlink or a
@@ -249,10 +253,10 @@ def load_bundle():
             os.close(directory)
     finally:
         os.close(app)
-    capture = load_module("lg_xmb_capture", sources[FILES[0]], APP_DIR + "/helper/" + FILES[0])
+    capture = load_module("lg_xmb_capture", sources[CAPTURE_MODULE], APP_DIR + "/helper/" + CAPTURE_MODULE)
     require(capture.PIN_APPINFO_SHA256 == manifest["appinfoSha256"], "helper_bundle_mismatch")
     capture.checked_app()
-    recovery = load_module("lg_xmb_recovery", sources[FILES[1]], APP_DIR + "/helper/" + FILES[1])
+    recovery = load_module("lg_xmb_recovery", sources[RECOVERY_MODULE], APP_DIR + "/helper/" + RECOVERY_MODULE)
     return capture, recovery, hashlib.sha256(raw).hexdigest()
 
 
@@ -458,11 +462,22 @@ def prepare_user_music():
         return False
 
 
-def read_sound_identity(directory, name, limit=131072):
-    """Read a small root-owned identity file, without repair or symlink traversal."""
+def sound_entry_identity(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def read_sound_identity(directory, name, limit=131072, developer_reference=False):
+    """Read stable identity bytes without executing, repairing or following links.
+
+    LG may make developer reference code writable at boot. Those references
+    still have to match the separate protected Home payload byte for byte.
+    Manifests and Home files always retain the strict mode checks.
+    """
     fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
     try:
-        regular_file(os.fstat(fd))
+        before = os.fstat(fd)
+        regular_file(before, app_file=developer_reference)
         raw = bytearray()
         while len(raw) <= limit:
             block = os.read(fd, min(8192, limit + 1 - len(raw)))
@@ -470,6 +485,9 @@ def read_sound_identity(directory, name, limit=131072):
                 break
             raw.extend(block)
         require(len(raw) <= limit, "sound_payload_identity_oversized")
+        named = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        require(sound_entry_identity(before) == sound_entry_identity(os.fstat(fd)) ==
+                sound_entry_identity(named), "sound_payload_identity_changed")
         return bytes(raw)
     finally:
         os.close(fd)
@@ -501,7 +519,8 @@ def checked_sound_home_payload():
             # The takeover manifest intentionally differs from the developer
             # manifest. Compare the unchanged code instead of trusting its ID.
             for name in ("helper-startup.py", "index.html", "menu-sounds.js"):
-                require(read_sound_identity(payload, name) == read_sound_identity(source, name),
+                require(read_sound_identity(payload, name) ==
+                        read_sound_identity(source, name, developer_reference=True),
                         "sound_payload_identity_mismatch")
         finally:
             os.close(source)
@@ -513,23 +532,73 @@ def checked_sound_home_payload():
         raise
 
 
-def prepare_sound_aliases(app):
-    """Idempotent fixed-name aliases in an already validated application root."""
+def sound_alias_inventory(directory):
+    """Inspect links themselves; user recordings are never opened or changed."""
+    names = set(os.listdir(directory))
+    require(names.issubset(set(SOUND_FILES)), "sound_path_conflict")
+    entries = {}
+    for name in names:
+        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1,
+                "sound_path_conflict")
+        target = os.readlink(name, dir_fd=directory)
+        require(target == MUSIC_DIR + "/Sounds/" + name, "sound_path_conflict")
+        current = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        require(sound_entry_identity(info) == sound_entry_identity(current), "sound_path_changed")
+        entries[name] = sound_entry_identity(info), target
+    require(set(os.listdir(directory)) == names, "sound_path_changed")
+    return entries
+
+
+def check_sound_directory_binding(app, directory):
+    opened = os.fstat(directory)
+    named = os.stat("user-sounds", dir_fd=app, follow_symlinks=False)
+    require(stat.S_ISDIR(named.st_mode) and named.st_uid == 0 and opened.st_uid == 0 and
+            (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino), "sound_path_changed")
+
+
+def prepare_sound_aliases(app, repair_developer=False):
+    """Prepare fixed aliases, repairing only a verified developer alias directory."""
     require(not os.fstat(app).st_mode & 0o022)
-    directory = make_directory(app, "user-sounds")
     try:
-        require(set(os.listdir(directory)).issubset(set(SOUND_FILES)), "sound_path_conflict")
-        missing = []
-        for name in SOUND_FILES:
-            target = MUSIC_DIR + "/Sounds/" + name
+        os.mkdir("user-sounds", 0o755, dir_fd=app)
+    except FileExistsError:
+        pass
+    directory = os.open("user-sounds", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=app)
+    try:
+        meta = os.fstat(directory)
+        require(meta.st_uid == 0 and (repair_developer or not meta.st_mode & 0o022))
+        check_sound_directory_binding(app, directory)
+        entries = sound_alias_inventory(directory)
+        if meta.st_mode & 0o022:
+            # No generic chmod repair: this must still be the exact developer
+            # app and contain only our recognized aliases before changing mode.
+            current = open_directory(APP_DIR, app_path=True)
             try:
-                info = os.stat(name, dir_fd=directory, follow_symlinks=False)
-            except FileNotFoundError:
-                missing.append((name, target))
+                original, live = os.fstat(app), os.fstat(current)
+                require(not live.st_mode & 0o022 and
+                        (original.st_dev, original.st_ino) == (live.st_dev, live.st_ino),
+                        "sound_path_changed")
+                check_sound_directory_binding(app, directory)
+                os.fchmod(directory, 0o755)
+                require(stat.S_IMODE(os.fstat(directory).st_mode) == 0o755,
+                        "sound_permissions_failed")
+                reopened = open_directory(APP_DIR, app_path=True)
+                try:
+                    live = os.fstat(reopened)
+                    require(not live.st_mode & 0o022 and
+                            (original.st_dev, original.st_ino) == (live.st_dev, live.st_ino),
+                            "sound_path_changed")
+                    check_sound_directory_binding(reopened, directory)
+                finally:
+                    os.close(reopened)
+                require(sound_alias_inventory(directory) == entries, "sound_path_changed")
+            finally:
+                os.close(current)
+        for name in SOUND_FILES:
+            if name in entries:
                 continue
-            require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1
-                    and os.readlink(name, dir_fd=directory) == target, "sound_path_conflict")
-        for name, target in missing:
+            target = MUSIC_DIR + "/Sounds/" + name
             # Exclusive creation: a raced-in entry is not overwritten. Validate
             # an identical concurrent creation, but never replace a foreign one.
             try:
@@ -538,6 +607,8 @@ def prepare_sound_aliases(app):
                 info = os.stat(name, dir_fd=directory, follow_symlinks=False)
                 require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1
                         and os.readlink(name, dir_fd=directory) == target, "sound_path_conflict")
+        check_sound_directory_binding(app, directory)
+        require(set(sound_alias_inventory(directory)) == set(SOUND_FILES), "sound_path_changed")
     finally:
         os.close(directory)
 
@@ -556,7 +627,7 @@ def prepare_user_sounds():
                    else checked_sound_home_payload())
             if app is None:
                 continue
-            prepare_sound_aliases(app)
+            prepare_sound_aliases(app, repair_developer=destination == "developer")
             record_startup("sound_paths_ready", destination=destination)
         except (OSError, SetupError, ValueError, TypeError) as error:
             ready = False
