@@ -11,11 +11,14 @@
   }
   Hold.prototype.down = function (key, tap, held) {
     if (this.state) return false;
-    var self = this, generation = ++this.generation;
-    var s = this.state = {key: key, tap: tap, held: false, timer: null};
+    var self = this,
+      generation = ++this.generation;
+    var s = (this.state = { key: key, tap: tap, held: false, timer: null });
     s.timer = this.setTimer(function () {
       if (self.state !== s || self.generation !== generation) return;
-      s.timer = null; s.held = true; held();
+      s.timer = null;
+      s.held = true;
+      held();
     }, this.delay);
     return true;
   };

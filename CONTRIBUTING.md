@@ -4,11 +4,43 @@ Keep a change focused on the problem it fixes. Explain why it's needed and list
 the checks you actually ran. Include the app version, TV model and firmware in
 bug reports. Don't post credentials or captured HDMI pictures.
 
+## Find the right module
+
+Use the [code map](docs/ARCHITECTURE.md) for categories, icons, settings, audio,
+previews and the background renderer. Start with a desktop preview using
+[Building and testing](docs/BUILDING.md); a UI change doesn't require a TV
+connection.
+
+`app/` is the frontend source, `tv-helper/` is the Python helper source, and
+`shaders/` contains editable GLSL. `.build/` and `dist/` are generated. Keep
+personal TV setup, captures and troubleshooting scripts outside the package.
+
 ## Code and text
 
 Use the existing plain JavaScript modules and follow `.editorconfig`. Don't mix
 a formatting pass with behaviour changes. Add a dependency only when the code
 needs it.
+
+Use the pinned formatter for browser source:
+
+```sh
+npm run format
+npm run format:check
+```
+
+Generated shader and wave-data bundles are excluded. For another file being
+edited, run `npm exec prettier -- --write path/to/file`; avoid reformatting
+unrelated tests or documentation as part of a small feature change.
+
+Keep feature state and rendering with that feature. The launcher coordinates
+modules through small APIs and callbacks. Prefer a named function with one
+purpose over a long event handler; put each operation on its own line. Reuse
+the shared focus and repeat handling so all menus respond consistently.
+
+Scripts run directly on the TV. Add new modules to `app/index.html` before
+their consumers, and update browser fixtures that list scripts explicitly.
+Don't introduce a build-time transform or newer browser API without checking
+the supported webOS engines.
 
 Comments should explain a constraint or a non-obvious decision. Remove notes
 about abandoned implementations instead of adding another update underneath.
@@ -55,4 +87,3 @@ doesn't build or publish a release.
 Keep licence notices with the code and data they cover. Document where new
 assets came from and whether they can be redistributed. A file being committed
 doesn't give it the project's licence automatically.
-

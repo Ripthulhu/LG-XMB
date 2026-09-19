@@ -33,7 +33,7 @@ test('all colour modes suppress the post-canvas CSS, but keep the PS3 marker spe
   const {attrs}=wave(monthly);assert.equal(attrs['data-background-composited'],'true');
   assert.equal(attrs['data-ps3-background'],monthly?'true':undefined);
  }
- assert.match(css,/#wave\[data-background-composited="true"\] \+ \.ambient\{display:none\}/);
+ assert.match(css,/#wave\[data-background-composited=['"]true['"]\]\s*\+\s*\.ambient\s*\{\s*display:\s*none;?\s*\}/);
 });
 test('same-mode redraws do not write DOM attributes every frame',()=>{
  const {w,writes}=wave(false),before=writes.length;

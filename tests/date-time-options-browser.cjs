@@ -23,7 +23,7 @@ async function load(p){
    else throw Error('Unexpected native call '+uri);
   };};
  });
- for(const f of ['menu-focus.js','directional-repeat.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
+ for(const f of ['menu-focus.js','directional-repeat.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
  await p.evaluate(()=>{const C=LGXMBItemOptions;window.LGXMBItemOptions=function(o){return window.testOptions=new C(o);};});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'app/app.js'),'utf8')});
  await p.waitForFunction(()=>window.C5App);
@@ -72,7 +72,7 @@ async function navigate(p,category,id){
   checks.push(width+': delayed clock data keeps field layout stable and footer quiet');
   await navigate(p,'apps','org.test.one');const launches=await p.evaluate(()=>catalogHarness.launches.length);
   await p.keyboard.down('Enter');await p.waitForTimeout(180);
-  assert.equal((await state(p)).itemOptions.open,false);assert.equal(await p.locator('.item-options-button').count(),6);
+  assert.equal((await state(p)).itemOptions.open,false);assert.equal(await p.locator('.item-options-button').count(),8);
   const pre=await p.evaluate(()=>{window.mainNodes=[...document.querySelectorAll('.item-options-actions>button')];return timeTest.calls.filter(c=>c.uri.endsWith('/getAppInfo')).length;});
   await p.waitForFunction(()=>C5App.getState().itemOptions.open);assert.equal((await state(p)).itemOptions.opening,false);await p.keyboard.up('Enter');
   assert.equal(await p.evaluate(()=>catalogHarness.launches.length),launches);assert.ok(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getAppInfo')).length)<=pre+1);

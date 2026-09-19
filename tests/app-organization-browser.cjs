@@ -35,7 +35,7 @@ async function load(p,data={}){
  // Keep production timing by default; expose the scheduler only to advance
  // selected race tests without spending 30 seconds on every permutation.
  await p.evaluate(()=>{const Native=LGXMBAppRefresh;window.LGXMBAppRefresh=function(o){return window.testRefresh=new Native(o);};});
- await p.addScriptTag({content:fs.readFileSync(path.join(base,'app/app.js'),'utf8')});
+ for(const name of ['launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.waitForFunction(()=>C5Catalog.some(c=>c.items.some(i=>i.id==='org.test.one')));
 }
 async function refresh(p){await p.evaluate(()=>{testRefresh.lastAttempt=-Infinity;testRefresh.refresh();});await p.waitForFunction(()=>!testRefresh.request&&!testRefresh.pending&&testRefresh.lastSuccess!==null);await p.waitForTimeout(550);}

@@ -1,0 +1,10 @@
+node_modules/
+.build/
+dist/
+artifacts/
+private-data/
+# Generated payloads: edit their source/importer instead.
+app/ps3-native-data.js
+app/ps3-background-data.js
+app/ps3-native-shaders.js
+app/licenses/

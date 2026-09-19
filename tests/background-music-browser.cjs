@@ -167,6 +167,8 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
     assert.equal(await retryPage.locator('audio').count(),0);
     await retryPage.keyboard.press('ArrowDown');
     await retryPage.keyboard.press('ArrowDown');
+    assert.equal(await retryPage.evaluate(()=>document.activeElement.id),'reloadSounds');
+    await retryPage.keyboard.press('ArrowDown');
     assert.equal(await retryPage.evaluate(()=>document.activeElement.id),'retryMusic');
     await retryPage.evaluate(()=>musicTest.restorePlay());
     await retryPage.keyboard.press('Enter');await playing(retryPage);

@@ -69,6 +69,11 @@ For a desktop preview, run `npm run preview` and open
 <http://127.0.0.1:8765>. TV actions are simulated there.
 [Building and testing](docs/BUILDING.md) covers the remaining commands.
 
+To change the menu, icons, settings or background, start with the
+[code map](docs/ARCHITECTURE.md). It identifies each feature's source files and
+the behaviour to preserve. [Contributing](CONTRIBUTING.md) covers review and
+validation.
+
 ## Notes
 
 The package ID is still `org.local.openxmb.c5` so existing installations can

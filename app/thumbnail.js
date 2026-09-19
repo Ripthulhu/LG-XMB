@@ -7,8 +7,16 @@
     this.image = image;
     this.fallback = fallback;
     this.document = options.document || root.document;
-    this.isTV = options.isTV || function () { return false; };
-    this.createImage = options.createImage || function () { return new root.Image(); };
+    this.isTV =
+      options.isTV ||
+      function () {
+        return false;
+      };
+    this.createImage =
+      options.createImage ||
+      function () {
+        return new root.Image();
+      };
     this.setTimer = options.setTimeout || root.setTimeout.bind(root);
     this.clearTimer = options.clearTimeout || root.clearTimeout.bind(root);
     this.now = options.now || Date.now;
@@ -51,8 +59,10 @@
   };
 
   C5Thumbnail.prototype.schedule = function () {
-    if (this.destroyed || this.paused || this.port === null || this.document.hidden || !this.isTV()) return;
-    var self = this, generation = this.generation;
+    if (this.destroyed || this.paused || this.port === null || this.document.hidden || !this.isTV())
+      return;
+    var self = this,
+      generation = this.generation;
     this.refreshTimer = this.setTimer(function () {
       if (self.destroyed || generation !== self.generation) return;
       self.refreshTimer = null;
@@ -107,7 +117,8 @@
       this.status = this.hasStill ? 'ready' : 'idle';
       return;
     }
-    var self = this, generation = this.generation;
+    var self = this,
+      generation = this.generation;
     var timestamp = Math.floor(Number(this.now()));
     if (!Number.isSafeInteger(timestamp) || timestamp < 0) timestamp = 0;
     this.stamp = Math.max(this.stamp + 1, timestamp);
@@ -137,9 +148,15 @@
     try {
       pending = this.createImage();
       this.pending = pending;
-      pending.onload = function () { finish(true); };
-      pending.onerror = function () { finish(false); };
-      this.loadTimer = this.setTimer(function () { finish(false); }, 5000);
+      pending.onload = function () {
+        finish(true);
+      };
+      pending.onerror = function () {
+        finish(false);
+      };
+      this.loadTimer = this.setTimer(function () {
+        finish(false);
+      }, 5000);
       pending.src = src;
     } catch (ignore) {
       // Missing files and unavailable image loaders have the same quiet fallback.
@@ -178,4 +195,4 @@
   };
 
   root.C5Thumbnail = C5Thumbnail;
-}(typeof window !== 'undefined' ? window : globalThis));
+})(typeof window !== 'undefined' ? window : globalThis);

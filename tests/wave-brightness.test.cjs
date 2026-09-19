@@ -7,28 +7,24 @@ const test = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const app = fs.readFileSync(path.join(__dirname, '../app/app.js'), 'utf8');
+const preferencesAPI = require('../app/launcher-preferences.js');
+const colourContext = {window: {}};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../app/wave-colors.js'), 'utf8'), colourContext);
+const waveColors = colourContext.window.LGXMBWaveColors;
+const appearance = fs.readFileSync(path.join(__dirname, '../app/appearance-settings.js'), 'utf8');
 const renderer = fs.readFileSync(path.join(__dirname, '../app/ps3-native-renderer.js'), 'utf8');
 function required(source, expression) {
   const match = source.match(expression);
   assert.ok(match, 'Expected brightness implementation was not found');
   return match;
 }
-const gainExpression = required(app, /brightness:(\{[^}]+\})\[preferences\.waveBrightness\]/)[1];
-const menuLine = required(app, /choiceGroup\('Brightness',[^\n]+\);/)[0];
 const styleMethod = required(renderer, /C5Wave\.prototype\.setStyle = function \(o\) \{[\s\S]*?\n  \};/)[0];
 function loadPreferences(value, legacy = false, raw = false) {
-  const prefixEnd = app.indexOf('// Keep the requested output at full HD');
-  assert.ok(prefixEnd > 0);
   const storage = {};
   if (value !== undefined) storage[legacy ? 'openxmb-c5-preferences-v1' : 'lg-xmb-preferences-v1'] = raw ? value : JSON.stringify(value);
-  const context = {window: {C5Catalog: [{id: 'tv', items: []}]}, document: {},
-    matchMedia: () => ({matches: false}),
-    localStorage: {getItem: key => storage[key] || null}};
-  vm.runInNewContext(app.slice(0, prefixEnd) + 'globalThis.result=preferences;})();', context);
-  return JSON.parse(JSON.stringify(context.result));
+  return preferencesAPI.load({getItem: key => storage[key] || null}, false, waveColors.normalize);
 }
-function gain(key) { return vm.runInNewContext('(' + gainExpression + ')[key]', {key}); }
+function gain(key) { return preferencesAPI.waveStyle({waveBrightness: key}).brightness; }
 function wave() {
   const context = {C5Wave: function () {}};
   vm.runInNewContext(styleMethod, context);
@@ -58,18 +54,27 @@ test('invalid and corrupt brightness storage retains a valid default', () => {
 });
 test('menu offers Low/Medium/High, applies each gain and saves stable keys', () => {
   let settings, handler, saves = 0, applied;
-  const context = {preferences: loadPreferences(),
-    choiceGroup(label, choices, selected, callback) { settings = {label, choices, selected}; handler = callback; },
-    applyPreferences() { applied = gain(context.preferences.waveBrightness); }, save() { saves++; }};
-  vm.runInNewContext(menuLine, context);
+  const preferences = loadPreferences();
+  const context = {window: {}, LGXMBPreferences: preferencesAPI};
+  vm.runInNewContext(appearance, context);
+  const panel = new context.window.LGXMBAppearanceSettings({
+    preferences, themes: preferencesAPI.createThemes(),
+    ui: {row: () => ({}), choiceGroup(label, choices, selected, callback) {
+      if (label === 'Brightness') { settings = {label, choices, selected}; handler = callback; }
+    }},
+    wave: {getDiagnostics: () => ({surface: {msaaSupported: [4]}})},
+    applyPreferences() { applied = gain(preferences.waveBrightness); }, save() { saves++; }
+  });
+  panel.open();
   assert.deepEqual(JSON.parse(JSON.stringify(settings.choices)), [['dim','Low'],['low','Medium'],['normal','High']]);
   assert.equal(settings.selected, 'normal');
   for (const [key, value] of [['dim',0.3],['low',0.6],['normal',1]]) {
     handler(key); assert.equal(applied, value);
-    assert.equal(loadPreferences(context.preferences).waveBrightness, key);
+    assert.equal(loadPreferences(preferences).waveBrightness, key);
   }
   assert.equal(saves, 3);
 });
+
 test('renderer accepts all three levels and leaves time/resources intact', () => {
   const w = wave(), before = [w.time,w.renderer,w.simulation];
   for (const value of [0.3,0.6,1]) { w.setStyle({brightness:value}); assert.equal(w.brightness,value); }

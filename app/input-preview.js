@@ -14,11 +14,18 @@
     this.placeholder = slot.querySelector('.input-preview-placeholder');
     this.message = slot.querySelector('.input-preview-message') || this.placeholder;
     this.document = options.document || root.document;
-    this.isTV = options.isTV || function () { return false; };
-    this.getInputStatus = options.getInputStatus || (root.C5TV &&
-      typeof root.C5TV.getInputPreviewStatus === 'function' ? function (port) {
-        return root.C5TV.getInputPreviewStatus(port);
-      } : null);
+    this.isTV =
+      options.isTV ||
+      function () {
+        return false;
+      };
+    this.getInputStatus =
+      options.getInputStatus ||
+      (root.C5TV && typeof root.C5TV.getInputPreviewStatus === 'function'
+        ? function (port) {
+            return root.C5TV.getInputPreviewStatus(port);
+          }
+        : null);
     this.setTimer = options.setTimeout || root.setTimeout.bind(root);
     this.clearTimer = options.clearTimeout || root.clearTimeout.bind(root);
     this.port = null;
@@ -47,11 +54,17 @@
 
   C5InputPreview.prototype.disposeVideo = function (video) {
     if (!video) return;
-    try { video.pause(); } catch (ignore) {}
-    try { video.removeAttribute('src'); } catch (ignore) {}
+    try {
+      video.pause();
+    } catch (ignore) {}
+    try {
+      video.removeAttribute('src');
+    } catch (ignore) {}
     while (video.firstChild) video.removeChild(video.firstChild);
     // webOS 3+ requires load() after removing sources to reset its pipeline.
-    try { video.load(); } catch (ignore) {}
+    try {
+      video.load();
+    } catch (ignore) {}
     if (video.parentNode) video.parentNode.removeChild(video);
   };
 
@@ -66,7 +79,9 @@
 
   C5InputPreview.prototype.deferRetired = function () {
     if (this.retireTimer !== null) this.clearTimer(this.retireTimer);
-    var self = this, generation = ++this.retireGeneration, video = this.retiredVideo;
+    var self = this,
+      generation = ++this.retireGeneration,
+      video = this.retiredVideo;
     this.retireTimer = this.setTimer(function () {
       if (generation !== self.retireGeneration || video !== self.retiredVideo) return;
       self.flushRetired();
@@ -83,7 +98,9 @@
     var request = this.signalRequest;
     this.signalRequest = null;
     if (request && typeof request.cancel === 'function') {
-      try { request.cancel(); } catch (ignore) {}
+      try {
+        request.cancel();
+      } catch (ignore) {}
     }
     this.listeners.forEach(function (entry) {
       entry[0].removeEventListener(entry[1], entry[2]);
@@ -121,23 +138,35 @@
     this.release(true);
     this.port = port;
     this.error = null;
-    if (port === null) { this.status = 'idle'; this.paint(); return; }
+    if (port === null) {
+      this.status = 'idle';
+      this.paint();
+      return;
+    }
     this.status = this.isTV() ? 'waiting' : 'desktop';
     this.paint();
     if (this.status === 'desktop') return;
-    var self = this, generation = this.generation;
-    this.startTimer = this.setTimer(function () {
-      if (generation !== self.generation || self.destroyed) return;
-      self.startTimer = null;
-      if (self.document.hidden || !self.isTV()) { self.stop(); return; }
-      self.start(generation);
-    }, this.retiredVideo ? 650 : 400);
+    var self = this,
+      generation = this.generation;
+    this.startTimer = this.setTimer(
+      function () {
+        if (generation !== self.generation || self.destroyed) return;
+        self.startTimer = null;
+        if (self.document.hidden || !self.isTV()) {
+          self.stop();
+          return;
+        }
+        self.start(generation);
+      },
+      this.retiredVideo ? 650 : 400
+    );
   };
 
   C5InputPreview.prototype.start = function (generation) {
     // Even a delayed cleanup callback cannot leave two native inputs allocated.
     this.flushRetired();
-    var self = this, video = this.document.createElement('video');
+    var self = this,
+      video = this.document.createElement('video');
     this.video = video;
     this.status = 'loading';
     this.paint();
@@ -175,11 +204,15 @@
     var source = this.document.createElement('source');
     source.setAttribute('type', 'service/webos-external');
     source.setAttribute('src', 'ext://hdmi:' + this.port);
-    listen(source, 'error', function () { fail('source-error'); });
-    listen(video, 'error', function () {
-      fail('media-error:' + (video.error && video.error.code || 'unknown'));
+    listen(source, 'error', function () {
+      fail('source-error');
     });
-    ['loadeddata', 'canplay', 'playing'].forEach(function (event) { listen(video, event, ready); });
+    listen(video, 'error', function () {
+      fail('media-error:' + ((video.error && video.error.code) || 'unknown'));
+    });
+    ['loadeddata', 'canplay', 'playing'].forEach(function (event) {
+      listen(video, event, ready);
+    });
     // Native HDMI may emit stalled while showing a picture; currentTime stays 0.
     // Neither is a failure signal. Initial loading has a bounded deadline.
     this.loadTimer = this.setTimer(function () {
@@ -197,13 +230,16 @@
           var request = self.getInputStatus(self.port);
           if (!request || typeof request.then !== 'function') return;
           self.signalRequest = request;
-          request.then(function (result) {
-            if (!current() || self.signalRequest !== request) return;
-            self.signalRequest = null;
-            if (result && result.port === self.port && result.signal === false) fail('no-signal');
-          }, function () {
-            if (current() && self.signalRequest === request) self.signalRequest = null;
-          });
+          request.then(
+            function (result) {
+              if (!current() || self.signalRequest !== request) return;
+              self.signalRequest = null;
+              if (result && result.port === self.port && result.signal === false) fail('no-signal');
+            },
+            function () {
+              if (current() && self.signalRequest === request) self.signalRequest = null;
+            }
+          );
         } catch (ignore) {
           self.signalRequest = null;
         }
@@ -215,11 +251,11 @@
       var play = video.play();
       if (play && typeof play.catch === 'function') {
         play.catch(function (problem) {
-          fail('play-rejected:' + (problem && problem.name || 'unknown'));
+          fail('play-rejected:' + ((problem && problem.name) || 'unknown'));
         });
       }
     } catch (problem) {
-      fail('play-failed:' + (problem && problem.name || 'unknown'));
+      fail('play-failed:' + ((problem && problem.name) || 'unknown'));
     }
   };
 
@@ -230,13 +266,15 @@
       port: this.port,
       error: this.error,
       retiring: !!this.retiredVideo,
-      video: video ? {
-        readyState: video.readyState,
-        networkState: video.networkState,
-        paused: video.paused,
-        muted: video.muted,
-        currentTime: video.currentTime
-      } : null
+      video: video
+        ? {
+            readyState: video.readyState,
+            networkState: video.networkState,
+            paused: video.paused,
+            muted: video.muted,
+            currentTime: video.currentTime
+          }
+        : null
     };
   };
 
@@ -246,4 +284,4 @@
   };
 
   root.C5InputPreview = C5InputPreview;
-}(typeof window !== 'undefined' ? window : globalThis));
+})(typeof window !== 'undefined' ? window : globalThis);

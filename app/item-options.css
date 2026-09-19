@@ -1,27 +1,120 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Same settings palette and typography; options appear and disappear instantly.
    Closed DOM is retained for reuse, but contributes no painted surfaces. */
-.item-options{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:flex-end;pointer-events:none;contain:layout style paint}
-.item-options.open{display:flex;pointer-events:auto}
-.item-options.prepared{display:flex;visibility:hidden;pointer-events:none}
-.item-options-shade{position:absolute;inset:0;z-index:0}
-.item-options-panel{position:relative;z-index:1;contain:layout style paint;transform:none;transition:none;animation:none}
-.item-options-heading,.item-options-caption{overflow-wrap:anywhere}
-.item-options-scroll{min-height:0;overflow-y:auto;padding:0 .6vw .9vh 0;scrollbar-width:thin;scrollbar-color:rgba(var(--accent-rgb),.25) transparent}
-.item-options-scroll::-webkit-scrollbar{width:3px}
-.item-options-scroll::-webkit-scrollbar-thumb{background:rgba(var(--accent-rgb),.25)}
-.item-options-actions{display:flex;flex-direction:column;align-items:stretch}
-.item-options-button{flex:none;overflow-wrap:anywhere}
-.item-options-button[aria-disabled=true]{color:rgba(var(--accent-rgb),.36)}
-.item-options-button[aria-pressed=true]::after{content:'✓';color:var(--accent)}
+.item-options {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
+  contain: layout style paint;
+}
+.item-options.open {
+  display: flex;
+  pointer-events: auto;
+}
+.item-options.prepared {
+  display: flex;
+  visibility: hidden;
+  pointer-events: none;
+}
+.item-options-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.item-options-panel {
+  position: relative;
+  z-index: 1;
+  contain: layout style paint;
+  transform: none;
+  transition: none;
+  animation: none;
+}
+.item-options-heading,
+.item-options-caption {
+  overflow-wrap: anywhere;
+}
+.item-options-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 0.6vw 0.9vh 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--accent-rgb), 0.25) transparent;
+}
+.item-options-scroll::-webkit-scrollbar {
+  width: 3px;
+}
+.item-options-scroll::-webkit-scrollbar-thumb {
+  background: rgba(var(--accent-rgb), 0.25);
+}
+.item-options-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.item-options-button {
+  flex: none;
+  overflow-wrap: anywhere;
+}
+.item-options-button[aria-disabled='true'] {
+  color: rgba(var(--accent-rgb), 0.36);
+}
+.item-options-button[aria-pressed='true']::after {
+  content: '✓';
+  color: var(--accent);
+}
 /* Category choices toggle in place; no new layers or text-opacity animation. */
-.item-options-button[role=checkbox]::after{content:'';flex:none;width:.85em;height:.85em;border:1px solid currentColor;color:var(--accent);text-align:center;line-height:.7}
-.item-options-button[role=checkbox][aria-checked=true]::after{content:'✓'}
-.item-options-button[data-action=category-apply]{margin-top:2vh;border-top:1px solid rgba(var(--accent-rgb),.16)}
-.item-options-button[data-action=category]{margin-bottom:2.6vh}
-.item-options-button[data-action=sort]::after,.item-options-button[data-action=category]::after,.item-options-button[data-action=hidden]::after{content:'›';color:var(--accent)}
-.item-options-status{margin:2vh 1.3vw;overflow-wrap:anywhere;min-height:3em}
-.item-options-info{font-size:clamp(15px,1.03vw,23px);line-height:1.85;overflow-wrap:anywhere;margin:2vh 1.3vw;color:rgba(var(--accent-rgb),.74)}
-.item-options-info dt{color:var(--text);margin-top:1.1vh}
-.item-options-info dd{margin:0}
-.item-options-warning{font-size:clamp(15px,1.03vw,23px);line-height:1.85;color:rgba(var(--accent-rgb),.74);margin:2vh 1.3vw}
+.item-options-button[role='checkbox']::after {
+  content: '';
+  flex: none;
+  width: 0.85em;
+  height: 0.85em;
+  border: 1px solid currentColor;
+  color: var(--accent);
+  text-align: center;
+  line-height: 0.7;
+}
+.item-options-button[role='checkbox'][aria-checked='true']::after {
+  content: '✓';
+}
+.item-options-button[data-action='category-apply'] {
+  margin-top: 2vh;
+  border-top: 1px solid rgba(var(--accent-rgb), 0.16);
+}
+.item-options-button[data-action='category'] {
+  margin-bottom: 2.6vh;
+}
+.item-options-button[data-action='sort']::after,
+.item-options-button[data-action='category']::after,
+.item-options-button[data-action='hidden']::after {
+  content: '›';
+  color: var(--accent);
+}
+.item-options-status {
+  margin: 2vh 1.3vw;
+  overflow-wrap: anywhere;
+  min-height: 3em;
+}
+.item-options-info {
+  font-size: clamp(15px, 1.03vw, 23px);
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+  margin: 2vh 1.3vw;
+  color: rgba(var(--accent-rgb), 0.74);
+}
+.item-options-info dt {
+  color: var(--text);
+  margin-top: 1.1vh;
+}
+.item-options-info dd {
+  margin: 0;
+}
+.item-options-warning {
+  font-size: clamp(15px, 1.03vw, 23px);
+  line-height: 1.85;
+  color: rgba(var(--accent-rgb), 0.74);
+  margin: 2vh 1.3vw;
+}

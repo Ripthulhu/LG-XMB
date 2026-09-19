@@ -17,12 +17,23 @@
   CategoryTransition.prototype.change = function (steps, update, enabled) {
     if (typeof update !== 'function') throw new TypeError('A synchronous list update is required');
     var reduced = root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var allowed = !this.destroyed && enabled && !reduced && !root.document.hidden &&
-      Number.isInteger(steps) && steps !== 0 && Math.abs(steps) <= 64;
+    var allowed =
+      !this.destroyed &&
+      enabled &&
+      !reduced &&
+      !root.document.hidden &&
+      Number.isInteger(steps) &&
+      steps !== 0 &&
+      Math.abs(steps) <= 64;
     if (this.bar) this.bar.classList.toggle('categories-instant', !allowed);
     // Like vertical navigation, update the destination and let CSS retarget its
     // current transform. Never move/fade the list or reset it after a timer.
-    try { update(); } catch (error) { this.cancel(); throw error; }
+    try {
+      update();
+    } catch (error) {
+      this.cancel();
+      throw error;
+    }
   };
 
   CategoryTransition.prototype.destroy = function () {

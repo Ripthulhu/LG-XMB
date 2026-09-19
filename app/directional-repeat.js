@@ -5,14 +5,20 @@
     options = options || {};
     if (typeof options.onDirection !== 'function') throw new TypeError('onDirection is required');
     this.onDirection = options.onDirection;
-    this.interval = Number.isFinite(options.interval) && options.interval > 0 ? options.interval : 100;
-    this.now = options.now || function () { return root.performance ? root.performance.now() : Date.now(); };
+    this.interval =
+      Number.isFinite(options.interval) && options.interval > 0 ? options.interval : 100;
+    this.now =
+      options.now ||
+      function () {
+        return root.performance ? root.performance.now() : Date.now();
+      };
     this.setTimer = options.setTimeout || root.setTimeout.bind(root);
     this.clearTimer = options.clearTimeout || root.clearTimeout.bind(root);
     this.key = null;
     this.lastAt = -Infinity;
     this.pending = null;
     this.timer = null;
+    // A cancelled timer may already be queued; its generation prevents delivery.
     this.generation = 0;
   }
   DirectionalRepeat.prototype.clearPending = function () {
@@ -28,14 +34,19 @@
     this.onDirection(event);
   };
   DirectionalRepeat.prototype.schedule = function (delay) {
-    var self = this, generation = this.generation;
+    var self = this,
+      generation = this.generation;
     this.timer = this.setTimer(function () {
       if (generation !== self.generation) return;
       self.timer = null;
       if (!self.pending) return;
-      var stamp = self.now(), remaining = self.interval - (stamp - self.lastAt);
+      var stamp = self.now(),
+        remaining = self.interval - (stamp - self.lastAt);
       // Timers may fire just before the requested deadline.
-      if (remaining > 0) { self.schedule(remaining); return; }
+      if (remaining > 0) {
+        self.schedule(remaining);
+        return;
+      }
       self.deliver(self.pending, stamp);
     }, delay);
   };
@@ -43,7 +54,8 @@
     if (!/^Arrow(Left|Right|Up|Down)$/.test(event.key)) return false;
     // A deferred event still needs its browser scrolling cancelled now.
     event.preventDefault();
-    var stamp = this.now(), remaining = this.interval - (stamp - this.lastAt);
+    var stamp = this.now(),
+      remaining = this.interval - (stamp - this.lastAt);
     if (event.key !== this.key || remaining <= 0) {
       this.deliver(event, stamp);
     } else {

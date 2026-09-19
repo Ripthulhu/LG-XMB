@@ -13,13 +13,16 @@
     "test:compat": "node tests/compat-layout-browser.cjs",
     "tools:download": "node tools/dev-tools.cjs",
     "test:music": "node tests/background-music-browser.cjs",
-    "test:menu": "node tests/menu-browser.cjs"
+    "test:menu": "node tests/menu-browser.cjs",
+    "format": "prettier --write \"app/*.js\" \"app/*.css\" app/index.html",
+    "format:check": "prettier --check \"app/*.js\" \"app/*.css\" app/index.html"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "devDependencies": {
     "@webos-tools/cli": "3.2.6",
-    "playwright": "1.62.1"
+    "playwright": "1.62.1",
+    "prettier": "3.6.2"
   }
 }
