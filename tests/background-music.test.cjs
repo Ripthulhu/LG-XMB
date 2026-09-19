@@ -98,8 +98,43 @@ test('missing/unsupported audio reports failure once, with explicit retry',()=>{
 });
 test('startup deadline is bounded and a stale timer cannot fail a new generation',()=>{
   const f=fixture({enabled:true});f.music.setContext(true,false);const expired=[...f.timers.values()][0];
-  expired();assert.equal(f.music.phase,'unavailable');assert.equal(f.audios[0].parentNode,null);
+  expired();assert.equal(f.music.phase,'recovering');assert.equal(f.audios[0].parentNode,null);
   f.music.retry();expired();assert.equal(f.music.phase,'loading');
+});
+
+test('transient failure retries once then waits until a new foreground visit',()=>{
+  const f=fixture({enabled:true});f.music.setContext(true,false);
+  const expire=()=>{const [id,fn]=[...f.timers.entries()][0];f.timers.delete(id);fn();};
+  expire();assert.equal(f.music.phase,'recovering');
+  f.music.setContext(true,false);assert.equal(f.creates,1);
+  expire();assert.equal(f.creates,2);expire();
+  assert.equal(f.music.phase,'unavailable');assert.equal(f.timers.size,0);
+  assert.equal(f.music.getState().failure.kind,'timeout');
+  f.music.setContext(true,false);assert.equal(f.creates,2);
+  f.music.setContext(false,false);f.music.setContext(true,false);assert.equal(f.creates,3);
+});
+test('decode and resource interruption recover only on a new foreground visit',()=>{
+  for(const kind of ['decode','pause']){
+    const f=fixture({enabled:true});f.music.setContext(true,false);
+    if(kind==='decode'){f.audios[0].error={code:3};f.audios[0].emit('error');}
+    else{f.audios[0].emit('playing');f.audios[0].pause();}
+    assert.equal(f.timers.size,0);f.music.setContext(true,false);assert.equal(f.creates,1);
+    f.music.setContext(false,false);f.music.setContext(true,false);assert.equal(f.creates,2);
+  }
+});
+test('scheduled recovery cannot start in HDMI, preview, Off, or a replacement session',()=>{
+  for(const action of [f=>f.music.setContext(false,false),f=>f.music.setContext(true,true),f=>f.music.setEnabled(false),f=>f.music.destroy(),f=>f.music.retry()]){
+    const f=fixture({enabled:true});f.music.setContext(true,false);
+    f.audios[0].error={code:2};f.audios[0].emit('error');
+    const stale=[...f.timers.values()][0];action(f);const count=f.creates;
+    stale();assert.equal(f.creates,count);
+  }
+});
+test('policy denial remains blocked through lifecycle transitions',async()=>{
+  const d=deferred(),f=fixture({enabled:true,promise:()=>d.promise});f.music.setContext(true,false);
+  d.reject({name:'NotAllowedError'});await f.flush();
+  f.music.setContext(false,false);f.music.setContext(true,false);
+  assert.equal(f.creates,1);assert.equal(f.music.phase,'blocked');
 });
 test('native audio interruption does not fight the resource owner in a retry loop',()=>{
   const f=fixture({enabled:true});f.music.setContext(true,false);f.audios[0].emit('playing');f.audios[0].pause();

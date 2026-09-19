@@ -12,32 +12,16 @@ window.C5Catalog=[
         "title": "Appearance",
         "icon": "palette",
         "type": "SETTING",
-        "description": "Choose a colour theme.",
+        "description": "Choose a theme and configure the animated background.",
         "action": "appearance"
       },
       {
-        "id": "motion",
-        "title": "Waves",
-        "icon": "motion",
-        "type": "SETTING",
-        "description": "Configure the animated background.",
-        "action": "motion"
-      },
-      {
         "id": "sound",
-        "title": "Navigation sound",
+        "title": "Sound",
         "icon": "sound",
         "type": "SETTING",
-        "description": "Turn navigation sounds on or off.",
+        "description": "Configure navigation sounds and background music.",
         "action": "sound"
-      },
-      {
-        "id": "music",
-        "title": "Background music",
-        "icon": "music",
-        "type": "SETTING",
-        "description": "Loop your own MP3 while Home is open.",
-        "action": "music"
       },
       {
         "id": "previews",

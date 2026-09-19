@@ -33,7 +33,7 @@
     var self = this;
     b.addEventListener('click', function () {
       if (!self.opened || self.removal) return;
-      if (b.getAttribute('aria-disabled') === 'true') { self.status.textContent = action === 'category-apply' ? 'Choose at least one category, or restore the default locations.' : action === 'category' ? 'Inputs and launcher settings keep their categories.' : action === 'sort' ? 'This category has only one item.' : action === 'start' ? 'There is no app to open.' : self.reason || 'Not available for this item.'; return; }
+      if (b.getAttribute('aria-disabled') === 'true') { self.explainRemoval = action === 'delete'; self.status.textContent = action === 'category-apply' ? 'Choose at least one category, or restore the default locations.' : action === 'category' ? 'Inputs and launcher settings keep their categories.' : action === 'sort' ? 'This category has only one item.' : action === 'start' ? 'There is no app to open.' : self.reason || 'Not available for this item.'; return; }
       handler();
     });
     this.actions.appendChild(b); return b;
@@ -49,13 +49,16 @@
     this.category = category; this.info = null; this.error = ''; this.view = 'main'; this.prepared = true; this.categoryDraft = null;
     this.render();
     this.panel.querySelectorAll('button').forEach(function (b) { b.tabIndex = -1; });
+    // Lay out during the hold without painting or accepting focus/input. The
+    // visibility change at open can reuse these dimensions and text positions.
+    this.element.classList.add('prepared'); this.element.hidden = false;
   };
   ItemOptions.prototype.open = function (item, category) {
     if (this.removal || this.opened) return false;
     if (!this.prepared || !this.item || this.item.id !== item.id || this.item.title !== item.title || this.category !== category || this.view !== 'main') this.prepare(item, category);
     this.prepared = false; this.generation++; this.opened = true;
     this.panel.querySelectorAll('button').forEach(function (b) { b.tabIndex = 0; });
-    this.options.onOpen(); this.element.hidden = false; this.element.classList.add('open'); this.element.setAttribute('aria-hidden', 'false');
+    this.options.onOpen(); this.element.hidden = false; this.element.classList.add('open'); this.element.classList.remove('prepared'); this.element.setAttribute('aria-hidden', 'false');
     this.focus(); this.sound('option');
     // The menu is usable immediately. Defer the optional metadata request out
     // of this input task, not behind an animation or a sequence of frame hooks.
@@ -83,7 +86,7 @@
     var b = this.actions.querySelector('[data-action=delete]');
     if (b) { b.setAttribute('aria-disabled', this.info && this.info.removable ? 'false' : 'true'); }
     if (this.view === 'info') this.renderInfo();
-    else if (this.view === 'main') this.status.textContent = this.info && this.info.removable ? 'Hold OK on an item for options. Back closes this panel.' : this.reason;
+    else if (this.view === 'main' && this.explainRemoval) this.status.textContent = this.info && this.info.removable ? '' : this.reason;
   };
   ItemOptions.prototype.render = function () {
     var self = this, item = this.item;
@@ -114,7 +117,9 @@
       this.actions.querySelector('[data-action=delete]').setAttribute('aria-disabled', String(!this.info || !this.info.removable));
       this.actions.querySelector('[data-action=refresh]').setAttribute('aria-disabled', String(!this.options.onRefresh));
       this.mainButtons.forEach(function (b) { b.tabIndex = self.opened ? 0 : -1; });
-      this.status.textContent = this.info && this.info.removable ? 'Hold OK on an item for options. Back closes this panel.' : this.reason;
+      // Metadata may enable Delete, but never replace the footer on arrival.
+      // Explain an unavailable action only when the user chooses it.
+      this.explainRemoval = false;
     } else if (this.view === 'sort') {
       this.caption.textContent = 'Sort this category';
       [['default', 'Default order'], ['az', 'Name: A–Z'], ['za', 'Name: Z–A']].forEach(function (choice) {

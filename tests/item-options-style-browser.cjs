@@ -77,6 +77,22 @@ async function collectTrace(cdp) {
       const page=await browser.newPage({viewport:{width,height}}); page.on('pageerror',e=>errors.push(e.message));
       try {
         await load(page);
+        await page.evaluate(() => {
+          window.savedInfoReader=styleOptions.manager.getAppInfo;
+          styleOptions.manager.getAppInfo=()=>new Promise(resolve=>{window.resolveFooterInfo=resolve;});
+          styleOptions.prepare(styleItem,styleCategory);styleOptions.open(styleItem,styleCategory);
+        });
+        await page.waitForFunction(()=>!!window.resolveFooterInfo);
+        const footerBefore=await page.locator('.item-options-panel').boundingBox();
+        assert.equal(await page.locator('.item-options-status').textContent(),'');
+        await page.evaluate(()=>resolveFooterInfo({info:{removable:false,removalReason:'System, launcher and recovery apps cannot be deleted here.'}}));
+        await page.waitForFunction(()=>!!styleOptions.info);
+        assert.equal(await page.locator('.item-options-status').textContent(),'');
+        assert.deepEqual(await page.locator('.item-options-panel').boundingBox(),footerBefore);
+        await page.locator('[data-action=delete]').evaluate(b=>b.click());
+        assert.match(await page.locator('.item-options-status').textContent(),/cannot be deleted/);
+        await page.evaluate(()=>{styleOptions.close('back');styleOptions.manager.getAppInfo=savedInfoReader;});
+        checks.push(`${width}: delayed metadata leaves footer and panel stable; selecting unavailable Delete explains why`);
         for (const [theme,bg] of [['midnight','5,9,17'],['ember','19,9,6']]) {
           await page.evaluate(bg => {
             document.documentElement.style.setProperty('--background-rgb',bg);

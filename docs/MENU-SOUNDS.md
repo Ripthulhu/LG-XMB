@@ -2,7 +2,7 @@
 
 Menu sounds are off by default. Copy your WAV files into
 `/media/internal/lg-xmb/Sounds/`, then enable
-**Settings → Navigation sound → On**. Names are case-sensitive.
+**Settings → Sound → Navigation sound → On**. Names are case-sensitive.
 
 | Action | File |
 | --- | --- |

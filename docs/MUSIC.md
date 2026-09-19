@@ -16,7 +16,7 @@ Use that exact lowercase filename. The directory must be traversable and the
 file readable by the media player: `0755` for this directory and `0644` for the
 MP3. Don't recursively change permissions on shared TV directories.
 
-Enable **Settings → Background music → On**. Select **Retry playback** after
+Enable **Settings → Sound → Background music → On**. Select **Retry playback** after
 adding a missing file or when autoplay was blocked.
 
 The developer app reads the file through `user-music.mp3`, a fixed link created
@@ -41,6 +41,9 @@ Missing, unreadable or unsupported files leave the menu usable.
 Under `com.webos.app.home`, the TV may create an audio pipeline without connecting
 it to the speakers. `connectMusicAudio` in `app/tv-bridge.js` connects that pipeline
 when music starts. A “playing” state alone doesn't prove audible output.
+
+A failed player can be recreated when Home returns to the foreground. Transient
+startup failures get one delayed retry per visit. See [Recovery behaviour](STANDBY-MUSIC.md).
 
 ## Desktop preview
 

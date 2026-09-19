@@ -244,12 +244,16 @@
   // track decodes, the player says it's playing, and nothing comes out. So the
   // app connects its own stream to the main sink. Any other identity is wired
   // up by the TV already and is left alone.
-  function connectMusicAudio() {
+  function connectMusicAudio(isCurrent) {
+    isCurrent = typeof isCurrent === 'function' ? isCurrent : function () { return true; };
+    function cancelled() { return {ok: true, connected: false, reason: 'cancelled'}; }
+    if (!isCurrent()) return Promise.resolve(cancelled());
     if (!isTV()) return Promise.resolve(previewResult('connectMusicAudio'));
     var system = root.PalmSystem || root.webOSSystem;
     var appId = String(system.identifier).split(' ')[0];
     if (appId !== 'com.webos.app.home') return Promise.resolve({ ok: true, preview: false, connected: false, reason: 'not-needed' });
     return request('mediaPipelines', {}).then(function (response) {
+      if (!isCurrent()) return cancelled();
       var found = null;
       (response.pipelines || []).forEach(function (entry) {
         if (!entry || entry.type !== 'media' || entry.appId !== appId) return;
@@ -262,6 +266,7 @@
       });
       if (!found) return { ok: true, preview: false, connected: false, reason: 'no-pipeline' };
       return request('audioStatus', {}).then(function (status) {
+        if (!isCurrent()) return cancelled();
         var wired = (Array.isArray(status.audio) ? status.audio : []).some(function (stream) {
           return (Array.isArray(stream.pipelineInfo) ? stream.pipelineInfo : []).some(function (info) {
             return info.pipelineId === found.id && Array.isArray(info.sourceSinkInfo) && info.sourceSinkInfo.length > 0;

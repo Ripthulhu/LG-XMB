@@ -63,6 +63,13 @@ async function navigate(p,category,id){
   await p.evaluate(()=>{timeTest.delayWrites=false;timeTest.deny=true;});await p.keyboard.press('Enter');await p.waitForFunction(()=>document.querySelector('#applyDateTime').getAttribute('aria-disabled')==='false');await p.locator('#applyDateTime').click();await p.waitForFunction(()=>document.querySelector('.date-time-status').textContent.includes('Permission denied'));assert.equal(await p.locator('#applyDateTime').getAttribute('aria-disabled'),'false');checks.push(width+': native denial is shown without privileged fallback');
   await p.keyboard.press('Escape');await p.evaluate(()=>{timeTest.delayReads=true;});await p.keyboard.press('Enter');await p.keyboard.press('Escape');await p.evaluate(()=>timeTest.reads.shift()());await p.waitForTimeout(20);assert.equal((await state(p)).modal,null);checks.push(width+': cancelled time read cannot update a closed panel');
   await p.evaluate(()=>{timeTest.delayReads=false;});await p.keyboard.press('Enter');await p.evaluate(()=>window.dispatchEvent(new Event('pagehide')));assert.equal((await state(p)).modal,null);await p.evaluate(()=>window.dispatchEvent(new Event('pageshow')));checks.push(width+': standby/pagehide cancels editor and does not send a write');
+  await p.evaluate(()=>{timeTest.delayReads=true;});await p.keyboard.press('Enter');
+  const timeBounds=await p.locator('.date-time-fields').boundingBox();
+  await p.evaluate(()=>timeTest.reads.shift()());
+  assert.deepEqual(await p.locator('.date-time-fields').boundingBox(),timeBounds);
+  assert.equal(await p.locator('.date-time-status').textContent(),'');
+  await p.keyboard.press('Escape');await p.evaluate(()=>{timeTest.delayReads=false;});
+  checks.push(width+': delayed clock data keeps field layout stable and footer quiet');
   await navigate(p,'apps','org.test.one');const launches=await p.evaluate(()=>catalogHarness.launches.length);
   await p.keyboard.down('Enter');await p.waitForTimeout(180);
   assert.equal((await state(p)).itemOptions.open,false);assert.equal(await p.locator('.item-options-button').count(),6);

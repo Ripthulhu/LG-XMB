@@ -10,9 +10,12 @@ function group(label,choices,value,handler){
 }
 function render(key,initial){
   var root=content(),scroll=root.scrollTop;root.textContent='';
-  if(errorMessage){var error=element('p','background-error',errorMessage);error.setAttribute('role','alert');root.appendChild(error);}
+  var error=element('p','background-error',errorMessage);error.setAttribute('role','alert');error.hidden=!errorMessage;root.appendChild(error);
   var back=group('Back button',[['stay','Stay in Home'],['lg','Show exit prompt']],options.getBack(),function(value){
-    errorMessage='';try{options.setBack(value);}catch(error){errorMessage=error.message||'Could not save the Back button setting.';}render('Back button:'+value,false);
+    if(options.getBack()===value)return;
+    errorMessage='';try{options.setBack(value);}catch(e){errorMessage=e.message||'Could not save the Back button setting.';}
+    error.textContent=errorMessage;error.hidden=!errorMessage;
+    [].forEach.call(back.querySelectorAll('[data-remote-choice]'),function(button){var selected=button.getAttribute('data-remote-choice')==='Back button:'+options.getBack();if(button.getAttribute('aria-pressed')!==String(selected)){button.setAttribute('aria-pressed',String(selected));button.querySelector('.option-check').textContent=selected?'✓':'';}});
   });
   back.appendChild(element('p','remote-note','Back closes an open panel first. From the main menu, it stays here or opens the TV exit prompt.'));
   var target=null;[].forEach.call(root.querySelectorAll('[data-remote-choice]'),function(button){if(button.getAttribute('data-remote-choice')===key)target=button;});

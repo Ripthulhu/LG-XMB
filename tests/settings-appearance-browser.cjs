@@ -6,7 +6,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
   const page = await browser.newPage({viewport:{width:1920,height:1080}});
   page.on('pageerror', error => errors.push(error.message));
   async function open(id) {
-    if (await page.evaluate(() => C5App.getState().modal)) await page.keyboard.press('Escape');
+    while (await page.evaluate(() => C5App.getState().modal)) await page.keyboard.press('Escape');
     await menu.item(page, 'settings', id);
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => !!C5App.getState().modal);
@@ -34,6 +34,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
       };
     });
     await open('appearance');
+    await page.locator('#openTheme').click();
     assert.equal(await page.locator('.theme-options .option').count(),9);
     await page.getByRole('button',{name:'Forest',exact:true}).click();
     assert.equal(await page.evaluate(() => C5App.getState().preferences.theme),'forest');
@@ -58,8 +59,8 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     assert.match(await page.locator('#modal').evaluate(el => getComputedStyle(el).borderLeftColor),/255, 255, 255/);
     checks.push('Nine themes colour only the background and waves; text, icons and dividers remain white, selected focus is preserved and no theme toast appears');
 
-    await open('motion');
-    assert.equal(await page.locator('#modalTitle').innerText(),'Waves');
+    await open('appearance');
+    assert.equal(await page.locator('#modalTitle').innerText(),'Appearance');
     await page.getByRole('group',{name:'Animation',exact:true}).getByRole('button',{name:'On',exact:true}).focus();
     await page.keyboard.press('ArrowDown');
     assert.equal(await page.evaluate(() => document.activeElement.closest('[role="group"]').getAttribute('aria-label')),'Speed');
@@ -106,7 +107,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
         await page.screenshot({path:path.join(__dirname,'../qa/settings-privacy-rose-1080.png')});
       }
     }
-    await page.setViewportSize({width:1280,height:720}); await open('motion');
+    await page.setViewportSize({width:1280,height:720}); await open('appearance');
     await page.getByRole('group',{name:'Brightness',exact:true}).getByRole('button',{name:'High',exact:true}).focus();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),false);
     const focused = await page.evaluate(() => {const r=document.activeElement.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;});
@@ -120,7 +121,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     assert.equal(invalid.theme,'midnight'); assert.equal(invalid.waveSpeed,'normal'); assert.equal(invalid.waveBrightness,'normal');
     checks.push('Invalid stored theme and wave values fall back to the existing default appearance');
 
-    await open('motion');
+    await open('appearance');
     await page.getByRole('button',{name:'Show waves full screen',exact:true}).click();
     let only = await page.evaluate(() => ({state:C5App.getState(),screen:getComputedStyle(document.getElementById('screen')).visibility,
       wave:getComputedStyle(document.getElementById('wave')).visibility,toast:document.getElementById('toast').textContent}));
@@ -136,11 +137,11 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors)
     await page.keyboard.press('Escape');
     only = await page.evaluate(() => ({state:C5App.getState(),screen:getComputedStyle(document.getElementById('screen')).visibility,focus:document.activeElement.id}));
     assert.equal(only.state.waveOnly,false); assert.equal(only.screen,'visible'); assert.equal(only.focus,'items'); assert.equal(only.state.item,hiddenItem);
-    await open('motion');
+    await open('appearance');
     await page.getByRole('button',{name:'Show waves full screen',exact:true}).click();
     await page.evaluate(() => document.dispatchEvent(new Event('webOSRelaunch')));
     assert.equal(await page.evaluate(() => C5App.getState().waveOnly),false);
-    await open('motion');
+    await open('appearance');
     await page.getByRole('button',{name:'Show waves full screen',exact:true}).click();
     await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown',{key:'Unidentified',keyCode:461,bubbles:true,cancelable:true})));
     assert.equal(await page.evaluate(() => C5App.getState().waveOnly),false);

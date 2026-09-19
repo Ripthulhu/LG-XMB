@@ -290,3 +290,19 @@ test('music audio is connected to the main sink only under the Home identity', a
   assert.equal((await result).reason, 'no-pipeline');
   assert.equal(none.calls.length, 1);
 });
+
+test('music routing cannot connect after the owning playback session ends', async () => {
+  for (const endAt of ['before', 'pipelines', 'status']) {
+    const h=setup({PalmSystem:{identifier:'com.webos.app.home 77'}});
+    let current=endAt!=='before';
+    const operation=h.tv.connectMusicAudio(()=>current);
+    if(endAt!=='before'){
+      if(endAt==='pipelines')current=false;
+      h.respond(0,[{type:'media',id:'music',appId:'com.webos.app.home',uri:'file:///home/user-music.mp3',resource:[{resource:'ADEC',index:1}]}]);
+      for(let i=0;i<6;i++)await Promise.resolve();
+      if(endAt==='status'){current=false;h.respond(1,{returnValue:true,audio:[]});}
+    }
+    assert.equal((await operation).reason,'cancelled');
+    assert.equal(h.calls.some(c=>c.uri.endsWith('/UMI/connect')),false);
+  }
+});

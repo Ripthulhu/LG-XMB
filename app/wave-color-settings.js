@@ -13,7 +13,7 @@
       values.forEach(function(pair){
         var b=document.createElement('button');b.className='option';b.textContent=pair[1];b.dataset.value=String(pair[0]);
         b.setAttribute('aria-pressed',String(state[key]===pair[0]));
-        b.addEventListener('click',function(){state[key]=pair[0];Array.prototype.forEach.call(box.children,function(n){n.setAttribute('aria-pressed',String(n===b));});visibility();apply();});box.appendChild(b);
+        b.addEventListener('click',function(){if(state[key]===pair[0])return;state[key]=pair[0];Array.prototype.forEach.call(box.children,function(n){n.setAttribute('aria-pressed',String(n===b));});visibility();apply();});box.appendChild(b);
       });
     }
     function slider(label,key,min,max,step){
@@ -42,8 +42,8 @@
   function key(event,modal){
     var current=document.activeElement,group=current.closest('.color-group'),groups=Array.from(modal.querySelectorAll('.color-group')).filter(function(g){return !g.hidden;});
     var controls=Array.from(modal.querySelectorAll('button,input')).filter(function(el){return !el.hidden&&!el.closest('[hidden]');});
-    function focus(el){if(el){el.focus();el.scrollIntoView({block:'nearest'});}}
-    function toGroup(index){var g=groups[index];focus(g ? (g.querySelector('[aria-pressed="true"]') || g.querySelector('input,button')) : modal.querySelector('#closeModal'));}
+    function focus(el){if(el&&el!==document.activeElement){el.focus();el.scrollIntoView({block:'nearest'});}}
+    function toGroup(index,delta){var g=groups[index],box=g&&g.querySelector('.color-choices');var edge=box&&Number(box.dataset.columns)===1?box.children[delta<0?box.children.length-1:0]:null;focus(g ? (edge || g.querySelector('[aria-pressed="true"]') || g.querySelector('input,button')) : modal.querySelector('#closeModal'));}
     if(event.key==='Tab'){
       event.preventDefault();var index=controls.indexOf(current);focus(controls[(index+(event.shiftKey?-1:1)+controls.length)%controls.length]);return;
     }
@@ -52,14 +52,14 @@
     if(!group){toGroup(event.key==='ArrowUp'?groups.length-1:0);return;}
     var vertical=event.key==='ArrowUp'||event.key==='ArrowDown',delta=event.key==='ArrowDown'||event.key==='ArrowRight'?1:-1;
     if(current.tagName==='INPUT'){
-      if(vertical){toGroup(groups.indexOf(group)+delta);return;}
-      if(delta>0)current.stepUp();else current.stepDown();current.dispatchEvent(new Event('input',{bubbles:true}));return;
+      if(vertical){toGroup(groups.indexOf(group)+delta,delta);return;}
+      var previous=current.value;if(delta>0)current.stepUp();else current.stepDown();if(current.value===previous)return;current.dispatchEvent(new Event('input',{bubbles:true}));return;
     }
     var box=group.querySelector('.color-choices'),buttons=Array.from(box.children),i=buttons.indexOf(current),cols=Number(box.dataset.columns);
     if(vertical){
-      if(cols>1&&buttons.length>cols&&i+delta*cols>=0&&i+delta*cols<buttons.length)focus(buttons[i+delta*cols]);
-      else toGroup(groups.indexOf(group)+delta);
-    }else focus(buttons[(i+delta+buttons.length)%buttons.length]);
+      if(buttons.length>cols&&i+delta*cols>=0&&i+delta*cols<buttons.length)focus(buttons[i+delta*cols]);
+      else toGroup(groups.indexOf(group)+delta,delta);
+    }else if(cols>1)focus(buttons[(i+delta+buttons.length)%buttons.length]);
   }
   root.LGXMBWaveColorSettings=Object.freeze({open:open,key:key});
 }(window));

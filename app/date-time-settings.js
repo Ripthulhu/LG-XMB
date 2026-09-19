@@ -40,7 +40,7 @@
     if (!this.opened || this.pending) return;
     if (this.read && this.read.cancel) this.read.cancel();
     var self = this, generation = ++this.generation;
-    this.loaded = false; this.status.textContent = 'Reading TV time…'; this.applyButton.setAttribute('aria-disabled', 'true');
+    this.loaded = false; this.status.textContent = ''; this.zone.textContent = 'Time zone · Reading…'; this.applyButton.setAttribute('aria-disabled', 'true');
     var op = this.read = this.api.get();
     op.then(function (r) {
       if (!self.opened || generation !== self.generation || self.read !== op) return;
@@ -57,7 +57,8 @@
     var self = this;
     this.buttons.forEach(function (b) {
       var n = b.dataset.field, v = self.value[n], range = self.range(n);
-      b.textContent = String(v).padStart(n === 'year' ? 4 : 2, '0');
+      var text = String(v).padStart(n === 'year' ? 4 : 2, '0');
+      if (b.textContent !== text) b.textContent = text;
       b.setAttribute('aria-valuenow', v); b.setAttribute('aria-valuetext', v); b.setAttribute('aria-valuemin', range[0]); b.setAttribute('aria-valuemax', range[1]);
     });
     this.times = [];

@@ -9,3 +9,5 @@
 .date-time-help,.date-time-zone,.date-time-status{font-size:clamp(13px,1vw,22px);line-height:1.6;color:rgba(255,255,255,.75);margin:1.5vh 0}
 .date-time-status{color:#fff;min-height:3em}
 #applyDateTime[aria-disabled=true],#readDateTime[aria-disabled=true]{color:rgba(255,255,255,.4)}
+
+.date-time-zone{min-height:1.6em}

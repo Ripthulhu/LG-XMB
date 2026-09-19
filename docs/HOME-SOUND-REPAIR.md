@@ -27,7 +27,7 @@ Reopen Home after both copies are updated. Normal helper setup rechecks
 links to the nine recognised filenames under `/media/internal/lg-xmb/Sounds/`.
 Existing exact, root-owned links are kept.
 
-Then select **Settings → Navigation sound → Reload sounds**. Reload clears audio
+Then select **Settings → Sound → Reload sounds**. Reload clears audio
 buffers and rereads clips; it doesn't run filesystem repair. A still-running
 page after an in-place file sync needs normal helper setup before reloading
 missing links can help.

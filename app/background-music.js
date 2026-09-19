@@ -27,11 +27,15 @@
     this.blocked = false;
     this.destroyed = false;
     this.timer = null;
+    this.retryTimer = null;
+    this.retries = 0;
+    this.contextAllowed = false;
+    this.failure = null;
     this.phase = this.enabled ? 'suspended' : 'off';
   }
 
   BackgroundMusic.prototype.getState = function () {
-    return {enabled: this.enabled, volume: this.volume, phase: this.phase};
+    return {enabled: this.enabled, volume: this.volume, phase: this.phase, failure: this.failure, generation: this.generation};
   };
   BackgroundMusic.prototype.report = function (phase) {
     if (this.phase === phase) return;
@@ -49,6 +53,8 @@
     this.generation++;
     this.pending = false;
     this.cancelTimer();
+    if (this.retryTimer !== null) this.clearTimer(this.retryTimer);
+    this.retryTimer = null;
     var audio = this.audio;
     this.audio = null;
     this.listeners.forEach(function (entry) { entry[0].removeEventListener(entry[1], entry[2]); });
@@ -67,6 +73,7 @@
       this.report(!this.enabled ? 'off' : !this.active || this.document.hidden ? 'suspended' : 'preview');
       return;
     }
+    if (this.retryTimer !== null) return;
     if (this.failed) { this.report('unavailable'); return; }
     if (this.blocked) { this.report('blocked'); return; }
     if (!this.audio) this.start();
@@ -94,11 +101,12 @@
       if (!self.allowed()) { self.sync(); return; }
       self.cancelTimer(); self.pending = false; self.blocked = false; self.report('playing');
     });
-    listen('error', function () { if (current()) self.fail(); });
+    listen('error', function () { if (current()) self.fail('media', audio.error); });
     // If native resource arbitration stops us, wait for explicit retry rather
     // than repeatedly fighting another player for audio focus.
     listen('pause', function () {
       if (current() && self.allowed() && !self.pending) {
+        self.failure = {kind: 'interrupted'};
         self.release(true); self.blocked = true; self.report('blocked');
       }
     });
@@ -115,10 +123,28 @@
       this.play();
     } catch (ignore) { if (current()) this.fail(); }
   };
-  BackgroundMusic.prototype.fail = function () {
+  BackgroundMusic.prototype.fail = function (kind, error) {
+    var code = error && Number(error.code) || 0;
+    this.failure = {kind: kind || 'player', code: code,
+      name: error && typeof error.name === 'string' ? error.name.slice(0, 80) : ''};
     this.failed = true;
     this.blocked = false;
     this.release(true);
+    // One delayed retry per foreground visit for transient startup failures.
+    // Decode/format errors and focus loss never compete in a timer loop.
+    var transient = kind === 'timeout' || (kind === 'media' && (code === 1 || code === 2)) ||
+      (kind === 'play' && this.failure.name === 'AbortError');
+    if (transient && this.allowed() && this.retries < 1) {
+      this.retries++;
+      var self = this, generation = this.generation;
+      this.retryTimer = this.setTimer(function () {
+        if (self.generation !== generation || !self.allowed()) return;
+        self.retryTimer = null;
+        self.failed = false; self.sync();
+      }, 2000);
+      this.report('recovering');
+      return;
+    }
     this.report('unavailable');
   };
   BackgroundMusic.prototype.play = function () {
@@ -130,11 +156,12 @@
     function rejected(error) {
       if (!current()) return;
       if (error && error.name === 'NotAllowedError') {
+        self.failure = {kind: 'policy'};
         self.release(true); self.blocked = true; self.report('blocked');
-      } else self.fail();
+      } else self.fail('play', error);
     }
     this.cancelTimer();
-    this.timer = this.setTimer(function () { if (current()) self.fail(); }, 15000);
+    this.timer = this.setTimer(function () { if (current()) self.fail('timeout'); }, 15000);
     try {
       var result = audio.play();
       if (result && typeof result.then === 'function') result.then(function () {
@@ -149,6 +176,7 @@
   BackgroundMusic.prototype.setEnabled = function (enabled) {
     if (this.destroyed || typeof enabled !== 'boolean' || this.enabled === enabled) return;
     this.enabled = enabled;
+    this.retries = 0; this.failure = null;
     this.failed = this.blocked = false;
     if (!enabled) { this.release(false); this.position = 0; }
     this.sync();
@@ -164,6 +192,15 @@
     if (this.destroyed) return;
     this.active = active === true;
     this.preview = preview === true;
+    var allowed = this.allowed();
+    if (allowed && !this.contextAllowed) {
+      this.retries = 0;
+      this.failed = false;
+      // Preserve autoplay policy. A new foreground visit may retry a player
+      // that lost native resources, including errors misreported as format loss.
+      if (!this.failure || this.failure.kind !== 'policy') this.blocked = false;
+    }
+    this.contextAllowed = allowed;
     this.sync();
   };
   BackgroundMusic.prototype.gesture = function (event) {
@@ -174,7 +211,8 @@
   BackgroundMusic.prototype.retry = function () {
     if (!this.allowed()) return;
     // Explicit retry also picks up a replacement track from its beginning.
-    this.release(false); this.position = 0; this.failed = this.blocked = false; this.sync();
+    this.release(false); this.position = 0; this.retries = 0; this.failure = null;
+    this.failed = this.blocked = false; this.sync();
   };
   BackgroundMusic.prototype.destroy = function () {
     if (this.destroyed) return;

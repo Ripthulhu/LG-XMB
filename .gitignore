@@ -26,3 +26,6 @@ experiments/ps3-wave-webgl2/private/
 
 # Backups the patch installers leave in the checkout.
 .lg-xmb-backups/
+
+# Browser-test screenshots and generated reports.
+/artifacts/

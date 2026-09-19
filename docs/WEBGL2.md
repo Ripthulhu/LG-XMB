@@ -11,7 +11,7 @@ IPK. There's no separate renderer installer or preview archive to apply.
 
 ## Settings
 
-Open **Settings → Waves**. The launcher defaults to 60 fps, 1.5× supersampling,
+Open **Settings → Appearance**. The launcher defaults to 60 fps, 1.5× supersampling,
 Original mesh detail, Subtle edge softness and Strong Wave FXAA. MSAA is off;
 particles are on at Medium density.
 

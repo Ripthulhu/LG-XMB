@@ -3,6 +3,7 @@
    Closed DOM is retained for reuse, but contributes no painted surfaces. */
 .item-options{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:flex-end;pointer-events:none;contain:layout style paint}
 .item-options.open{display:flex;pointer-events:auto}
+.item-options.prepared{display:flex;visibility:hidden;pointer-events:none}
 .item-options-shade{position:absolute;inset:0;z-index:0}
 .item-options-panel{position:relative;z-index:1;contain:layout style paint;transform:none;transition:none;animation:none}
 .item-options-heading,.item-options-caption{overflow-wrap:anywhere}
@@ -24,8 +25,3 @@
 .item-options-info dt{color:var(--text);margin-top:1.1vh}
 .item-options-info dd{margin:0}
 .item-options-warning{font-size:clamp(15px,1.03vw,23px);line-height:1.85;color:rgba(var(--accent-rgb),.74);margin:2vh 1.3vw}
-/* Suppress the shared modal transition on underlying text containers. */
-body.item-options-visible .screen[aria-hidden=true] #categories,
-body.item-options-visible .screen[aria-hidden=true] .cross-content,
-body.item-options-visible .screen[aria-hidden=true] header{transition:none}
-body.item-options-visible .screen{pointer-events:none}

@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 module.exports = async function checkBackgroundMusic(browser, checks, errors, loader) {
-  const load = loader || (page => page.goto('http://127.0.0.1:8765/'));
+  const load = loader || (page => page.goto('http://127.0.0.1:'+(process.env.OPENXMB_PREVIEW_PORT||8765)+'/'));
   const dir = path.resolve(__dirname, '../qa'); fs.mkdirSync(dir, {recursive:true});
   const setup = () => {
     // These checks exercise music, not the already separate real-shader suite.
@@ -72,7 +72,7 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
     try {
       assert.equal((await state(page)).music.phase, 'off');
       assert.equal(await page.locator('audio').count(), 0);
-      await settings(page, 'Background music');
+      await settings(page,'Sound');
       await musicSwitch(page, 'On').click(); await playing(page);
       assert.equal(await page.locator('audio').count(), 1);
       assert.equal(await page.locator('audio').evaluate(a=>a.loop), true);
@@ -91,7 +91,7 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
       await page.keyboard.press('Escape');
       await menu.item(page,'tv','com.webos.app.livetv');
       assert.equal(await page.evaluate(()=>document.querySelector('audio')===musicTest.originalAudio), true);
-      await settings(page, 'Waves'); await page.keyboard.press('Escape');
+      await settings(page, 'Appearance'); await page.keyboard.press('Escape');
       assert.equal(await page.evaluate(()=>document.querySelector('audio')===musicTest.originalAudio), true);
       // Release on hide, resume once, and retain the in-session playback position.
       const position=await page.locator('audio').evaluate(a=>{a.currentTime=30;return a.currentTime;});
@@ -100,8 +100,19 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
       assert.deepEqual(await page.evaluate(()=>[musicTest.originalAudio.paused,musicTest.originalAudio.getAttribute('src')]),[true,null]);
       await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});await playing(page);
       await page.waitForFunction(at=>document.querySelector('audio').currentTime>=at, position);
+      // Native media errors can survive Quick Start unless a new foreground
+      // visit clears the failed player. Exercise the actual app lifecycle glue.
+      await page.evaluate(()=>{
+        const audio=document.querySelector('audio');
+        Object.defineProperty(audio,'error',{value:{code:3}});
+        audio.dispatchEvent(new Event('error'));
+      });
+      assert.equal((await state(page)).music.phase,'unavailable');
+      await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+      await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+      await playing(page);assert.equal(await page.locator('audio').count(),1);
       // Saved choices survive a reload; an ordinary user gesture may satisfy autoplay.
-      await reload(page); await settings(page,'Background music');
+      await reload(page); await settings(page,'Sound');
       await page.waitForFunction(()=>['playing','blocked'].includes(C5App.getState().music.phase));
       if ((await state(page)).music.phase==='blocked') await page.getByRole('button',{name:'Retry playback',exact:true}).click();
       await playing(page);assert.equal((await state(page)).preferences.musicEnabled,true);
@@ -112,12 +123,12 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
       assert.equal(await page.evaluate(()=>musicTest.audioCreated),created);
       await reload(page);assert.equal((await state(page)).music.phase,'off');
       assert.equal((await state(page)).preferences.musicVolume,0.1);assert.equal(await page.locator('audio').count(),0);
-      checks.push(`Music ${width}: synthetic audio decoding/loop, one player, live volume, saved On/Off, stable navigation and hidden release/resume`);
+      checks.push(`Music ${width}: synthetic audio decoding/loop, one player, live volume, saved On/Off, stable navigation, hidden release/resume and media-error recovery on foreground`);
     } finally {await page.close();}
   }
   const page=await create(1920);
   try {
-    await settings(page,'Background music');await musicSwitch(page,'On').click();await playing(page);
+    await settings(page,'Sound');await musicSwitch(page,'On').click();await playing(page);
     await page.keyboard.press('Escape');
     await page.evaluate(()=>{
       C5TV=Object.assign({},C5TV,{isTV:()=>true,
@@ -145,7 +156,7 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
   } finally {await page.close();}
   const retryPage=await create(1280);
   try {
-    await settings(retryPage,'Background music');
+    await settings(retryPage,'Sound');
     await retryPage.evaluate(()=>{
       const play=HTMLMediaElement.prototype.play;
       HTMLMediaElement.prototype.play=function(){return this.tagName==='AUDIO'?Promise.reject(new DOMException('Fixture autoplay denial','NotAllowedError')):play.call(this);};
@@ -172,7 +183,7 @@ module.exports = async function checkBackgroundMusic(browser, checks, errors, lo
     try {
       await missing.unroute('**/user-music.mp3');
       await missing.route('**/user-music.mp3',route=>route.fulfill({status:404,body:'Not found'}));
-      await settings(missing,'Background music');
+      await settings(missing,'Sound');
       assert.equal(await missing.locator('#musicFilePath').innerText(),'/media/internal/lg-xmb/background.mp3');
       await musicSwitch(missing,'On').click();
       await missing.waitForFunction(()=>C5App.getState().music.phase==='unavailable');
