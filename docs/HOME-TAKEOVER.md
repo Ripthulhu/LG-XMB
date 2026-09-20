@@ -219,6 +219,12 @@ The helper check also runs here because startup hooks may run concurrently.
 `--startup` also handles a boot that restores HDMI before the hook runs. It
 reopens that input after refreshing Home, provided the TV is still active and
 you haven't switched to another app. Recordings and casting still block refresh.
+If LG has already fallen back to Home, the hook reads `general.homeAutoLaunch`.
+When it is `off` (Recent Input), it restores the saved physical HDMI input or
+Live TV after the refresh. It leaves Home selected when Home Auto Launch is on
+or the setting is unavailable. A standby boot never launches the saved input.
+Settings changes during the refresh cancel that restoration. An already
+registered payload remains a no-op; this is not a watcher for ordinary wakes.
 
 Test the saved hook from SSH before rebooting. If the matching payload is
 registered and the media subscription is healthy, it should report

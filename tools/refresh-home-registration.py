@@ -5,7 +5,7 @@
 This interrupts Home and its media. Run during setup or from the Home mount
 hook, never as a standby watchdog. --force exercises the transaction even
 when SAM already knows the payload. No mounts, app files or settings change.
-The mount hook uses --startup to preserve an input selected during boot.
+The mount hook uses --startup to preserve the TV's input choice during boot.
 """
 import argparse
 from collections import namedtuple
@@ -239,6 +239,7 @@ class HomeRegistration:
         self.capture_factory = capture_factory
         self.recovery_errors = []
         self.startup_input = None
+        self.startup_input_from_settings = False
         self.input_restore_attempted = False
 
     def query(self, method, payload=None):
@@ -314,6 +315,11 @@ class HomeRegistration:
         foreground = self.foreground()
         if startup and re.fullmatch(r"com\.webos\.app\.hdmi[1-4]", foreground):
             self.startup_input = foreground
+        elif startup and foreground in ("", HOME_ID):
+            # SAM can fall back to Home before our mount hook runs. In that
+            # case foreground alone has already lost the Power On Screen choice.
+            self.startup_input = self.preferred_startup_input()
+            self.startup_input_from_settings = self.startup_input is not None
         require(foreground in ("", HOME_ID, self.startup_input),
                 "leave_other_apps_before_refresh")
         pipelines = self.query("com.webos.media/getActivePipelines")
@@ -364,6 +370,25 @@ class HomeRegistration:
                              and resources <= startup_resources[pipeline["type"]])
             require(harmless or home_audio or inactive_input or startup_input, "media_in_use")
 
+    def preferred_startup_input(self):
+        try:
+            response = self.query("com.webos.settingsservice/getSystemSettings", {
+                "category": "general",
+                "keys": ["homeAutoLaunch", "physicalLastInputApp", "lastInputApp"],
+            })
+        except RefreshError:
+            # Unknown settings must not invent an input or prevent registration.
+            return None
+        settings = response.get("settings") if isinstance(response, dict) else None
+        if not isinstance(settings, dict) or settings.get("homeAutoLaunch") != "off":
+            return None
+        for key in ("physicalLastInputApp", "lastInputApp"):
+            app = settings.get(key)
+            if isinstance(app, str) and (re.fullmatch(r"com\.webos\.app\.hdmi[1-4]", app)
+                                         or app == "com.webos.app.livetv"):
+                return app
+        return None
+
     def inspect(self, startup=False):
         manifest = self.validate()
         initial = {name: self.service(name) for name in (SAM, MEDIA, DMOST)}
@@ -395,6 +420,9 @@ class HomeRegistration:
         if not isinstance(power, dict) or power.get("state") != "Active":
             return False
         if self.foreground() not in ("", HOME_ID, self.startup_input):
+            return False
+        if (self.startup_input_from_settings
+                and self.preferred_startup_input() != self.startup_input):
             return False
         self.query("com.webos.applicationManager/launch", {"id": self.startup_input})
         self.wait(lambda: self.foreground() == self.startup_input, "input_restore_timeout")

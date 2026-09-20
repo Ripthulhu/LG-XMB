@@ -24,6 +24,7 @@ class FakeTV:
         self.foreground = home.HOME_ID
         self.power = "Active"
         self.launches = []
+        self.settings = {}
         self.pipelines = []
         self.states = {home.SAM: "active", home.MEDIA: "active",
                        home.DMOST: "active" if dmost else "inactive"}
@@ -79,6 +80,8 @@ class FakeTV:
             return json.dumps(self.pipelines)
         if uri.endswith("/getPowerState"):
             return json.dumps({"returnValue": True, "state": self.power})
+        if uri.endswith("/getSystemSettings"):
+            return json.dumps({"returnValue": True, "settings": self.settings})
         if uri.endswith("/launch"):
             app = json.loads(args[-1])["id"]
             self.launches.append(app)
@@ -334,6 +337,84 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(result["restoredInput"], self.input)
         self.assertEqual(self.tv.launches, [self.input])
         self.assertEqual(self.tv.commands.count(("restart", home.SAM)), 1)
+
+    def test_recent_input_survives_home_fallback_before_startup_hook(self):
+        for foreground in ("", home.HOME_ID):
+            with self.subTest(foreground=foreground):
+                tv = FakeTV()
+                tv.foreground = foreground
+                tv.settings = {"homeAutoLaunch": "off",
+                               "physicalLastInputApp": "com.webos.app.hdmi2",
+                               "lastInputApp": "com.webos.app.hdmi1"}
+                result = tv.operation().refresh(startup=True)
+                self.assertEqual(result["restoredInput"], "com.webos.app.hdmi2")
+                self.assertEqual(tv.launches, ["com.webos.app.hdmi2"])
+
+    def test_home_power_on_choice_does_not_redirect(self):
+        tv = FakeTV()
+        tv.settings = {"homeAutoLaunch": "on", "physicalLastInputApp": self.input}
+        self.assertIsNone(tv.operation().refresh(startup=True)["restoredInput"])
+        self.assertEqual(tv.launches, [])
+
+    def test_recent_input_fallback_accepts_only_native_inputs(self):
+        for candidate in ("com.webos.app.hdmi4", "com.webos.app.livetv",
+                          "youtube.leanback.v4", home.HOME_ID, "com.webos.app.hdmi5", None):
+            with self.subTest(candidate=candidate):
+                tv = FakeTV()
+                tv.settings = {"homeAutoLaunch": "off", "lastInputApp": candidate}
+                result = tv.operation().refresh(startup=True)
+                expected = candidate if candidate in ("com.webos.app.hdmi4", "com.webos.app.livetv") else None
+                self.assertEqual(result["restoredInput"], expected)
+
+    def test_unknown_or_unavailable_settings_do_not_choose_input(self):
+        for response in ({"returnValue": False}, {"returnValue": True},
+                         {"returnValue": True, "settings": []},
+                         {"returnValue": True, "settings": {"homeAutoLaunch": False,
+                                                            "lastInputApp": self.input}}):
+            with self.subTest(response=response):
+                tv = FakeTV()
+                operation = tv.operation()
+                run = operation.run
+                operation.run = lambda args: (json.dumps(response) if args[-2].endswith('/getSystemSettings')
+                                              else run(args))
+                self.assertIsNone(operation.refresh(startup=True)["restoredInput"])
+                self.assertEqual(tv.launches, [])
+
+    def test_saved_input_does_not_override_real_boot_selection(self):
+        self.tv.settings = {"homeAutoLaunch": "off", "physicalLastInputApp": "com.webos.app.hdmi2"}
+        self.assertEqual(self.tv.operation().refresh(startup=True)["restoredInput"], self.input)
+
+    def test_saved_input_does_not_wake_standby_boot(self):
+        tv = FakeTV()
+        tv.power = "Suspend"
+        tv.settings = {"homeAutoLaunch": "off", "physicalLastInputApp": self.input}
+        self.assertIsNone(tv.operation().refresh(startup=True)["restoredInput"])
+        self.assertEqual(tv.launches, [])
+
+    def test_saved_input_does_not_affect_manual_or_matched_refresh(self):
+        for matched, startup in ((False, False), (True, True)):
+            with self.subTest(matched=matched, startup=startup):
+                tv = FakeTV(matched=matched)
+                tv.settings = {"homeAutoLaunch": "off", "physicalLastInputApp": self.input}
+                tv.operation().refresh(startup=startup)
+                self.assertEqual(tv.launches, [])
+
+    def test_saved_input_is_cancelled_if_settings_or_foreground_change(self):
+        for change in ("setting", "input", "foreground"):
+            with self.subTest(change=change):
+                tv = FakeTV()
+                tv.settings = {"homeAutoLaunch": "off", "physicalLastInputApp": self.input}
+                def capture(owner):
+                    if change == "setting":
+                        tv.settings["homeAutoLaunch"] = "on"
+                    elif change == "input":
+                        tv.settings["physicalLastInputApp"] = "com.webos.app.hdmi2"
+                    else:
+                        tv.foreground = "youtube.leanback.v4"
+                    return False
+                tv.capture.refresh = capture
+                self.assertIsNone(tv.operation().refresh(startup=True)["restoredInput"])
+                self.assertEqual(tv.launches, [])
 
     def test_normal_manual_force_still_refuses_active_hdmi(self):
         with self.assertRaisesRegex(home.RefreshError, "leave_other_apps_before_refresh"):
