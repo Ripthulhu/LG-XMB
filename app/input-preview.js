@@ -28,11 +28,15 @@
         : null);
     this.setTimer = options.setTimeout || root.setTimeout.bind(root);
     this.clearTimer = options.clearTimeout || root.clearTimeout.bind(root);
+    this.onActivityChange = options.onActivityChange || function () {};
+    this.active = false;
     this.port = null;
     this.video = null;
     this.retiredVideo = null;
     this.retireTimer = null;
     this.retireGeneration = 0;
+    this.settleTimer = null;
+    this.settleGeneration = 0;
     this.status = 'idle';
     this.error = null;
     this.generation = 0;
@@ -50,6 +54,35 @@
     this.slot.setAttribute('data-status', this.status);
     this.placeholder.hidden = this.status === 'playing';
     this.message.textContent = this.status === 'unavailable' ? 'Preview unavailable' : '';
+    this.reportActivity();
+  };
+
+  // Include the debounce so the owner can ease rendering to a stop before
+  // playback starts. Keep the hold across port changes, deferred teardown and
+  // the short native release interval after load() returns.
+  C5InputPreview.prototype.reportActivity = function () {
+    var active =
+      this.status === 'waiting' || !!(this.video || this.retiredVideo) || this.settleTimer !== null;
+    if (active === this.active) return;
+    this.active = active;
+    this.onActivityChange(active);
+  };
+
+  C5InputPreview.prototype.cancelSettlement = function () {
+    this.settleGeneration++;
+    if (this.settleTimer !== null) this.clearTimer(this.settleTimer);
+    this.settleTimer = null;
+  };
+
+  C5InputPreview.prototype.settleAfterRelease = function () {
+    this.cancelSettlement();
+    var self = this,
+      generation = this.settleGeneration;
+    this.settleTimer = this.setTimer(function () {
+      if (self.destroyed || generation !== self.settleGeneration) return;
+      self.settleTimer = null;
+      self.reportActivity();
+    }, 400);
   };
 
   C5InputPreview.prototype.disposeVideo = function (video) {
@@ -66,6 +99,9 @@
       video.load();
     } catch (ignore) {}
     if (video.parentNode) video.parentNode.removeChild(video);
+    // Native release continues after load() returns. Give it a bounded head
+    // start before the background eases up; repeated stop() calls do not reset it.
+    this.settleAfterRelease();
   };
 
   C5InputPreview.prototype.flushRetired = function () {
@@ -85,6 +121,7 @@
     this.retireTimer = this.setTimer(function () {
       if (generation !== self.retireGeneration || video !== self.retiredVideo) return;
       self.flushRetired();
+      self.reportActivity();
     }, 400);
   };
 
@@ -116,6 +153,8 @@
     } else this.disposeVideo(video);
     if (defer && this.retiredVideo) this.deferRetired();
     else this.flushRetired();
+    // The caller paints its new status before reporting activity; a port change
+    // must not briefly resume the background between release and waiting.
   };
 
   C5InputPreview.prototype.stop = function () {
@@ -143,11 +182,11 @@
       this.paint();
       return;
     }
-    this.status = this.isTV() ? 'waiting' : 'desktop';
-    this.paint();
-    if (this.status === 'desktop') return;
     var self = this,
       generation = this.generation;
+    this.status = this.isTV() ? 'waiting' : 'desktop';
+    this.paint();
+    if (this.status !== 'waiting' || generation !== this.generation || this.destroyed) return;
     this.startTimer = this.setTimer(
       function () {
         if (generation !== self.generation || self.destroyed) return;
@@ -170,6 +209,7 @@
     this.video = video;
     this.status = 'loading';
     this.paint();
+    if (this.destroyed || generation !== this.generation || this.video !== video) return;
     function current() {
       return !self.destroyed && self.generation === generation && self.video === video;
     }
@@ -262,6 +302,8 @@
   C5InputPreview.prototype.getState = function () {
     var video = this.video;
     return {
+      active: this.active,
+      settling: this.settleTimer !== null,
       status: this.status,
       port: this.port,
       error: this.error,
@@ -281,6 +323,8 @@
   C5InputPreview.prototype.destroy = function () {
     this.stop();
     this.destroyed = true;
+    this.cancelSettlement();
+    this.reportActivity();
   };
 
   root.C5InputPreview = C5InputPreview;

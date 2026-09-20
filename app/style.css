@@ -193,6 +193,10 @@ header {
   pointer-events: auto;
   white-space: nowrap;
 }
+.item.above-bar {
+  /* Switch sides of the bar immediately; only the equal row steps animate. */
+  top: var(--item-bar-gap);
+}
 .item-icon {
   display: block;
   flex: none;

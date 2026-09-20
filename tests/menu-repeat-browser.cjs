@@ -27,30 +27,53 @@ const navigation = require('./support/menu-navigation.cjs');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'openTheme');
     }
     for (const flagged of [true, false]) {
-      await appearance();
-      const moves = await page.evaluate(async flagged => {
-        const moves = [], start = performance.now();
-        const focused = () => moves.push(performance.now() - start);
-        document.querySelector('#modalContent').addEventListener('focusin', focused);
-        const send = (type, repeat) => document.dispatchEvent(new KeyboardEvent(type, {
-          key: 'ArrowDown', repeat, bubbles: true, cancelable: true
-        }));
-        for (let n = 0; n < 9; n++) {
-          if (n) await new Promise(resolve => setTimeout(resolve, 80));
-          send('keydown', flagged && n > 0);
-        }
-        await new Promise(resolve => setTimeout(resolve, 140));
-        send('keyup', false);
-        document.querySelector('#modalContent').removeEventListener('focusin', focused);
-        return moves;
-      }, flagged);
-      const gaps = moves.slice(1).map((time, i) => time - moves[i]).sort((a, b) => a - b);
-      assert.ok(moves.length >= 7 && moves.length <= 9, 'Held input should coalesce instead of dropping every other event: ' + moves);
-      assert.ok(gaps[Math.floor(gaps.length / 2)] < 140, 'Median cadence should remain near 100 ms, not 160 ms: ' + gaps);
-      assert.ok(gaps.every(gap => gap >= 95), 'Held input must respect the repeat interval: ' + gaps);
-      cadences.push({repeatFlag: flagged, moves: moves.length, medianInterval: gaps[Math.floor(gaps.length / 2)]});
+      const pair = [];
+      for (const key of ['ArrowDown', 'ArrowUp']) {
+        await appearance();
+        const result = await page.evaluate(async ({flagged, key}) => {
+          const content = document.querySelector('#modalContent');
+          const rows = [...new Set([...content.querySelectorAll('button')]
+            .filter(button => !button.closest('[hidden]'))
+            .map(button => button.closest('.choice-group') || button))];
+          const delta = key === 'ArrowDown' ? 1 : -1;
+          // Keep both traversals away from the first and last rows so clamping
+          // cannot hide a missing or extra repeat in either direction.
+          const initial = delta > 0 ? 2 : rows.length - 3;
+          const row = rows[initial];
+          const control = row.matches('button') ? row :
+            row.querySelector('[aria-pressed="true"]') || row.querySelector('button');
+          LGXMBMenuFocus(control);
+          const moves = [], start = performance.now();
+          const focused = () => moves.push({at: performance.now() - start,
+            row: rows.indexOf(document.activeElement.closest('.choice-group') || document.activeElement)});
+          content.addEventListener('focusin', focused);
+          const send = (type, repeat) => document.dispatchEvent(new KeyboardEvent(type, {
+            key, repeat, bubbles: true, cancelable: true
+          }));
+          for (let n = 0; n < 9; n++) {
+            if (n) await new Promise(resolve => setTimeout(resolve, 80));
+            send('keydown', flagged && n > 0);
+          }
+          await new Promise(resolve => setTimeout(resolve, 140));
+          send('keyup', false);
+          content.removeEventListener('focusin', focused);
+          return {moves, initial, delta, rowCount: rows.length};
+        }, {flagged, key});
+        const moves = result.moves, times = moves.map(move => move.at);
+        const gaps = times.slice(1).map((time, i) => time - times[i]).sort((a, b) => a - b);
+        assert.ok(moves.length >= 7 && moves.length <= 9, 'Held input should coalesce instead of dropping every other event: ' + times);
+        assert.ok(gaps[Math.floor(gaps.length / 2)] < 140, 'Median cadence should remain near 100 ms, not 160 ms: ' + gaps);
+        assert.ok(gaps.every(gap => gap >= 95), 'Held input must respect the repeat interval: ' + gaps);
+        assert.deepEqual(moves.map(move => move.row), moves.map((_, index) => result.initial + (index + 1) * result.delta),
+          key + ' must move one row on every delivered repeat');
+        assert.ok(moves.every(move => move.row > 0 && move.row < result.rowCount - 1), 'Both holds must remain inside the list');
+        const cadence = {key, repeatFlag: flagged, moves: moves.length, medianInterval: gaps[Math.floor(gaps.length / 2)]};
+        cadences.push(cadence); pair.push(cadence);
+      }
+      assert.ok(Math.abs(pair[0].moves - pair[1].moves) <= 1, 'Up and Down must deliver the same held-input cadence');
+      assert.ok(Math.abs(pair[0].medianInterval - pair[1].medianInterval) < 30, 'Up and Down must use the same repeat interval');
     }
-    checks.push('80 ms held input with and without the repeat flag');
+    checks.push('matching Up/Down cadence for 80 ms held input with and without the repeat flag');
 
     await appearance();
     const taps = await page.evaluate(() => {

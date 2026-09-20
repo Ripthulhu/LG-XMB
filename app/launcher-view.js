@@ -3,6 +3,8 @@
 // updates row offsets in place. No TV service calls or animation-frame layout reads.
 (function (root) {
   'use strict';
+  var ROW_STEP = 8.4,
+    BAR_GAP = 25;
   function LauncherView(options) {
     var categories = options.categories,
       selections = options.selections;
@@ -73,6 +75,7 @@
         if (!wrap) {
           wrap = document.createElement('div');
           wrap.className = 'rows';
+          wrap.style.setProperty('--item-bar-gap', -BAR_GAP + 'vh');
           wrap.setAttribute('role', 'none');
           wrap.setAttribute('data-category', cat.id);
           list.appendChild(wrap);
@@ -199,7 +202,7 @@
         out.push({
           id: 'r' + selectedCategory + ':' + i,
           x: 31 / 50 - 1,
-          y: 1 - (52 + offset * 8.4 - (offset < 0 ? 25 : 0) + 3.25) / 50
+          y: 1 - (52 + offset * ROW_STEP - (offset < 0 ? BAR_GAP : 0) + 3.25) / 50
         });
       }
       return out;
@@ -212,7 +215,9 @@
         if (previous === offset) return;
         var first = previous === undefined,
           visible = offset >= -3 && offset <= 3;
-        button.style.setProperty('--item-y', offset * 8.4 - (offset < 0 ? 25 : 0) + 'vh');
+        // The category-bar gap is a layout offset, not part of row motion.
+        // Both directions then move one row instead of Up crossing the gap.
+        button.style.setProperty('--item-y', offset * ROW_STEP + 'vh');
         if (first || previous < 0 !== offset < 0) button.classList.toggle('above-bar', offset < 0);
         if (first || (previous === 0) !== (offset === 0)) {
           button.classList.toggle('selected', offset === 0);

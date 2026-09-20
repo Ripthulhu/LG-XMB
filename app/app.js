@@ -36,10 +36,15 @@
   var $ = function (id) {
     return document.getElementById(id);
   };
-  var wave = new C5Wave($('wave'), { quality: '1080p', adaptive: false });
+  var wave = new C5Wave($('wave'), { quality: '1080p', adaptive: false }),
+    livePreviewActive = false;
   var inputPreview = new C5InputPreview($('inputPreview'), {
     isTV: function () {
       return C5TV.isTV();
+    },
+    onActivityChange: function (active) {
+      livePreviewActive = active;
+      syncWavePlayback();
     }
   });
   var thumbnail = new C5Thumbnail($('inputThumbnail'), $('thumbnailFallback'), {
@@ -322,10 +327,17 @@
     inputPreview.stop();
     $('previewPanel').classList.remove('live-preview');
   }
+  function syncWavePlayback() {
+    // Page suspension is immediate; a live preview eases the motion to rest.
+    // Releasing video while hidden must not restart rendering. Neither pause
+    // changes the saved animation or quality settings.
+    wave.setPaused(!pageActive || document.hidden);
+    wave.setMotionHeld(livePreviewActive);
+  }
   function syncInputPreview() {
     var port = currentPort(),
       shown = !!port && !modalOpen,
-      active = shown && pageActive && !document.hidden && !busy,
+      active = shown && !waveOnly && pageActive && !document.hidden && !busy,
       live = active && preferences.previewMode === 'live';
     document.querySelector('.detail').classList.toggle('has-input-preview', shown);
     $('previewPanel').hidden = !shown;
@@ -579,9 +591,10 @@
   function setWaveOnly(on) {
     on = on === true;
     if (waveOnly === on) return;
-    if (on && modalOpen) closeModal(true);
     waveOnly = on;
+    if (on && modalOpen) closeModal(true);
     document.body.classList.toggle('wave-only', on);
+    syncInputPreview();
     if (on) toast('Press Back to return.');
     else {
       clearToast();
@@ -1335,7 +1348,7 @@
     refreshRecent();
     sounds.setActive(true);
     musicAway = false;
-    wave.setPaused(false);
+    syncWavePlayback();
     renderDetail();
     if (
       refreshStill &&
@@ -1380,7 +1393,7 @@
     if (wasActive) {
       stopInputPreview();
       thumbnail.setPaused(true);
-      wave.setPaused(true);
+      syncWavePlayback();
     }
   }
   function handleRelaunch() {

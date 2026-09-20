@@ -39,6 +39,23 @@ The rendered output matched byte for byte in six desktop comparisons covering
 animation, quality, brightness, colour source and aspect changes. This measures
 less work submitted to WebGL, not a TV frame-rate increase.
 
+## Live input previews
+
+Live HDMI and the full-screen WebGL background compete for rendering time on
+the C5. With a 4K 144 Hz VRR input, Home measured about 20 animation callbacks
+per second during live preview, compared with 60 using a cached image. Pausing
+the background restored 60 while HDMI continued playing.
+
+The background eases to a stop over 220 ms during the preview's startup delay
+and retains its last frame while HDMI plays. After releasing a native video,
+it waits 400 ms for teardown before easing back into motion. Canceling a preview
+before playback starts needs no teardown delay. Menu input stays independent,
+and saved animation and quality settings do not change. Hidden pages still
+stop immediately.
+
+`node tests/live-preview-background-browser.cjs` checks the launcher lifecycle
+with simulated HDMI and real WebGL. Native HDMI performance needs a TV check.
+
 ## Menu work
 
 Vertical navigation leaves the category bar alone. Rows and category faces are

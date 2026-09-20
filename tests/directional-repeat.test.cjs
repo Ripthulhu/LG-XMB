@@ -4,10 +4,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const DirectionalRepeat = require('../app/directional-repeat.js');
 
-function fixture() {
+function fixture(interval) {
   let stamp = 0, nextId = 0;
   const timers = new Map(), delivered = [];
   const repeat = new DirectionalRepeat({
+    interval,
     onDirection(event) { delivered.push({event, at: stamp}); },
     now() { return stamp; },
     setTimeout(fn, delay) { const id = nextId++; timers.set(id, {fn, at: stamp + delay}); return id; },
@@ -36,6 +37,55 @@ test('80 ms remote repeats produce an even 100 ms cadence', () => {
   f.advance(5000);
   assert.equal(f.delivered.length, 10, 'No synthetic repeats after input ends');
 });
+
+for (const interval of [60, 100]) {
+  test(interval + ' ms navigation treats held Up and Down identically', () => {
+    const schedules = [
+      {input: [0, 80, 160, 240, 320, 400],
+        expected: interval === 60 ? [0, 80, 160, 240, 320, 400] : [0, 100, 200, 300, 400, 500]},
+      {input: [0, 350, 430, 510, 590, 670],
+        expected: interval === 60 ? [0, 350, 430, 510, 590, 670] : [0, 350, 450, 550, 650, 750]},
+      {input: [0, 310, 325, 470, 545, 550, 780],
+        expected: interval === 60 ? [0, 310, 370, 470, 545, 605, 780] : [0, 310, 410, 510, 610, 780]}
+    ];
+    for (const schedule of schedules) {
+      for (const key of ['ArrowUp', 'ArrowDown']) {
+        for (const flagged of [false, true]) {
+          const f = fixture(interval);
+          for (const [index, at] of schedule.input.entries()) {
+            f.advance(at);
+            if (index === 1 && at > interval)
+              assert.equal(f.delivered.length, 1, 'Do not invent repeats during the remote startup delay');
+            f.repeat.handle(f.event(key, flagged && index > 0));
+          }
+          f.advance(1000);
+          assert.deepEqual(f.delivered.map(d => d.at), schedule.expected,
+            key + ' must use the same startup delay and cadence, regardless of repeat flag');
+          assert.ok(f.delivered.every(d => d.event.key === key));
+          assert.equal(f.timers.size, 0, 'A hold must not continue without received input');
+        }
+      }
+    }
+  });
+
+  test(interval + ' ms navigation cancels releases and reversals in both directions', () => {
+    for (const first of ['ArrowUp', 'ArrowDown']) {
+      const second = first === 'ArrowUp' ? 'ArrowDown' : 'ArrowUp', f = fixture(interval);
+      f.repeat.handle(f.event(first));
+      f.advance(20); f.repeat.handle(f.event(first, true));
+      f.advance(30); f.repeat.handle(f.event(second));
+      assert.equal(f.repeat.keyup({key: first}), false, 'The previous key release must not cancel the new hold');
+      f.advance(40); f.repeat.handle(f.event(second, true));
+      f.advance(50); assert.equal(f.repeat.keyup({key: second}), true);
+      f.advance(200);
+      assert.deepEqual(f.delivered.map(d => [d.event.key, d.at]), [[first, 0], [second, 30]],
+        'Reversal must be immediate and release must discard both pending directions');
+      f.advance(210); f.repeat.handle(f.event(first)); f.repeat.keyup({key: first});
+      assert.equal(f.delivered.at(-1).at, 210, 'A new tap must not inherit the previous hold delay');
+      assert.equal(f.timers.size, 0);
+    }
+  });
+}
 
 test('a held direction keeps one latest event and preserves its semantics', () => {
   const f = fixture(), initial = f.event(), pending = [];

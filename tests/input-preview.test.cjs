@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../app/input-preview.js'), 'utf8');
 
-function setup({ isTV = true, hidden = false, defaultDocument = false, getInputStatus, defaultInputStatus } = {}) {
+function setup({ isTV = true, hidden = false, defaultDocument = false, getInputStatus, defaultInputStatus, onActivityChange } = {}) {
   let now = 0;
   let nextTimer = 0;
   let nativeCalls = 0;
@@ -16,6 +16,7 @@ function setup({ isTV = true, hidden = false, defaultDocument = false, getInputS
   const videos = [];
   const sourceAssignments = [];
   const operations = [];
+  const activity = [];
   const documentListeners = [];
 
   function setTimeout(fn, delay) {
@@ -211,11 +212,18 @@ function setup({ isTV = true, hidden = false, defaultDocument = false, getInputS
   if (defaultInputStatus) window.C5TV = { getInputPreviewStatus: defaultInputStatus };
   vm.runInNewContext(source, { window, document, setTimeout, clearTimeout, Promise, console });
   assert.equal(typeof window.C5InputPreview, 'function');
-  const options = { isTV: () => isTV, setTimeout, clearTimeout };
+  const options = {
+    isTV: () => isTV, setTimeout, clearTimeout,
+    onActivityChange(active) {
+      activity.push(active);
+      operations.push(['activity', active]);
+      if (onActivityChange) onActivityChange(active);
+    }
+  };
   if (!defaultDocument) options.document = document;
   if (getInputStatus) options.getInputStatus = getInputStatus;
   const preview = new window.C5InputPreview(slot, options);
-  return { preview, slot, media, placeholder, document, videos, timers, advance, operations, sourceAssignments, documentListeners, nativeCalls: () => nativeCalls };
+  return { preview, slot, media, placeholder, document, videos, timers, advance, operations, activity, sourceAssignments, documentListeners, nativeCalls: () => nativeCalls };
 }
 
 function begin(h, port = 1) {
@@ -252,6 +260,156 @@ function signalProvider({ rejectOnCancel = false } = {}) {
   }
   return { getInputStatus, calls };
 }
+
+test('TV debounce starts activity immediately while desktop selections remain inactive', () => {
+  for (const isTV of [false, true]) {
+    const h = setup({ isTV });
+    h.preview.select(1);
+    assert.equal(h.preview.getState().active, isTV);
+    assert.deepEqual(h.activity, isTV ? [true] : []);
+    h.advance(399);
+    assert.equal(h.preview.getState().active, isTV);
+    h.preview.stop();
+    h.preview.destroy();
+    h.advance(30000);
+    assert.deepEqual(h.activity, isTV ? [true, false] : []);
+    assert.equal(h.videos.length, 0);
+  }
+});
+
+test('activity starts before attachment and outlasts teardown by one bounded native settle interval', () => {
+  const h = setup();
+  const video = begin(h);
+  assert.deepEqual(h.activity, [true]);
+  const started = h.operations.findIndex(entry => entry[0] === 'activity' && entry[1]);
+  for (const operation of ['attach', 'play']) {
+    const native = h.operations.findIndex(entry => entry[0] === 'VIDEO' && entry[1] === operation);
+    assert.ok(native > started, 'native ' + operation + ' follows the activity notification');
+  }
+  for (const event of ['loadeddata', 'canplay', 'playing', 'playing']) video.dispatch(event);
+  h.preview.select(1);
+  assert.deepEqual(h.activity, [true]);
+  assert.equal(h.preview.getState().active, true);
+  h.preview.stop();
+  assertReleased(h, video, 0);
+  assert.deepEqual(h.activity, [true]);
+  assert.equal(h.preview.getState().settling, true);
+  h.advance(250);
+  h.preview.stop();
+  h.advance(149);
+  assert.deepEqual(h.activity, [true]);
+  h.advance(1);
+  assert.deepEqual(h.activity, [true, false]);
+  assert.equal(h.preview.getState().settling, false);
+  assert.deepEqual(h.operations.slice(-2), [['VIDEO', 'detach'], ['activity', false]]);
+  h.preview.stop();
+  h.preview.destroy();
+  assert.deepEqual(h.activity, [true, false]);
+});
+
+test('activity stays continuous through port changes, deferred teardown and replacement startup', () => {
+  const h = setup();
+  begin(h).dispatch('playing');
+  h.preview.select(2);
+  h.advance(399);
+  assert.equal(h.preview.getState().active, true);
+  assert.deepEqual(h.activity, [true]);
+  h.advance(1);
+  assert.equal(h.preview.getState().active, true);
+  assert.deepEqual(h.activity, [true]);
+  assert.equal(h.preview.getState().video, null);
+  assert.equal(h.preview.getState().retiring, false);
+  assert.equal(h.preview.getState().status, 'waiting');
+  h.advance(250);
+  assert.equal(h.preview.getState().active, true);
+  assert.deepEqual(h.activity, [true]);
+  h.preview.destroy();
+  assert.deepEqual(h.activity, [true, false]);
+});
+
+test('leaving the input retains activity through deferred cleanup and native settlement', () => {
+  const h = setup();
+  begin(h).dispatch('playing');
+  h.preview.select(null);
+  h.advance(399);
+  assert.equal(h.preview.getState().status, 'idle');
+  assert.equal(h.preview.getState().active, true);
+  h.advance(1);
+  assert.equal(h.preview.getState().retiring, false);
+  assert.equal(h.preview.getState().settling, true);
+  assert.equal(h.preview.getState().active, true);
+  h.advance(400);
+  assert.equal(h.preview.getState().active, false);
+  assert.deepEqual(h.activity, [true, false]);
+  assert.deepEqual(h.operations.slice(-2), [['VIDEO', 'detach'], ['activity', false]]);
+});
+
+test('rapid debounce changes keep one hold and report the final canceled state', () => {
+  const states = [];
+  let h;
+  h = setup({ onActivityChange(active) { states.push([active, h.preview.getState().status]); } });
+  h.preview.select(1);
+  h.advance(150);
+  h.preview.select(2);
+  h.advance(150);
+  h.preview.select(2);
+  h.preview.select(3);
+  assert.deepEqual(h.activity, [true]);
+  h.preview.select(null);
+  assert.deepEqual(states, [[true, 'waiting'], [false, 'idle']]);
+  h.advance(30000);
+  assert.equal(h.videos.length, 0);
+});
+
+test('late retirement flushed by replacement does not briefly report inactivity', () => {
+  const h = setup();
+  const first = begin(h);
+  h.preview.select(2);
+  const [id, cleanup] = [...h.timers.entries()].find(([, timer]) => timer.delay === 400);
+  h.timers.delete(id);
+  h.advance(650);
+  assertReleased(h, first, 0);
+  assert.equal(h.videos.length, 2);
+  assert.deepEqual(h.activity, [true]);
+  cleanup.fn();
+  assert.deepEqual(h.activity, [true], 'obsolete cleanup cannot unpause the new preview');
+  h.preview.stop();
+  h.advance(400);
+  assert.deepEqual(h.activity, [true, false]);
+});
+
+test('stale settlement cannot release a new preview, and destruction cancels the hold', () => {
+  const h = setup();
+  begin(h).dispatch('playing');
+  h.preview.stop();
+  const firstSettlement = h.timers.get(h.preview.settleTimer).fn;
+  h.preview.select(2);
+  h.advance(400);
+  assert.equal(h.preview.getState().status, 'loading');
+  assert.deepEqual(h.activity, [true], 'new pending playback bridges the native release interval');
+  h.preview.stop();
+  firstSettlement();
+  assert.equal(h.preview.getState().settling, true);
+  assert.deepEqual(h.activity, [true]);
+  const finalSettlement = h.timers.get(h.preview.settleTimer).fn;
+  h.preview.destroy();
+  assert.equal(h.timers.size, 0);
+  assert.deepEqual(h.activity, [true, false]);
+  finalSettlement();
+  assert.deepEqual(h.activity, [true, false]);
+});
+
+test('activity owner can cancel startup before any native source is attached', () => {
+  let h;
+  h = setup({ onActivityChange(active) { if (active) h.preview.stop(); } });
+  h.preview.select(1);
+  h.advance(400);
+  assert.deepEqual(h.activity, [true, false]);
+  assert.equal(h.preview.getState().active, false);
+  assert.equal(h.media.querySelectorAll('video').length, 0);
+  assert.equal(h.videos.length, 0);
+  assert.equal(h.timers.size, 0);
+});
 
 test('desktop selection shows its placeholder without timers, media or native calls', () => {
   const h = setup({ isTV: false, defaultDocument: true });
@@ -444,8 +602,9 @@ test('queued old cleanup cannot release a replacement or its later retirement', 
   oldCleanup();
   assert.equal(second.pauseCalls, 0, 'old callback cannot flush the newly retired video');
   assert.equal(h.preview.getState().retiring, true);
-  assert.equal(h.timers.size, 2, 'old callback preserves both current navigation timer handles');
+  assert.equal(h.timers.size, 3, 'old callback preserves navigation and native settlement timers');
   h.preview.stop();
+  h.advance(400);
   assert.equal(h.timers.size, 0);
 });
 
@@ -495,7 +654,7 @@ test('stop, destroy and hidden selection immediately flush retirement and preven
     assert.equal(h.preview.getState().retiring, false);
     assert.equal(h.preview.getState().status, 'idle');
     assert.equal(h.preview.getState().port, null);
-    assert.equal(h.timers.size, 0);
+    assert.equal(h.timers.size, operation === 'destroy' ? 0 : 1, 'only native settlement can remain');
     staleCallbacks.forEach(callback => callback());
     h.advance(30000);
     assert.equal(h.videos.length, 1);
@@ -591,6 +750,8 @@ test('video errors, source errors and rejected play release failed media without
     assert.equal(typeof h.preview.getState().error, 'string');
     assert.ok(h.preview.getState().error.length > 0);
     assertReleased(h, video, oldLoadCount);
+    h.advance(400);
+    assert.deepEqual(h.activity, [true, false], failure + ' releases the rendering suspension');
     assert.equal(h.timers.size, 0);
     h.preview.select(1);
     h.advance(30000);
@@ -613,6 +774,8 @@ test('loading deadline is eight seconds after allocation and releases the media'
   assert.equal(h.preview.getState().status, 'unavailable');
   assert.equal(h.preview.getState().video, null);
   assertReleased(h, video, oldLoadCount);
+  h.advance(400);
+  assert.deepEqual(h.activity, [true, false], 'timeout releases the rendering suspension');
   assert.equal(h.timers.size, 0);
 });
 
@@ -695,7 +858,7 @@ test('null selection defers active cleanup while stop always clears it immediate
       assert.equal(h.preview.getState().video, null);
       assert.equal(h.preview.getState().error, null);
       assert.equal(h.preview.getState().retiring, active && navigation);
-      assert.equal(h.timers.size, active && navigation ? 1 : 0);
+      assert.equal(h.timers.size, active ? 1 : 0, 'active media leaves retirement or settlement pending');
       if (active && navigation) {
         assert.equal(video.hidden, true);
         assert.equal(video.pauseCalls, 0);
@@ -788,6 +951,8 @@ test('explicit no-signal releases even a ready video that reported playing', asy
   assert.equal(h.preview.getState().error, 'no-signal');
   assert.equal(h.preview.getState().video, null);
   assertReleased(h, video, oldLoadCount);
+  h.advance(400);
+  assert.deepEqual(h.activity, [true, false], 'no signal releases the rendering suspension');
   assert.equal(h.timers.size, 0);
   stalePlaying();
   h.preview.select(2);
@@ -852,8 +1017,9 @@ test('late no-signal responses cannot affect another port or a new generation of
     assert.equal(JSON.stringify(h.preview.getState()), currentState);
     assert.equal(currentVideo.pauseCalls, 0);
     assert.equal(currentVideo.parentNode, h.media);
-    assert.equal(h.timers.size, 1, 'old completion preserves the current grace timer');
+    assert.equal(h.timers.size, 2, 'old completion preserves signal and settlement timers');
     h.preview.stop();
+    h.advance(400);
     assert.equal(h.timers.size, 0);
   }
 });
@@ -877,6 +1043,7 @@ test('stop cancels a pending signal request and handles its late rejection', asy
   assert.equal(currentVideo.pauseCalls, 0);
   h.preview.stop();
   assert.equal(request.cancelCalls, 1, 'released requests are not canceled repeatedly');
+  h.advance(400);
   assert.equal(h.timers.size, 0);
 });
 

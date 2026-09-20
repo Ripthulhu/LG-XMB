@@ -7,6 +7,7 @@
   'use strict';
   var Core = root.LGXMBPS3Core,
     Shaders = root.LGXMBPS3Shaders;
+  var MOTION_EASE_MS = 220;
   var DEFAULT = {
     sampling: 1,
     detail: 'high',
@@ -994,6 +995,10 @@
     this.brightness = 1;
     this.ps3Quality = quality();
     this.paused = false;
+    this.motionHeld = false;
+    this.motionGain = 1;
+    this.motionFrom = 1;
+    this.motionElapsed = MOTION_EASE_MS;
     this.time = 0;
     this.lastFrame = 0;
     this.raf = 0;
@@ -1208,6 +1213,7 @@
   C5Wave.prototype.scheduleClock = function () {
     if (
       this.clockTimer ||
+      this.motionHeld ||
       !this.reducedMotion ||
       !this.clockDriven() ||
       !this.allowed() ||
@@ -1249,6 +1255,12 @@
     if (this.compileRaf) root.cancelAnimationFrame(this.compileRaf);
     this.raf = this.initRaf = this.compileRaf = 0;
     this.lastFrame = 0;
+    // A hidden or lost surface does not need to finish slowing down. Keep
+    // the hold through restoration, then ease up only when it is released.
+    if (this.motionHeld) {
+      this.motionGain = this.motionFrom = 0;
+      this.motionElapsed = MOTION_EASE_MS;
+    }
   };
   C5Wave.prototype.resume = function () {
     if (!this.allowed()) return;
@@ -1272,7 +1284,12 @@
     }
     // resize() already paints when the size changed; don't paint it twice.
     if (!(this.resizePending && this.resize())) this.draw();
-    if (!this.reducedMotion && this.mode === 'webgl' && !this.raf)
+    if (
+      !this.reducedMotion &&
+      (!this.motionHeld || this.motionGain > 0) &&
+      this.mode === 'webgl' &&
+      !this.raf
+    )
       this.raf = root.requestAnimationFrame(this.tickBound);
   };
   C5Wave.prototype.tick = function (now) {
@@ -1286,7 +1303,17 @@
     // three vsyncs, the next shown for one. A late frame is not chased with
     // an early one. The simulation keeps its own 60 Hz fixed step either way.
     if (now - this.lastFrame >= interval - 8) {
-      var seconds = (Math.min(0.1, Math.max(0, (now - this.lastFrame) / 1000)) * this.speed) / 1.5;
+      var milliseconds = Math.min(100, Math.max(0, now - this.lastFrame)),
+        previousGain = this.motionGain;
+      if (this.motionElapsed < MOTION_EASE_MS) {
+        this.motionElapsed = Math.min(MOTION_EASE_MS, this.motionElapsed + milliseconds);
+        var progress = this.motionElapsed / MOTION_EASE_MS,
+          eased = progress * progress * (3 - 2 * progress);
+        this.motionGain = this.motionFrom + ((this.motionHeld ? 0 : 1) - this.motionFrom) * eased;
+      }
+      // Scale simulation time, rather than its positions or configured speed.
+      // Waves and particles slow together and resume from the retained frame.
+      var seconds = (milliseconds * this.speed * (previousGain + this.motionGain)) / 3000;
       try {
         this.simulation.advance(seconds, this.ps3Quality.particles);
       } catch (error) {
@@ -1297,7 +1324,9 @@
       this.lastFrame = now;
       this.draw();
     }
-    if (this.mode === 'webgl' && !this.raf) this.raf = root.requestAnimationFrame(this.tickBound);
+    if (this.motionHeld && this.motionGain === 0) this.lastFrame = 0;
+    else if (this.mode === 'webgl' && !this.raf)
+      this.raf = root.requestAnimationFrame(this.tickBound);
   };
   C5Wave.prototype.visibility = function () {
     this.documentHidden = !!document.hidden;
@@ -1310,6 +1339,27 @@
     this.paused = v;
     this.cancel();
     if (!v) this.resume();
+  };
+  // A temporary visual hold is independent of saved motion/quality settings
+  // and the immediate lifecycle pause used when Home is hidden.
+  C5Wave.prototype.setMotionHeld = function (v) {
+    v = !!v;
+    if (this.destroyed || this.motionHeld === v) return;
+    this.motionHeld = v;
+    this.motionFrom = this.motionGain;
+    this.motionElapsed = 0;
+    if (v) {
+      if (this.clockTimer) root.clearTimeout(this.clockTimer);
+      this.clockTimer = 0;
+      if (!this.allowed() || this.reducedMotion) {
+        this.motionGain = this.motionFrom = 0;
+        this.motionElapsed = MOTION_EASE_MS;
+      }
+    }
+    if (!this.raf) {
+      this.lastFrame = 0;
+      this.resume();
+    }
   };
   C5Wave.prototype.setReducedMotion = function (v) {
     v = !!v;
@@ -1379,6 +1429,9 @@
       adaptive: false,
       reducedMotion: this.reducedMotion,
       paused: this.paused,
+      motionHeld: this.motionHeld,
+      motionGain: this.motionGain,
+      motionTransitioning: this.motionElapsed < MOTION_EASE_MS,
       error: this.error,
       speed: this.speed,
       brightness: this.brightness,

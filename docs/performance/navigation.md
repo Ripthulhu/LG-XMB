@@ -19,6 +19,11 @@ Up and Down don't change the horizontal bar's styles or interrupt its
 transition. The controller changes row visibility, selection and accessibility
 attributes only when their values change. Matching detail icons are reused.
 
+Vertical rows animate by one row spacing in either direction. The gap above the
+category bar is a separate layout offset, so selecting an upper row does not
+make it travel four times farther than a lower row. Up and Down share the repeat
+interval and animation curve, including when held or reversed mid-animation.
+
 Rows and their icon scaling use a 240 ms transition with the same easing curve.
 The category bar retains 400 ms. Main-list Up/Down repeats have a 60 ms minimum
 interval; settings panels and Left/Right keep 100 ms. This is responsiveness
@@ -46,6 +51,7 @@ node tests/category-transition-browser.cjs
 node tests/upper-items-browser.cjs
 node tests/launcher-category-work-browser.cjs
 node tests/settings-traversal-browser.cjs
+node tests/vertical-navigation-browser.cjs
 ```
 
 For tests that load the preview URL, start `npm run preview` first. Browser
