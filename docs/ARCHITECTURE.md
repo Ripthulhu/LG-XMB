@@ -131,6 +131,14 @@ Run `npm run test:helper` for the helper and thumbnail unit tests plus the
 Settings/lifecycle browser checks. These use local fixtures, not a TV. Native
 capture and recovery still need device validation.
 
+The optional Home replacement has a separate setup tool:
+`tools/refresh-home-registration.py`. After the bind mount, it refreshes SAM's
+app metadata with the media server stopped, then checks the new media lifecycle
+subscription and reconnects an existing capture service. It does not run on
+page resume or ordinary standby wake. Keep this transaction separate from the
+capture worker's recovery. See [Home replacement](HOME-TAKEOVER.md); its service
+ordering and failure paths are covered by `tests/test_home_registration.py`.
+
 ### Background and animation
 
 | Source | Edit it for |

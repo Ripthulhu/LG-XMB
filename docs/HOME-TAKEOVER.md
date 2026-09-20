@@ -31,6 +31,7 @@ DEV=/media/developer/apps/usr/palm/applications/org.local.openxmb.c5
 
 id
 /usr/bin/python3 --version
+/usr/bin/python3 -I -B -c 'import os, signal; fd = os.pidfd_open(os.getpid()); signal.pidfd_send_signal(fd, 0); os.close(fd)'
 command -v mount
 command -v systemctl
 cat "$DEV/appinfo.json"
@@ -38,7 +39,9 @@ cat "$TARGET/appinfo.json"
 awk '$5 == "/usr/palm/applications/com.webos.app.home" { print }' /proc/self/mountinfo
 ```
 
-You need root, Python 3.7 or newer, `mount`, `systemctl` and Homebrew Channel.
+You need root, Python 3.9 or newer, `mount`, `systemctl` and Homebrew Channel.
+The Python capability check must exit successfully; the refresh tool uses it
+to reconnect LG's capture service without risking a signal to a reused process ID.
 The last command must print nothing. If it shows a mount, restore that setup
 first. The stock manifest must identify `com.webos.app.home`. Keep a copy of it
 on your computer for reference.
@@ -120,6 +123,12 @@ setup fails. Fix errors before mounting.
 
 ## Mount and check
 
+Copy [refresh-home-registration.py](../tools/refresh-home-registration.py) to
+`/var/lib/lg-xmb/refresh-home-registration.py` on the TV. Keep it owned by root,
+mode `0644`. Open Home and stop any recording or casting session before this
+step. The script refreshes the app registration and reconnects the media
+server to it; it does not mount files or change settings.
+
 ```sh
 (set -eu
   if awk '$5 == "/usr/palm/applications/com.webos.app.home" { found=1 }
@@ -131,7 +140,7 @@ setup fails. Fix errors before mounting.
     cmp "$APP/$file" "$DEV/$file"
   done
   mount --bind "$APP" "$TARGET"
-  systemctl restart sam
+  /usr/bin/python3 -I -B /var/lib/lg-xmb/refresh-home-registration.py
 )
 
 [ "$TARGET" -ef "$APP" ] && echo 'LG-XMB payload is mounted.'
@@ -144,15 +153,24 @@ match the payload. Test the Home button, closing a native app and returning from
 HDMI. The stock Home app can't be launched while this mount is active: anything
 that opens `com.webos.app.home` opens LG-XMB instead.
 
-Restarting `sam` interrupts the current app. If that restart fails after the
-mount succeeds, the mount is still active. Use the recovery commands below.
+The refresh interrupts Home and its audio. Check its JSON result for
+`"returnValue": true` and `"mediaObserver": true`. If it fails, the mount is
+still active. Keep the reported error and use the recovery commands below.
+
+Do not replace this step with `systemctl restart sam`. On the C5, that restart
+can leave the media server without app lifecycle updates. The TV may look fine
+at first, then wake to black HDMI with no sound. The refresh stops media before
+restarting the app manager and checks that the media subscription is restored.
+If LG's capture service was already running, it reconnects that service too.
+It runs only during this setup step; it is not a wake-up watchdog.
 
 Don't rely on the device name printed by `mount` to identify the bind.
 `[ "$TARGET" -ef "$APP" ]` compares the directories, and `/proc/self/mountinfo`
 shows the mounted subtree.
 
 The stock files remain underneath the bind mount. A full restart removes this
-mount unless a separate startup hook reapplies it. Standby isn't a full restart.
+mount unless a separate startup hook reapplies it. The TV can also reboot in
+the background while in standby, so the hook must handle that boot too.
 The helper's `60-lg-xmb` hook starts capture; it doesn't mount the Home payload.
 
 ## Keep it after a reboot
@@ -178,7 +196,7 @@ DEV=/media/developer/apps/usr/palm/applications/org.local.openxmb.c5
 mounts=$(awk '$5 == "/usr/palm/applications/com.webos.app.home" { n++ }
               END { print n+0 }' /proc/self/mountinfo)
 if [ "$mounts" -eq 1 ] && [ "$TARGET" -ef "$APP" ]; then
-  exit 0
+  exec /usr/bin/python3 -I -B /var/lib/lg-xmb/refresh-home-registration.py --startup
 fi
 if [ "$mounts" -ne 0 ]; then
   echo 'Home already has a different mount. Leaving it alone.' >&2
@@ -190,15 +208,19 @@ for file in helper-startup.py index.html app.js input-preview.js tv-bridge.js me
   cmp "$APP/$file" "$DEV/$file"
 done
 mount --bind "$APP" "$TARGET"
-systemctl restart sam
+exec /usr/bin/python3 -I -B /var/lib/lg-xmb/refresh-home-registration.py --startup
 ```
 
 This hook leaves the copied app's manifest and permissions as you prepared them.
 It refuses an existing foreign mount.
 The helper check also runs here because startup hooks may run concurrently.
+`--startup` also handles a boot that restores HDMI before the hook runs. It
+reopens that input after refreshing Home, provided the TV is still active and
+you haven't switched to another app. Recordings and casting still block refresh.
 
-Test the saved hook from SSH before rebooting. It should return immediately if
-the matching payload is mounted, without restarting `sam` again. Then cold boot
+Test the saved hook from SSH before rebooting. If the matching payload is
+registered and the media subscription is healthy, it should report
+`"changed": false` without restarting services. Then cold boot
 and check SSH, Home, app exit, HDMI video/audio, music and a fresh cached preview.
 Keep your recovery copy outside `init.d`; changing a hook's filename there may
 not disable it.
@@ -254,10 +276,16 @@ Check that our payload is the one mounted, then unmount it:
 (set -eu
   [ /usr/palm/applications/com.webos.app.home -ef /var/lib/lg-xmb-home ]
   umount /usr/palm/applications/com.webos.app.home
-  systemctl restart sam
 )
 ```
 
+With the Home-mount hook safely outside `init.d`, reboot the TV from SSH:
+
+```sh
+reboot
+```
+
+This lets LG's services start in their normal order with the stock manifest.
 Check that the Home button and app-exit return reach stock LG Home. Don't remove
 the developer app or its recovery helper until that works.
 
