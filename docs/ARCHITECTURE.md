@@ -23,6 +23,7 @@ page structure. Read the controller only when a change crosses feature boundarie
 | Shared settings controls | `app/settings-ui.js` | Option rows, choice groups and generic panel navigation |
 | Appearance | `app/appearance-settings.js`, `app/wave-color-settings.js` | Theme, colour, background and advanced rendering controls |
 | Wallpaper | `app/wallpaper.js` | Load the local image, retain a working background on failure and cancel stale loads |
+| Clock display | `app/clock-view.js`, `app/clock.css` | Current and PS3 clock layouts, date formatting and analogue hands |
 | Screensaver | `app/screensaver.js`, `app/screensaver-view.js`, `app/screensaver.css` | Idle deadline, wake gestures and temporary UI/background fades |
 | Other settings panels | `app/remote-settings.js`, `app/date-time-settings.js` | Feature-specific controls and keyboard navigation |
 | TV APIs | `app/tv-bridge.js`, `app/app-manager.js`, `app/system-time.js` | Bounded native requests for launch/input/audio, app information/removal and clock settings |
@@ -146,7 +147,7 @@ ordering and failure paths are covered by `tests/test_home_registration.py`.
 | Source | Edit it for |
 | --- | --- |
 | `app/launcher-preferences.js` | Original/Classic, colour choices, brightness levels, migration and quality defaults |
-| `app/wave-colors.js` | Monthly presets, colour normalisation and interpolation |
+| `app/wave-colors.js` | Monthly presets, colour normalisation, interpolation and menu gradients |
 | `app/ps3-background-clock.js` | Calendar and day/night calculations |
 | `app/ps3-native-core.js` | CPU wave/particle simulation |
 | `app/ps3-particle-birth.js` | Particle-birth equations |
@@ -171,6 +172,11 @@ normal navigation and fades whole UI layers with CSS. Keep idle dimming separate
 from the saved background brightness. The launcher enables it only while Home
 is active, stops live previews while asleep and resets it when returning from
 another app. Cursor movement and lifecycle events must not rebuild the menu.
+
+The clock view uses the launcher's existing ten-second clock refresh. It only
+updates changed text and hand positions; it has no animation loop or TV service
+calls. Keep display style separate from the Date & time editor, which changes
+the TV's system clock.
 
 `app/ps3-native-shaders.js` is generated. Edit `shaders/`, then run
 `python3 tools/bundle-ps3-shaders.py` and its `--check` mode. Commit both the
@@ -229,3 +235,11 @@ browser options before running a standalone script.
 Start with [Building and testing](BUILDING.md), then the relevant feature guide.
 A browser fixture proves UI behaviour with its mocks. Native playback, HDMI,
 standby and recovery still need the affected path tested on a TV.
+
+Menu colours come from `LGXMBPS3BackgroundClock.menuColour`, using the recovered
+PS3 option-menu monthly palette and hourly grey blend. This is separate from the
+wallpaper palette: late at night the panel becomes silver even over a warm
+background. Manual colours stay fixed. `LGXMBWaveColors.menuGradient` turns the
+tint into a CSS approximation of the original transparent texture's horizontal
+falloff; no firmware image is bundled. The existing clock timer updates the CSS
+variable only when it changes. Menu DOM, focus and navigation are untouched.

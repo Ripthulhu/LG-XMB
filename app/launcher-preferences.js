@@ -11,6 +11,7 @@
     backgroundBrightness: 0,
     screensaverDelay: 120000,
     screensaverBrightness: 0.25,
+    clockStyle: 'current',
     motion: 'full',
     sound: false,
     previewMode: 'cached',
@@ -131,6 +132,8 @@
         preferences.screensaverDelay = saved.screensaverDelay;
       if ([0, 0.1, 0.25, 0.5, 0.75, 1].indexOf(saved.screensaverBrightness) !== -1)
         preferences.screensaverBrightness = saved.screensaverBrightness;
+      if (['current', 'ps3'].indexOf(saved.clockStyle) !== -1)
+        preferences.clockStyle = saved.clockStyle;
       if (saved.motion === 'reduced' || saved.motion === 'full') preferences.motion = saved.motion;
       else if (typeof reducedMotion === 'function' ? reducedMotion() : reducedMotion)
         preferences.motion = 'reduced';

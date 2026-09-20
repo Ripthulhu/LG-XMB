@@ -51,6 +51,7 @@ out. **Colour → Original** follows the season and time of day. The other colou
 stay fixed. **Background** selects a [wallpaper and brightness](docs/BACKGROUND.md).
 **Advanced** contains [animation and rendering options](docs/WEBGL2.md#settings).
 **Screensaver** sets the idle delay and [background dimming](docs/SCREENSAVER.md).
+**Clock** keeps the current display or switches to a PS3-style date/time bar.
 
 Hold OK on an app to change its category, sorting or visibility.
 [Item options](docs/ITEM-OPTIONS.md) covers those controls and restoring hidden apps.

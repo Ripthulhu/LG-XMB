@@ -9,7 +9,7 @@ async function load(p){
  await p.setContent('<html><body></body></html>');
  await p.evaluate(()=>{const data={};Object.defineProperty(window,'localStorage',{value:{getItem:k=>data[k]||null,setItem:(k,v)=>data[k]=String(v),removeItem:k=>delete data[k]},configurable:true});});
  await p.setContent(fs.readFileSync(path.join(base,'app/index.html'),'utf8').replace(/<script[^>]*>[\s\S]*?<\/script>/g,'').replace(/<link[^>]*>/g,''));
- for(const f of ['style.css','item-options.css','date-time-settings.css'])await p.addStyleTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
+ for(const f of ['style.css','clock.css','item-options.css','date-time-settings.css'])await p.addStyleTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
  for(const f of ['icons.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'tests/fixtures/catalog-platform.js'),'utf8')});
  await p.evaluate(()=>{
@@ -23,7 +23,7 @@ async function load(p){
    else throw Error('Unexpected native call '+uri);
   };};
  });
- for(const f of ['menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
+ for(const f of ['menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','clock-view.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
  await p.evaluate(()=>{const C=LGXMBItemOptions;window.LGXMBItemOptions=function(o){return window.testOptions=new C(o);};});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'app/app.js'),'utf8')});
  await p.waitForFunction(()=>window.C5App);

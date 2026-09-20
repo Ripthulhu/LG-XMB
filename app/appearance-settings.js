@@ -16,6 +16,7 @@
         ['Colour', 'colour', 'openColour'],
         ['Background', 'background', 'openBackground'],
         ['Screensaver', 'screensaver', 'openScreensaver'],
+        ['Clock', 'clock', 'openClock'],
         ['Advanced', 'appearance-advanced', 'openAppearanceAdvanced']
       ].forEach(function (entry) {
         ui.row(entry[0], null, false, function () {
@@ -122,6 +123,21 @@
           ['strong', 'Strong']
         ],
         'waveSmoothing'
+      );
+    }
+    function openClock() {
+      ui.choiceGroup(
+        'Clock style',
+        [
+          ['current', 'Current'],
+          ['ps3', 'PS3']
+        ],
+        preferences.clockStyle,
+        function (value) {
+          preferences.clockStyle = value;
+          applyPreferences();
+          save();
+        }
       );
     }
     function openTheme() {
@@ -262,6 +278,7 @@
       openColour: openColour,
       openBackground: openBackground,
       openScreensaver: openScreensaver,
+      openClock: openClock,
       openAdvanced: openAdvanced,
       updateBackgroundStatus: updateBackgroundStatus
     };

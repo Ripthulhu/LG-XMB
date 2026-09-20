@@ -1,0 +1,78 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+.clock {
+  display: flex;
+  align-items: baseline;
+  gap: 1.25vw;
+  letter-spacing: 0.03em;
+}
+#time {
+  font-size: clamp(21px, 1.88vw, 42px);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+#date {
+  font-size: clamp(11px, 0.82vw, 20px);
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+}
+.clock-face {
+  display: none;
+}
+/* Keep the current clock unchanged; the optional bar reaches the screen edge. */
+.clock[data-style='ps3'] {
+  position: absolute;
+  top: 6.9vh;
+  right: 0;
+  width: 29vw;
+  height: 5.35vh;
+  padding: 0 5.7vw 0 1.1vw;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5vw;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-right: 0;
+  border-radius: 0.25vw 0 0 0.25vw;
+  /* Light only the three visible edges; an inset shadow also outlines the right. */
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, 0.25), transparent 3px),
+    linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.25),
+      transparent 3px,
+      transparent calc(100% - 3px),
+      rgba(255, 255, 255, 0.25)
+    ),
+    rgba(0, 0, 0, 0.07);
+  letter-spacing: 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.clock[data-style='ps3'] #date,
+.clock[data-style='ps3'] #time {
+  font-size: 1.55vw;
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.clock[data-style='ps3'] #date {
+  order: -1;
+}
+.clock[data-style='ps3'] .clock-face {
+  display: block;
+  width: 1.75vw;
+  height: 1.75vw;
+  flex: 0 0 auto;
+  margin-left: 0.05vw;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.clock-face .clock-hour {
+  stroke-width: 2.5;
+}
+.clock-face .clock-minute {
+  stroke-width: 1.6;
+}

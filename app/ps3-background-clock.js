@@ -6,6 +6,45 @@
   'use strict';
   const F = Math.fround;
   const days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  // The option menu has its own palette, separate from month_bg textures.
+  // PS3 3.01 custom_render_plugin: tables 0xa51d0 / 0xa5050;
+  // interpolation and system_plugin colour update: 0x8d47c..0x8d8a0.
+  const menuMonths = [
+    [0.64, 0.64, 0.64],
+    [0.74, 0.68, 0.37],
+    [0.61, 0.7, 0.35],
+    [0.74, 0.48, 0.56],
+    [0.24, 0.6, 0.36],
+    [0.53, 0.42, 0.64],
+    [0.33, 0.68, 0.72],
+    [0.33, 0.49, 0.77],
+    [0.64, 0.39, 0.78],
+    [0.74, 0.68, 0.36],
+    [0.5, 0.43, 0.31],
+    [0.7, 0.29, 0.28]
+  ];
+  const menuNightWeights = [
+    1, 0.9, 0.7, 0.5, 0.3, 0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1, 0.3, 0.5, 0.7, 0.9, 1
+  ];
+  function menuColour(date, automaticDate = true, month = 1, period = 'auto') {
+    const coord = coordinates(date, automaticDate, month, period);
+    const index = Math.floor(coord.month) % 12;
+    const fraction = coord.month - Math.floor(coord.month);
+    const hour =
+      period === 'auto'
+        ? date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600
+        : period === 'night'
+          ? 0
+          : 12;
+    const h = Math.floor(hour),
+      remainder = hour - h;
+    const night =
+      menuNightWeights[h] * (1 - remainder) + menuNightWeights[(h + 1) % 24] * remainder;
+    return menuMonths[index].map(function (value, channel) {
+      const seasonal = value * (1 - fraction) + menuMonths[(index + 1) % 12][channel] * fraction;
+      return seasonal * (1 - night) + (channel === 2 ? 0.32 : 0.3) * night;
+    });
+  }
   const defaults = Object.freeze({
     nightBlend: 1,
     nightBrightness: 0.5,
@@ -124,6 +163,7 @@
     calendar,
     fromLocalDate,
     coordinates,
+    menuColour,
     uniforms,
     nextMonthWeight
   });

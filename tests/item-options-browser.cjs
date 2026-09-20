@@ -22,6 +22,7 @@ async function load(p){
  let html=fs.readFileSync(path.join(base,'app/index.html'),'utf8').replace(/<script src="[^"]+"><\/script>/g,'').replace(/<link[^>]+rel="stylesheet"[^>]*>/g,'');
  await p.setContent(html);
  await p.addStyleTag({content:fs.readFileSync(path.join(base,'app/style.css'),'utf8')});
+ await p.addStyleTag({content:fs.readFileSync(path.join(base,'app/clock.css'),'utf8')});
  await p.addStyleTag({content:fs.readFileSync(path.join(base,'app/item-options.css'),'utf8')});
  for(const name of ['icons.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'tests/fixtures/catalog-platform.js'),'utf8')});
@@ -43,7 +44,7 @@ async function load(p){
    else throw Error('Unexpected call '+uri);
   };};
  });
- for(const name of ['menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
+ for(const name of ['menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','clock-view.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.waitForFunction(()=>window.C5App);
  await p.evaluate(()=>{
   catalogHarness.apps({preview:false,apps:[{id:'org.test.two',title:'Beta Tools'},{id:'org.test.one',title:'Alpha Player'},{id:'cdp-30',title:'Plex'}]});

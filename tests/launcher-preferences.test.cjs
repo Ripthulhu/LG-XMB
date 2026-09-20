@@ -150,6 +150,56 @@ test('unsupported or coerced screensaver values fall back to their defaults', ()
   }
 });
 
+test('clock style preserves the current look by default and only restores supported choices', () => {
+  assert.equal(preferences.load({getItem: () => null}, false, colors).clockStyle, 'current');
+  for (const clockStyle of ['current', 'ps3']) {
+    const state = preferences.load({getItem: () => JSON.stringify({clockStyle})}, false, colors);
+    assert.equal(state.clockStyle, clockStyle);
+    let saved;
+    preferences.save({setItem: (_, value) => {saved = value;}}, state);
+    assert.equal(JSON.parse(saved).clockStyle, clockStyle);
+    assert.deepEqual(preferences.load({getItem: () => saved}, false, colors), state);
+  }
+  for (const clockStyle of ['PS3', 'analog', '', 0, null, false, true, [], {}]) {
+    const state = preferences.load({getItem: () => JSON.stringify({clockStyle})}, false, colors);
+    assert.equal(state.clockStyle, 'current', JSON.stringify(clockStyle));
+  }
+});
+
+test('Appearance opens a Clock panel whose style choices apply and save immediately', () => {
+  const vm = require('node:vm'), fs = require('node:fs');
+  const state = preferences.load({getItem: () => null}, false, colors);
+  const rows = [], groups = {}, panels = [], changes = [], context = {window: {}};
+  vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../app/appearance-settings.js'), 'utf8'), context);
+  const appearance = new context.window.LGXMBAppearanceSettings({preferences: state,
+    ui: {
+      row: (label, detail, selected, open) => {
+        const row = {label, open}; rows.push(row); return row;
+      },
+      choiceGroup: (label, choices, selected, set) => {groups[label] = {choices, selected, set};}
+    },
+    openPanel: panel => panels.push(panel),
+    applyPreferences: () => changes.push(['apply', state.clockStyle]),
+    save: () => changes.push(['save', state.clockStyle])
+  });
+  appearance.open();
+  const clockIndex = rows.findIndex(row => row.label === 'Clock');
+  assert.ok(clockIndex >= 0);
+  assert.equal(rows[clockIndex].id, 'openClock');
+  assert.equal(rows[clockIndex + 1].label, 'Advanced');
+  rows[clockIndex].open();
+  assert.deepEqual(panels, ['clock']);
+  appearance.openClock();
+  const group = groups['Clock style'];
+  assert.deepEqual(JSON.parse(JSON.stringify(group.choices)), [['current', 'Current'], ['ps3', 'PS3']]);
+  assert.equal(group.selected, 'current');
+  group.set('ps3');
+  assert.equal(state.clockStyle, 'ps3');
+  assert.deepEqual(changes, [['apply', 'ps3'], ['save', 'ps3']]);
+  appearance.openClock();
+  assert.equal(groups['Clock style'].selected, 'ps3');
+});
+
 test('independent launchers do not share settings or derived colour state', () => {
   const storage = {getItem: () => null};
   const one = preferences.load(storage, false, colors);

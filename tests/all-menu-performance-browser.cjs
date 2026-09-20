@@ -37,7 +37,9 @@ for(const width of [1280,1920]){
    await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.id),'openColour');
    await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.id),'openBackground');
    await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.id),'openScreensaver');
+   await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.id),'openClock');
    await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.id),'openAppearanceAdvanced');
+   await page.keyboard.press('ArrowUp');assert.equal(await page.evaluate(()=>document.activeElement.id),'openClock');
    await page.keyboard.press('ArrowUp');assert.equal(await page.evaluate(()=>document.activeElement.id),'openScreensaver');
    await page.keyboard.press('ArrowUp');assert.equal(await page.evaluate(()=>document.activeElement.id),'openBackground');
    await page.keyboard.press('ArrowUp');assert.equal(await page.evaluate(()=>document.activeElement.id),'openColour');

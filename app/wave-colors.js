@@ -158,6 +158,43 @@
       tint: tint
     };
   }
+  // Recreate the option texture's horizontal alpha falloff in CSS. The tint
+  // follows the recovered menu clock, not the wallpaper's gradient colours.
+  function menuGradient(value, date) {
+    var settings = normalize(value);
+    var rgb = root.LGXMBPS3BackgroundClock.menuColour(
+      date || new Date(),
+      settings.dateMode === 'auto',
+      settings.month,
+      settings.timeMode
+    )
+      .map(function (v) {
+        return Math.round(v * 255);
+      })
+      .join(',');
+    var stops = [
+      [0, 0.204],
+      [3, 0.612],
+      [6, 0.769],
+      [12, 0.808],
+      [28, 0.682],
+      [47, 0.463],
+      [56, 0.286],
+      [65, 0.09],
+      [75, 0.016],
+      [84, 0.004],
+      [100, 0]
+    ];
+    return (
+      'linear-gradient(90deg,' +
+      stops
+        .map(function (stop) {
+          return 'rgba(' + rgb + ',' + stop[1] + ') ' + stop[0] + '%';
+        })
+        .join(',') +
+      ')'
+    );
+  }
   var SHADER = [
     'uniform bool uColorEnabled; uniform vec3 uColorStart; uniform vec3 uColorEnd;',
     'uniform vec2 uColorDir; uniform vec2 uColorRange;',
@@ -195,6 +232,7 @@
   root.LGXMBWaveColors = Object.freeze({
     normalize: normalize,
     resolve: resolve,
+    menuGradient: menuGradient,
     months: Object.freeze(MONTHS),
     shader: SHADER,
     locations: locations,

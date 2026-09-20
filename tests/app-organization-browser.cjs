@@ -15,7 +15,7 @@ async function load(p,data={}){
   window.testStorage={...data};window.failStorage=false;Object.defineProperty(window,'localStorage',{configurable:true,value:{getItem:k=>testStorage[k]||null,setItem:(k,v)=>{if(failStorage)throw Error('Storage unavailable');testStorage[k]=String(v);},removeItem:k=>delete testStorage[k]}});
  },data);
  let html=fs.readFileSync(path.join(base,'app/index.html'),'utf8').replace(/<script src="[^"]+"><\/script>/g,'').replace(/<link[^>]+rel="stylesheet"[^>]*>/g,'');await p.setContent(html);
- for(const name of ['style.css','item-options.css','date-time-settings.css'])await p.addStyleTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
+ for(const name of ['style.css','clock.css','item-options.css','date-time-settings.css'])await p.addStyleTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  for(const name of ['icons.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'tests/fixtures/catalog-platform.js'),'utf8')});
  await p.evaluate(()=>{
@@ -35,7 +35,7 @@ async function load(p,data={}){
  // Keep production timing by default; expose the scheduler only to advance
  // selected race tests without spending 30 seconds on every permutation.
  await p.evaluate(()=>{const Native=LGXMBAppRefresh;window.LGXMBAppRefresh=function(o){return window.testRefresh=new Native(o);};});
- for(const name of ['launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
+ for(const name of ['launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','clock-view.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.waitForFunction(()=>C5Catalog.some(c=>c.items.some(i=>i.id==='org.test.one')));
 }
 async function refresh(p){await p.evaluate(()=>{testRefresh.lastAttempt=-Infinity;testRefresh.refresh();});await p.waitForFunction(()=>!testRefresh.request&&!testRefresh.pending&&testRefresh.lastSuccess!==null);await p.waitForTimeout(550);}

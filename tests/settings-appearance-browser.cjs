@@ -52,12 +52,13 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors,
     });
     await open();
     assert.deepEqual(await page.locator('#modalContent > button').allTextContents(),
-      ['Theme', 'Colour', 'Background', 'Screensaver', 'Advanced']);
+      ['Theme', 'Colour', 'Background', 'Screensaver', 'Clock', 'Advanced']);
     assert.equal(await page.locator('#modalContent .choice-group').count(), 0);
     assert.equal(await page.evaluate(() => document.activeElement.id), 'openTheme');
     await screenshot('appearance-menu-1080.png');
     for (const [id, type] of [['openTheme', 'theme'], ['openColour', 'colour'],
       ['openBackground', 'background'], ['openScreensaver', 'screensaver'],
+      ['openClock', 'clock'],
       ['openAppearanceAdvanced', 'appearance-advanced']]) {
       await page.locator('#' + id).click();
       assert.equal((await state()).modal, type);
@@ -66,7 +67,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors,
       assert.equal((await state()).modal, 'appearance');
       assert.equal(await page.evaluate(() => document.activeElement.id), id);
     }
-    checks.push('Appearance has five submenus and Back returns to the row that opened each one');
+    checks.push('Appearance has six submenus and Back returns to the row that opened each one');
 
     await page.locator('#openTheme').click();
     assert.deepEqual(await page.locator('#modalContent button').allTextContents(), ['Original✓', 'Classic']);

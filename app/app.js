@@ -35,6 +35,7 @@
   var $ = function (id) {
     return document.getElementById(id);
   };
+  var clockView = new LGXMBClockView(document.querySelector('.clock'));
   var wave = new C5Wave($('wave'), { quality: '1080p', adaptive: false }),
     livePreviewActive = false;
   var wallpaper = new LGXMBWallpaper($('wallpaper'), {
@@ -256,6 +257,7 @@
     }
   }
   function applyPreferences() {
+    updateClock();
     sounds.setEnabled(preferences.sound);
     if (preferences.motion === 'reduced') categoryTransition.cancel();
     var theme = LGXMBPreferences.backgroundTheme(preferences),
@@ -552,6 +554,7 @@
       theme: 'Theme',
       colour: 'Colour',
       background: 'Background',
+      clock: 'Clock',
       screensaver: 'Screensaver',
       'appearance-advanced': 'Advanced',
       sound: 'Sound',
@@ -564,6 +567,7 @@
       theme: '',
       colour: '',
       background: '',
+      clock: '',
       screensaver: '',
       'appearance-advanced': '',
       sound: '',
@@ -580,6 +584,8 @@
       appearanceSettings.openBackground();
     } else if (type === 'screensaver') {
       appearanceSettings.openScreensaver();
+    } else if (type === 'clock') {
+      appearanceSettings.openClock();
     } else if (type === 'appearance-advanced') {
       appearanceSettings.openAdvanced();
     } else if (type === 'datetime') {
@@ -927,6 +933,7 @@
       colour: 'openColour',
       background: 'openBackground',
       screensaver: 'openScreensaver',
+      clock: 'openClock',
       'appearance-advanced': 'openAppearanceAdvanced'
     };
     if (quiet !== true && appearanceParents[modalType]) {
@@ -1332,13 +1339,15 @@
   });
   function updateClock() {
     var now = new Date();
-    var time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-      date = now.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
-    if ($('time').textContent !== time) {
-      $('time').textContent = time;
-      $('time').dateTime = now.toISOString();
+    clockView.update(now, preferences.clockStyle);
+    var gradient = LGXMBWaveColors.menuGradient(
+      LGXMBPreferences.backgroundTheme(preferences).colors,
+      now
+    );
+    var style = document.documentElement.style;
+    if (style.getPropertyValue('--menu-gradient') !== gradient) {
+      style.setProperty('--menu-gradient', gradient);
     }
-    if ($('date').textContent !== date) $('date').textContent = date;
   }
   function restoreFocus() {
     if (itemOptions.opened) {
