@@ -16,7 +16,7 @@ const app = path.resolve(__dirname, '../app');
     page.on('pageerror', error => errors.push(error.message));
     await page.setContent('<section id="modal" class="modal"><h2>Settings</h2><div id="modalContent"></div></section>');
     await page.addStyleTag({path: path.join(app, 'style.css')});
-    for (const name of ['menu-focus.js', 'settings-ui.js', 'wave-colors.js', 'wave-color-settings.js']) {
+    for (const name of ['menu-focus.js', 'settings-ui.js', 'launcher-preferences.js', 'wave-color-settings.js']) {
       await page.addScriptTag({path: path.join(app, name)});
     }
     const results = await page.evaluate(() => {
@@ -47,44 +47,45 @@ const app = path.resolve(__dirname, '../app');
       results.push(measure('settings horizontal choices', ui.key, 'ArrowRight'));
       results[0].focused = document.activeElement.dataset.choice;
 
-      LGXMBWaveColorSettings.open(content, {mode: 'ps3', dateMode: 'fixed', month: 1}, () => {});
-      const months = content.querySelector('[aria-label="Month"]');
-      months.querySelector('button').focus();
-      results.push(measure('month horizontal choices', LGXMBWaveColorSettings.key, 'ArrowRight'));
-      results[1].focused = document.activeElement.dataset.value;
+      content.textContent = '';
+      const preferences = {colour: 'original'};
+      LGXMBWaveColorSettings.open({content, ui, preferences,
+        onChange(value) { preferences.colour = value; }});
+      content.querySelector('button').focus();
+      results.push(measure('colour vertical choices', ui.key, 'ArrowDown', 12));
+      results[1].focused = document.activeElement.dataset.choice;
+      results[1].count = content.querySelectorAll('button').length;
+      document.activeElement.click();
+      results[1].selected = preferences.colour;
 
-      LGXMBWaveColorSettings.open(content, {mode: 'rgb', red: 128}, () => {});
-      const slider = document.getElementById('waveColor-red');
-      slider.focus();
-      results.push(measure('RGB slider adjustments', LGXMBWaveColorSettings.key,
-        i => i % 2 ? 'ArrowLeft' : 'ArrowRight'));
-      results[2].value = Number(slider.value);
-
-      // Changing the visible sections must be reflected immediately. There is
-      // no cached navigation list to retain hidden RGB controls or miss months.
-      content.querySelector('[data-value="ps3"]').click();
-      content.querySelector('[data-value="fixed"]').click();
-      const time = content.querySelector('[aria-label="Time of day"]');
-      time.querySelector('[data-value="auto"]').focus();
-      LGXMBWaveColorSettings.key(new KeyboardEvent('keydown', {key: 'ArrowUp'}), modal);
-      results.push({name: 'vertical navigation after visibility change',
-        group: document.activeElement.closest('.color-group').getAttribute('aria-label')});
-      results.push(measure('Tab enumerates current visible controls', LGXMBWaveColorSettings.key, 'Tab', 1));
+      results.push(measure('colour bottom boundary', ui.key, 'ArrowDown'));
+      results[2].focused = document.activeElement.dataset.choice;
+      results.push(measure('Tab enumerates current visible controls', ui.key, 'Tab', 1));
+      results[3].focused = document.activeElement.dataset.choice;
+      content.textContent = '';
+      ui.choiceGroup('Brightness', [[0, 'Normal'], [-1, '-1'], [-2, '-2']], 0, () => {});
+      content.querySelector('button').focus();
+      results.push(measure('background horizontal choices', ui.key, 'ArrowRight'));
+      results[4].focused = document.activeElement.dataset.choice;
       return results;
     });
     console.log(JSON.stringify({measurements: results, testedOnTV: false}, null, 2));
-    for (const result of results.slice(0, 3)) {
+    for (const result of [results[0], results[4]]) {
       assert.equal(result.scans, 0, result.name + ' should not scan the whole panel');
       checks.push(result.name);
     }
     assert.equal(results[0].focused, 'a');
-    assert.equal(results[1].focused, '1');
-    assert.equal(results[2].value, 128);
-    assert.equal(results[3].group, 'Month');
-    assert.equal(results[4].scans, 1);
-    assert.ok(results[4].visited > 0);
+    assert.equal(results[1].focused, '12');
+    assert.equal(results[1].count, 13);
+    assert.equal(results[1].selected, 12);
+    assert.equal(results[1].scans, 12, 'Colour uses one shared traversal per vertical move');
+    assert.equal(results[2].focused, '12');
+    assert.equal(results[3].scans, 1);
+    assert.equal(results[3].visited, 13);
+    assert.equal(results[3].focused, 'original');
+    assert.equal(results[4].focused, '0');
     assert.deepEqual(errors, []);
-    checks.push('focus/slider values preserved', 'dynamic sections and Tab remain current');
+    checks.push('colour traversal visits every option', 'colour boundary clamps and Tab wraps');
     console.log(JSON.stringify({checks, errors}, null, 2));
   } finally {
     await browser.close();

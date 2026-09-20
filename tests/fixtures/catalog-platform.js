@@ -27,7 +27,22 @@
   };
   window.LGXMBWaveColors = {normalize:v=>v||{},resolve:()=>null};
   window.C5RemoteSettings = {close(){},open(){},getState(){return {};}};
-  window.LGXMBWaveColorSettings = {open(){},key(){}};
+  window.LGXMBWaveColorSettings = {open(){}};
+  window.LGXMBWallpaper = class {
+    constructor() { this.active=false; this.loading=false; this.error=''; }
+    setBrightness() {} setEnabled() {} destroy() {}
+    reload() { return Promise.resolve(false); }
+  };
+  window.LGXMBScreensaver = class {
+    constructor() { this.active=false; this.available=false; }
+    configure(value) { this.delayMs=value.delayMs; this.brightness=value.brightness; }
+    setAvailable(value) { this.available=value; }
+    activity() { return false; } preview() {} destroy() {}
+    getState() { return {active:false,available:this.available,delayMs:this.delayMs,brightness:this.brightness}; }
+  };
+  window.LGXMBScreensaverView = class {
+    render() {} resetInput() {} destroy() {}
+  };
   let appReply = null, appValue = null, appError = null;
   h.apps = value => {appValue=value;appError=null;if(appReply){const r=appReply;appReply=null;r.resolve(value);}};
   h.appsFail = error => {appError=error;if(appReply){const r=appReply;appReply=null;r.reject(error);}};

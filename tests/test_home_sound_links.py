@@ -198,7 +198,7 @@ class HomeSoundLinks(unittest.TestCase):
             return read(fd, size)
         with patch.object(startup.os, 'read', side_effect=change):
             with self.assertRaisesRegex(startup.SetupError, 'sound_payload_identity_changed'):
-                startup.checked_sound_home_payload()
+                startup.checked_home_payload()
         self.assertFalse((self.home / 'user-sounds').exists())
 
     def test_equal_reference_replaced_during_read_is_rejected(self):
@@ -216,7 +216,7 @@ class HomeSoundLinks(unittest.TestCase):
             return result
         with patch.object(startup.os, 'read', side_effect=replace):
             with self.assertRaisesRegex(startup.SetupError, 'sound_payload_identity_changed'):
-                startup.checked_sound_home_payload()
+                startup.checked_home_payload()
         self.assertFalse((self.home / 'user-sounds').exists())
 
     def test_foreign_owner_rejected(self):

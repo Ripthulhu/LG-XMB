@@ -36,10 +36,10 @@ async function main() {
         const stamp = new NativeDate(...fields).getTime();
         Date.now = () => stamp;
       };
-      window.renderBackground = (colors, background = [0.15, 0.25, 0.4]) => {
+      window.renderBackground = (colors, background = [0.15, 0.25, 0.4], brightness = 1) => {
         const renderer = wave.renderer, gl = wave.gl;
         const palette = LGXMBWaveColors.resolve(colors, new NativeDate(Date.now()));
-        renderer.draw(wave.canvas.width, wave.canvas.height, [0, 0, 0], 1, background, palette);
+        renderer.draw(wave.canvas.width, wave.canvas.height, [0, 0, 0], brightness, background, palette);
         const width = wave.canvas.width, height = wave.canvas.height;
         const pixels = new Uint8Array(width * height * 4);
         gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
@@ -137,6 +137,28 @@ async function main() {
     assert.ok(preset.topLeft[0] > preset.bottomLeft[0] + 70,
       'Monthly presets retain the upstream top-down gradient convention');
     checks.push('Monthly presets retain their upstream orientation independently of PS3 original');
+    const fixed = {mode: 'ps3', month: 8, dateMode: 'fixed', timeMode: 'day'};
+    const levels = await page.evaluate(colors => [1, .85, .7, .6, .45, .3].map(gain => ({
+      gain, pixels: renderBackground(colors, undefined, gain)
+    })), fixed);
+    for (const level of levels) {
+      for (const corner of Object.keys(level.pixels)) {
+        level.pixels[corner].forEach((value, channel) => {
+          assert.ok(Math.abs(value - levels[0].pixels[corner][channel] * level.gain) < 1,
+            'Brightness must dim every background region before dithering');
+        });
+      }
+    }
+    checks.push('All six brightness offsets dim the actual background pixels');
+    const fixedDates = await page.evaluate(colors => {
+      return [[2026, 0, 1, 0], [2026, 5, 17, 12], [2026, 11, 31, 23]].map(date => {
+        orientationDate(date);
+        return renderBackground(colors);
+      });
+    }, fixed);
+    assert.deepEqual(fixedDates[0], fixedDates[1]);
+    assert.deepEqual(fixedDates[0], fixedDates[2]);
+    checks.push('A manually selected colour does not change with the date or time');
     assert.deepEqual(errors, []);
     await page.evaluate(() => orientationWave.destroy());
     console.log(JSON.stringify({ checks, original, rgb, theme, preset, testedOnTV: false }, null, 2));

@@ -62,12 +62,32 @@ svg {
   display: block;
 }
 #wave,
+.wallpaper,
+.static-background,
 .ambient {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+.wallpaper {
+  object-fit: cover;
+}
+body.wallpaper-active {
+  background: #000000;
+}
+.wallpaper-active #wave,
+.wallpaper-active .static-background,
+.wallpaper-active .ambient,
+body:not(.wallpaper-active) .wallpaper {
+  visibility: hidden;
+}
+.wallpaper-status {
+  min-height: 1.5em;
+  margin: 1vh 1.3vw 2vh;
+  font-size: clamp(15px, 1.05vw, 24px);
+  color: var(--muted);
 }
 .ambient {
   background:
@@ -81,6 +101,9 @@ svg {
 /* WebGL handles the legacy halo/vignette before dithering. Static fallback
    keeps CSS; never paint a second gradient over a completed WebGL frame. */
 #wave[data-background-composited='true'] + .ambient {
+  display: none;
+}
+#wave[data-static-background='true'] + .ambient {
   display: none;
 }
 .screen {

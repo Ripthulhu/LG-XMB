@@ -186,16 +186,25 @@ function stylesheets(directory) {
         : [];
   });
 }
-test('all app stylesheets, including nested modules, reject will-change', () => {
+function screensaverLayers(filename, selector, phase) {
+  return path.basename(filename) === 'screensaver.css' && selector.split(',').every((part) =>
+    new RegExp('^\\.screensaver-' + phase + ' (?:#screen|#modalBackdrop|\\.item-options|#toast|#screensaverDim)$').test(part.trim()));
+}
+
+test('compositor hints are confined to temporary screensaver fades', () => {
   const files = stylesheets(path.join(__dirname, '../app'));
   assert.ok(files.some((name) => name.endsWith('item-options.css')));
   for (const filename of files) {
     const text = fs.readFileSync(filename, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-    assert.doesNotMatch(text, /\bwill-change\s*:/i, filename);
+    for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!/\bwill-change\s*:/i.test(rule[2])) continue;
+      assert.ok(screensaverLayers(filename, rule[1].trim(), 'transition'), filename + ': ' + rule[1]);
+      assert.match(rule[2], /\bwill-change\s*:\s*opacity\s*;/);
+    }
   }
 });
 
-test('opacity declarations are confined to reviewed non-text icons and markers in every stylesheet', () => {
+test('opacity is confined to non-text markers and explicit screensaver layers', () => {
   const allowed = new Set([
     '.detail-emblem',
     '.input-preview-symbol',
@@ -210,9 +219,12 @@ test('opacity declarations are confined to reviewed non-text icons and markers i
     for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       const selector = rule[1].trim(),
         body = rule[2];
-      assert.doesNotMatch(body, /\btransition\s*:[^;]*\bopacity\b/i, filename + ': ' + selector);
+      if (/\btransition\s*:[^;]*\bopacity\b/i.test(body))
+        assert.ok(screensaverLayers(filename, selector, 'transition'), filename + ': ' + selector);
       if (/(?:^|;)\s*opacity\s*:/i.test(body))
-        assert.ok(allowed.has(selector), filename + ': text opacity is not allowed on ' + selector);
+        assert.ok(allowed.has(selector) || screensaverLayers(filename, selector, 'active') ||
+          (path.basename(filename) === 'screensaver.css' && selector === '#screensaverDim'),
+          filename + ': text opacity is not allowed on ' + selector);
     }
   }
 });

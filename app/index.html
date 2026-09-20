@@ -11,10 +11,13 @@
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="item-options.css" />
     <link rel="stylesheet" href="date-time-settings.css" />
+    <link rel="stylesheet" href="screensaver.css" />
   </head>
   <body>
+    <img id="wallpaper" class="wallpaper" alt="" aria-hidden="true" hidden />
     <canvas id="wave" aria-hidden="true"></canvas>
     <div class="ambient" aria-hidden="true"></div>
+    <div id="screensaverDim" aria-hidden="true"></div>
     <div class="screen" id="screen">
       <header>
         <div class="clock"><time id="time"></time><span id="date"></span></div>
@@ -101,6 +104,9 @@
     <script src="launcher-preferences.js"></script>
     <script src="settings-ui.js"></script>
     <script src="appearance-settings.js"></script>
+    <script src="wallpaper.js"></script>
+    <script src="screensaver.js"></script>
+    <script src="screensaver-view.js"></script>
     <script src="launcher-view.js"></script>
     <script src="app.js"></script>
   </body>

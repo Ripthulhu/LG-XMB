@@ -9,7 +9,7 @@ LG-XMB is an XMB-style home screen for LG webOS TVs, inspired by the PS3.
 - Launch installed apps and switch between TV inputs.
 - Choose which categories apps appear in, sort by name or recent use, and hide apps without uninstalling them.
 - Show cached HDMI pictures, with optional live previews.
-- Adjust wave colours, speed and rendering quality, including monthly colours and day/night changes.
+- Choose Original or Classic waves, seasonal or fixed colours, and your own wallpaper.
 - Use your own navigation sounds and background music.
 
 Left and Right change categories. Up and Down select an item. Press OK to open
@@ -46,8 +46,11 @@ Installing a new IPK doesn't update the Home replacement copy.
 
 ## Customise
 
-Open **Settings → Appearance** for themes, wave colours and rendering options.
-[Wave settings](docs/WEBGL2.md#settings) explains the controls and automatic colour changes.
+Open **Settings → Appearance**. Original includes sparkles; Classic leaves them
+out. **Colour → Original** follows the season and time of day. The other colours
+stay fixed. **Background** selects a [wallpaper and brightness](docs/BACKGROUND.md).
+**Advanced** contains [animation and rendering options](docs/WEBGL2.md#settings).
+**Screensaver** sets the idle delay and [background dimming](docs/SCREENSAVER.md).
 
 Hold OK on an app to change its category, sorting or visibility.
 [Item options](docs/ITEM-OPTIONS.md) covers those controls and restoring hidden apps.

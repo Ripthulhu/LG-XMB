@@ -11,60 +11,54 @@ IPK. There's no separate renderer installer or preview archive to apply.
 
 ## Settings
 
-Open **Settings → Appearance**. The launcher defaults to 60 fps, 1.5× supersampling,
-Original mesh detail, Subtle edge softness and Strong FXAA;
-particles are on at Medium density.
+Open **Settings → Appearance**:
 
-| Control | Behaviour |
+- **Theme:** Original includes sparkles; Classic turns off their drawing and simulation.
+- **Colour:** Original follows the local date and time. The twelve named colours
+  use fixed monthly backgrounds at daytime, so they don't change with the clock.
+- **Background:** use the theme or your own [wallpaper](BACKGROUND.md), with
+  brightness from Normal to -5. Text and icons stay white.
+- **Screensaver:** [fade the menu and dim the background](SCREENSAVER.md) after an idle delay.
+- **Advanced:** animation, speed and rendering quality.
+
+The launcher defaults to 60 fps, 1.5× supersampling, Original mesh detail,
+Subtle edge softness and Strong FXAA. Original uses Medium particle density.
+
+| Advanced control | Behaviour |
 | --- | --- |
 | Animation | Freeze or animate the background |
 | Speed | Change simulation speed independently of the draw rate |
-| Brightness | Low, Medium and High apply gains of 0.3, 0.6 and 1 |
 | Frame rate | Target 30 or 60 draws per second |
 | Supersampling | Render the wave surface at 1×, 1.25×, 1.5× or 2× output size |
 | Mesh detail | Reduced uses 64 × 64 samples; Original uses 128 × 128 |
-| Edge softness | Sharp, Subtle (the former Soft amount), or Soft (wider, stronger smoothing) |
-| Particles | Enable or disable particle drawing and simulation |
-| Particle density | Limit the population to 1,000, 2,000 or 4,000 |
+| Edge softness | Sharp, Subtle, or Soft |
+| Particle density | Limit Original's sparkles to 1,000, 2,000 or 4,000 |
 | Post-process antialiasing | Off or coverage-guided FXAA |
 | Smoothing strength | Select the post-process filter thresholds |
 
-Stored `fine` mesh settings migrate to Original. Both previous FXAA modes use
-the coverage-guided filter, now labelled FXAA. MSAA settings are discarded.
-The brightness keys retain their older names for saved settings: `dim` is Low,
-`low` is Medium and `normal` is High.
+**Show waves full screen** hides the menu without changing its selection.
+Back or Home returns to the menu. It temporarily shows waves when a wallpaper
+is selected.
 
-Supersampling affects the wave surface. The composite filter doesn't
-filter menu text or particles. Particles and glare are drawn afterwards at output
+Supersampling affects the wave surface. The composite filter doesn't filter
+menu text or particles. Particles and glare are drawn afterwards at output
 resolution. Renderer diagnostics are available through `C5App.getState()`.
 
-**Wave colours** selects the theme, monthly gradient presets, custom RGB or
-**PS3 original**. The last option uses the recovered monthly background with the
-TV clock. Both PS3 original and monthly presets have separate Month selection
-(Automatic or Fixed month) and Time of day (Automatic, Day or Night) controls.
-A fixed month can still follow the local day/night cycle. Monthly presets are
-separate gradients, not the extracted PS3 textures.
+Normal and -1 through -5 apply gains of 1, 0.85, 0.7, 0.6, 0.45 and 0.3 to the
+whole background, including sparkles. These are launcher brightness levels,
+not recovered PS3 constants. A wallpaper uses the same gains over black.
 
-Current theme has an optional Day/night effect, off by default. It dims the
-selected theme at night without changing its colour. Seasonal also refreshes
-its month colour when the month changes. Custom RGB stays fixed.
+Colour → Original refreshes once a second even with Animation off; wave and
+particle motion remain frozen. Updates stop when Home is hidden and resume
+using the current local time. Fixed colours need no clock timer. The native
+background retains the recovered bottom-up coordinates and calendar arithmetic,
+including February 29 using February 28's month coordinate.
 
-Clock-driven colours refresh once a second even with Animation off; wave and
-particle motion remain frozen. Background updates stop when Home is hidden and
-resume using the current local time. Fixed month plus fixed time needs no clock
-timer. Existing fixed presets retain their settings.
-
-The PS3 path retains the recovered calendar arithmetic, including February 29
-using February 28's month coordinate. Day/night parameters match the supplied
-RPCS3 background object. Preset interpolation and optional theme dimming are
-launcher features rather than a claim of exact PS3 output in those modes.
-
-PS3 original uses the recovered shader's bottom-up coordinates. Monthly presets
-use their upstream top-down gradients, so their direction can differ from PS3
-original. Custom RGB uses the labelled top and bottom intensities.
-
-**Show waves full screen** hides the menu without changing its selection.
-Back or Home returns to the menu.
+Saved settings migrate to this layout. Particle Off becomes Classic; a fixed
+monthly colour keeps its month, while automatic colours become Original. Old
+named themes and RGB colours map to the nearest choice. Low and Medium
+brightness become -5 and -3. Stored `fine` mesh settings migrate to Original;
+both previous FXAA modes use the coverage-guided filter and MSAA is discarded.
 
 ## Runtime files
 
@@ -103,7 +97,9 @@ and turning particles off also suspends their simulation.
 
 CPU state survives WebGL context loss. GPU resources are rebuilt on restoration.
 A missing WebGL 2 context or invalid reference data produces a static backdrop
-and a diagnostic. There's no WebGL 1 renderer or runtime shader translation.
+and a diagnostic. This approximate gradient follows colour and brightness;
+Original refreshes once per minute while visible. There's no WebGL 1 renderer
+or runtime shader translation.
 
 The wave-target allocation budget is 96 MiB. It isn't a limit on total browser
 or GPU memory. Canvas buffers, cached backgrounds and driver allocations are

@@ -56,7 +56,7 @@ Copy the installed app into a **new** directory:
   for source in "$DEV"/* "$DEV"/.[!.]* "$DEV"/..?*; do
     [ -e "$source" ] || [ -L "$source" ] || continue
     case "${source##*/}" in
-      user-music.mp3|user-sounds|thumbnails) continue ;;
+      user-music.mp3|user-wallpaper.jpg|user-sounds|thumbnails) continue ;;
     esac
     cp -R "$source" "$APP/"
   done
@@ -64,7 +64,7 @@ Copy the installed app into a **new** directory:
 ```
 
 `mkdir` must succeed. If the directory exists, follow
-[Updating the payload](#updating-the-payload) instead. The three excluded entries
+[Updating the payload](#updating-the-payload) instead. The excluded entries
 are runtime links or link directories, not app code. Don't copy the source
 repo's `app/` directory here: its helper hasn't been staged or pinned.
 
@@ -111,12 +111,14 @@ find "$APP" -type d -exec chmod 0755 {} +
 find "$APP" -type f -exec chmod 0644 {} +
 chmod 0755 "$APP/helper-startup.py"
 ln -s /media/internal/lg-xmb/background.mp3 "$APP/user-music.mp3"
+ln -s /media/internal/lg-xmb/wallpaper.jpg "$APP/user-wallpaper.jpg"
 ln -s /tmp/lg-xmb-thumbnails "$APP/thumbnails"
 /usr/bin/python3 -I -B "$DEV/helper-startup.py" ensure
 ```
 
 The links may point to files that don't exist yet. Don't force replacement if
-`ln` reports an existing entry. The bootstrap prepares `user-sounds/` separately.
+`ln` reports an existing entry. The bootstrap prepares `user-sounds/` and creates
+the wallpaper link in a matching Home payload. See [Wallpaper](BACKGROUND.md).
 Check its JSON result and `/var/lib/webosbrew/lg-xmb-startup.log`. The log should
 include `sound_paths_ready` for `home`; capture setup can succeed while sound
 setup fails. Fix errors before mounting.

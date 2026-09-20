@@ -11,6 +11,7 @@ uniform sampler2D uBackdrop;
 uniform sampler2D uAmbient;
 uniform bool uAmbientEnabled;
 uniform float uBackdropScale;
+uniform float uBrightness;
 uniform highp vec2 uTexel;
 uniform float uSoftness;
 uniform bool uFilter;
@@ -82,7 +83,9 @@ float displayNoise() {
   return (n-0.5)*(2.0/255.0);
 }
 vec3 displayColour(vec3 rgb, float noise) {
-  rgb=clamp(rgb,0.0,1.0);
+  // Background brightness leaves launcher text and icons untouched. Apply it
+  // before display dithering, including fragments outside the wave band.
+  rgb=clamp(rgb,0.0,1.0)*uBrightness;
   vec3 amount=min(vec3(1.0),255.0*min(rgb,vec3(1.0)-rgb));
   return clamp(rgb+noise*amount,0.0,1.0);
 }

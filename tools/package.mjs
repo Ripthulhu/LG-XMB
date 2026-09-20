@@ -65,7 +65,7 @@ try {
     }
     fs.copyFileSync(path.join(projectDir, 'docs', 'WEBGL2-NOTICES.md'), path.join(licenseDir, 'WEBGL2-NOTICES.md'));
   }
-  for (const relativeName of [appinfo.main, appinfo.icon, 'ps3-particle-birth.js', 'ps3-native-core.js', 'ps3-native-shaders.js', 'ps3-native-renderer.js', 'ps3-background-clock.js', 'background-music.js', 'category-transition.js', 'wave-colors.js', 'wave-color-settings.js', 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/WEBGL2-NOTICES.md', 'licenses/PARTICLE-BIRTH-MIT.txt', 'licenses/PS3-XMB-MIT.txt', 'licenses/THREE-FXAA-MIT.txt']) {
+  for (const relativeName of [appinfo.main, appinfo.icon, 'ps3-particle-birth.js', 'ps3-native-core.js', 'ps3-native-shaders.js', 'ps3-native-renderer.js', 'ps3-background-clock.js', 'background-music.js', 'category-transition.js', 'wave-colors.js', 'wave-color-settings.js', 'wallpaper.js', 'screensaver.js', 'screensaver-view.js', 'screensaver.css', 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/WEBGL2-NOTICES.md', 'licenses/PARTICLE-BIRTH-MIT.txt', 'licenses/PS3-XMB-MIT.txt', 'licenses/THREE-FXAA-MIT.txt']) {
     requireCondition(typeof relativeName === 'string' && relativeName.length > 0, 'App entry and icon paths are required.');
     const resolved = path.resolve(appDir, relativeName);
     requireCondition(resolved.startsWith(appDir + path.sep), `App file leaves package directory: ${relativeName}`);

@@ -16,7 +16,6 @@
     lastDirection = 0,
     toastTimer,
     announceTimer;
-  var themes = LGXMBPreferences.createThemes();
   // Access storage lazily: webOS/browser privacy settings can deny the getter.
   var preferenceStorage = {
     getItem: function (key) {
@@ -38,6 +37,12 @@
   };
   var wave = new C5Wave($('wave'), { quality: '1080p', adaptive: false }),
     livePreviewActive = false;
+  var wallpaper = new LGXMBWallpaper($('wallpaper'), {
+    onChange: function () {
+      syncWavePlayback();
+      if (appearanceSettings) appearanceSettings.updateBackgroundStatus();
+    }
+  });
   var inputPreview = new C5InputPreview($('inputPreview'), {
     isTV: function () {
       return C5TV.isTV();
@@ -63,6 +68,24 @@
     pageActive = !document.hidden,
     musicAway = false,
     lastReturnAt = -Infinity;
+  var screensaver = new LGXMBScreensaver({
+    onChange: function (state) {
+      screensaverView.render(state);
+      syncInputPreview();
+    }
+  });
+  var screensaverView = new LGXMBScreensaverView(screensaver, {
+    restoreFocus: restoreFocus,
+    beforeSleep: function () {
+      cancelNavigation();
+      cancelHold();
+      categoryTransition.cancel();
+      clearToast();
+    }
+  });
+  function syncScreensaver() {
+    screensaver.setAvailable(pageActive && !document.hidden && !busy && !musicAway);
+  }
   document.querySelector('.input-preview-symbol').innerHTML = C5Icon('hdmi');
   document.querySelector('.thumbnail-symbol').innerHTML = C5Icon('hdmi');
   var inputLabelRead = null;
@@ -206,10 +229,7 @@
     sound: tick,
     onApplied: function () {
       updateClock();
-      seasonal();
-      wave.setTheme(
-        Object.assign({}, themes[preferences.theme], { colors: preferences.waveColors })
-      );
+      wave.setTheme(LGXMBPreferences.backgroundTheme(preferences));
     }
   });
   function openItemOptions() {
@@ -235,14 +255,11 @@
       toast('This device could not save your preference.');
     }
   }
-  function seasonal() {
-    LGXMBPreferences.updateSeasonal(themes, new Date());
-  }
   function applyPreferences() {
     sounds.setEnabled(preferences.sound);
     if (preferences.motion === 'reduced') categoryTransition.cancel();
-    seasonal();
-    var theme = themes[preferences.theme];
+    var theme = LGXMBPreferences.backgroundTheme(preferences),
+      style = LGXMBPreferences.waveStyle(preferences);
     document.documentElement.style.setProperty('--accent', '#ffffff');
     document.documentElement.style.setProperty('--accent-rgb', '255,255,255');
     document.documentElement.style.setProperty('--background', theme.background);
@@ -256,10 +273,18 @@
         .join(',')
     );
     document.body.classList.toggle('reduced-motion', preferences.motion === 'reduced');
-    wave.setTheme(Object.assign({}, theme, { colors: preferences.waveColors }));
-    wave.setStyle(LGXMBPreferences.waveStyle(preferences));
+    wave.setTheme(theme);
+    wave.setStyle(style);
     wave.setQuality(LGXMBPreferences.waveQuality(preferences));
     wave.setReducedMotion(preferences.motion === 'reduced');
+    wallpaper.setBrightness(style.brightness);
+    wallpaper.setEnabled(preferences.background === 'wallpaper');
+    syncWavePlayback();
+    screensaver.configure({
+      delayMs: preferences.screensaverDelay,
+      brightness: preferences.screensaverBrightness
+    });
+    syncScreensaver();
   }
   function toast(message) {
     $('toast').textContent = message;
@@ -315,6 +340,7 @@
     launchGeneration++;
     busy = false;
     $('items').removeAttribute('aria-busy');
+    syncScreensaver();
   }
   function currentItem() {
     return categories[selectedCategory].items[selections[selectedCategory]];
@@ -332,13 +358,15 @@
     // Page suspension is immediate; a live preview eases the motion to rest.
     // Releasing video while hidden must not restart rendering. Neither pause
     // changes the saved animation or quality settings.
-    wave.setPaused(!pageActive || document.hidden);
+    var showingWallpaper = wallpaper && wallpaper.active && !waveOnly;
+    document.body.classList.toggle('wallpaper-active', !!showingWallpaper);
+    wave.setPaused(!pageActive || document.hidden || showingWallpaper);
     wave.setMotionHeld(livePreviewActive);
   }
   function syncInputPreview() {
     var port = currentPort(),
       shown = !!port && !modalOpen,
-      active = shown && !waveOnly && pageActive && !document.hidden && !busy,
+      active = shown && !waveOnly && !screensaver.active && pageActive && !document.hidden && !busy,
       live = active && preferences.previewMode === 'live';
     document.querySelector('.detail').classList.toggle('has-input-preview', shown);
     $('previewPanel').hidden = !shown;
@@ -481,14 +509,17 @@
   var modalType = '';
   var appearanceSettings = new LGXMBAppearanceSettings({
     preferences: preferences,
-    themes: themes,
     wave: wave,
+    wallpaper: wallpaper,
     ui: settingsUI,
     content: $('modalContent'),
     save: save,
     applyPreferences: applyPreferences,
     openPanel: openModal,
-    setWaveOnly: setWaveOnly
+    setWaveOnly: setWaveOnly,
+    previewScreensaver: function () {
+      screensaver.preview();
+    }
   });
   function openModal(type) {
     cancelNavigation();
@@ -502,9 +533,13 @@
     modalType = type;
     $('modal').classList.toggle(
       'waves-settings',
-      type === 'appearance' || type === 'sound' || type === 'wave-colors'
+      type === 'appearance-advanced' ||
+        type === 'sound' ||
+        type === 'background' ||
+        type === 'screensaver'
     );
     $('modal').classList.toggle('appearance-settings', type === 'appearance');
+    $('modal').classList.toggle('screensaver-settings', type === 'screensaver');
     modalOpen = true;
     syncInputPreview();
     document.querySelector('.screen').setAttribute('aria-hidden', 'true');
@@ -515,7 +550,10 @@
       datetime: 'Date & time',
       appearance: 'Appearance',
       theme: 'Theme',
-      'wave-colors': 'Wave colours',
+      colour: 'Colour',
+      background: 'Background',
+      screensaver: 'Screensaver',
+      'appearance-advanced': 'Advanced',
       sound: 'Sound',
       previews: 'Input previews',
       remote: 'Back button'
@@ -524,7 +562,10 @@
       datetime: '',
       appearance: '',
       theme: '',
-      'wave-colors': '',
+      colour: '',
+      background: '',
+      screensaver: '',
+      'appearance-advanced': '',
       sound: '',
       previews: '',
       remote: ''
@@ -532,18 +573,17 @@
     if (type === 'theme') {
       appearanceSettings.openTheme();
     } else if (type === 'appearance') {
-      row('Theme', null, false, function () {
-        openModal('theme');
-      }).id = 'openTheme';
       appearanceSettings.open();
+    } else if (type === 'colour') {
+      appearanceSettings.openColour();
+    } else if (type === 'background') {
+      appearanceSettings.openBackground();
+    } else if (type === 'screensaver') {
+      appearanceSettings.openScreensaver();
+    } else if (type === 'appearance-advanced') {
+      appearanceSettings.openAdvanced();
     } else if (type === 'datetime') {
       dateTimeSettings.open($('modalContent'));
-    } else if (type === 'wave-colors') {
-      LGXMBWaveColorSettings.open($('modalContent'), preferences.waveColors, function (value) {
-        preferences.waveColors = value;
-        wave.setTheme(Object.assign({}, themes[preferences.theme], { colors: value }));
-        save();
-      });
     } else if (type === 'sound') {
       openSoundSettings();
     } else if (type === 'previews') {
@@ -581,6 +621,9 @@
     }
     var chosen =
       (type === 'appearance' && $('openTheme')) ||
+      (type === 'background' &&
+        $('modalContent').querySelector('.background-source [aria-pressed="true"]')) ||
+      (type === 'appearance-advanced' && $('showWavesOnly')) ||
       (type === 'datetime' && $('modalContent').querySelector('.date-time-value')) ||
       $('modalContent').querySelector('[aria-pressed="true"]') ||
       $('modalContent').querySelector('button') ||
@@ -598,6 +641,7 @@
     if (on && modalOpen) closeModal(true);
     document.body.classList.toggle('wave-only', on);
     syncInputPreview();
+    syncWavePlayback();
     if (on) toast('Press Back to return.');
     else {
       clearToast();
@@ -842,6 +886,8 @@
   }
   function refreshHelperAssets(generation) {
     if (preferences.sound) sounds.retry();
+    if (preferences.background === 'wallpaper' && !wallpaper.active && !wallpaper.loading)
+      wallpaper.reload();
     if (
       (generation === undefined || generation === launchGeneration) &&
       pageActive &&
@@ -876,8 +922,15 @@
       return;
     }
     if (quiet !== true) tick('cancel');
-    if (modalType === 'wave-colors' || modalType === 'theme') {
-      var returnId = modalType === 'theme' ? 'openTheme' : 'openWaveColors';
+    var appearanceParents = {
+      theme: 'openTheme',
+      colour: 'openColour',
+      background: 'openBackground',
+      screensaver: 'openScreensaver',
+      'appearance-advanced': 'openAppearanceAdvanced'
+    };
+    if (quiet !== true && appearanceParents[modalType]) {
+      var returnId = appearanceParents[modalType];
       openModal('appearance');
       LGXMBMenuFocus($(returnId));
       return;
@@ -901,10 +954,6 @@
     }
     if (modalType === 'datetime') {
       dateTimeSettings.key(event);
-      return;
-    }
-    if (modalType === 'wave-colors') {
-      LGXMBWaveColorSettings.key(event, $('modal'));
       return;
     }
     settingsUI.key(event, $('modal'));
@@ -959,6 +1008,7 @@
     clearToast();
     busy = true;
     musicAway = true;
+    syncScreensaver();
     syncInputPreview();
     var launched = false;
     $('items').setAttribute('aria-busy', 'true');
@@ -980,6 +1030,7 @@
         $('items').removeAttribute('aria-busy');
         if (!launched && pageActive && !document.hidden) {
           musicAway = false;
+          syncScreensaver();
           renderDetail();
           $('items').focus();
         }
@@ -1279,16 +1330,8 @@
     if (busy || modalOpen) return;
     activate();
   });
-  var themeMonth = new Date().getMonth();
   function updateClock() {
     var now = new Date();
-    if (themeMonth !== now.getMonth()) {
-      themeMonth = now.getMonth();
-      if (preferences.theme === 'seasonal') {
-        seasonal();
-        wave.setTheme(Object.assign({}, themes.seasonal, { colors: preferences.waveColors }));
-      }
-    }
     var time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
       date = now.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
     if ($('time').textContent !== time) {
@@ -1379,6 +1422,9 @@
     refreshRecent();
     sounds.setActive(true);
     musicAway = false;
+    screensaverView.resetInput();
+    screensaver.activity();
+    syncScreensaver();
     syncWavePlayback();
     renderDetail();
     if (
@@ -1415,6 +1461,8 @@
     categoryTransition.cancel();
     var wasActive = pageActive;
     pageActive = false;
+    screensaverView.resetInput();
+    syncScreensaver();
     sounds.setActive(false);
     music.setContext(false, false);
     cancelInputLabels();
@@ -1482,6 +1530,9 @@
     music.destroy();
     thumbnail.destroy();
     inputPreview.destroy();
+    wallpaper.destroy();
+    screensaverView.destroy();
+    screensaver.destroy();
     wave.destroy();
   });
   window.C5App = {
@@ -1499,6 +1550,8 @@
         detailPending: detailTimer !== 0,
         detailItem: detailItemId,
         music: music.getState(),
+        wallpaper: { active: wallpaper.active, loading: wallpaper.loading, error: wallpaper.error },
+        screensaver: screensaver.getState(),
         sounds: sounds.getState(),
         thumbnail: thumbnail.getState(),
         inputPreview: inputPreview.getState(),

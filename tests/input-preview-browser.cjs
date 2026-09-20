@@ -8,6 +8,10 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
   page.on('request', request => requests.push(request.url()));
   try {
     await page.addInitScript(() => {
+      // This suite checks previews while staying in Home. The default Back
+      // action leaves Home; that media lifecycle is covered by launch-return.
+      if (!localStorage.getItem('lg-xmb-preferences-v1'))
+        localStorage.setItem('lg-xmb-preferences-v1', JSON.stringify({backBehavior: 'stay'}));
       window.inputTest = {created: 0, maxAttached: 0, releases: [], launches: [], statusRequests: 0, thumbnails: []};
       // Missing local thumbnails exercise the real icon fallback without file requests.
       window.Image = function() {
@@ -168,7 +172,7 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     assert.equal((await state()).item, beforeBack.item);
     assert.equal((await state()).inputPreview.status, 'playing');
     assert.equal(await page.evaluate(() => inputTest.launches.length), backLaunches);
-    checks.push('Back on the main menu leaves selection and Live mode unchanged, including TV Back keycode 461');
+    checks.push('Back set to Stay in Home leaves selection and Live playback unchanged, including TV Back keycode 461');
 
     await page.keyboard.press('Enter');
     assert.equal((await state()).busy, true); await assertIdle();

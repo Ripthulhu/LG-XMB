@@ -1,0 +1,63 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Only fade whole UI layers when entering or leaving idle, never on navigation. */
+.screensaver-settings .choice-options .option {
+  padding-left: 0.6vw;
+  padding-right: 0.6vw;
+  gap: 0.3vw;
+}
+.screensaver-settings .choice-options .option > span:first-child {
+  white-space: nowrap;
+}
+.screensaver-transition #screen,
+.screensaver-transition #modalBackdrop,
+.screensaver-transition .item-options {
+  transition: opacity 160ms ease;
+}
+.screensaver-transition #toast {
+  transition:
+    opacity 160ms ease,
+    transform 0.2s;
+}
+#screensaverDim {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+.screensaver-transition #screensaverDim {
+  transition: opacity 160ms ease;
+}
+.screensaver-active #screen,
+.screensaver-active #modalBackdrop,
+.screensaver-active .item-options,
+.screensaver-active #toast {
+  opacity: 0;
+}
+.screensaver-active #screensaverDim {
+  opacity: var(--screensaver-shade, 0.75);
+}
+.screensaver-transition.screensaver-active #screen,
+.screensaver-transition.screensaver-active #modalBackdrop,
+.screensaver-transition.screensaver-active .item-options,
+.screensaver-transition.screensaver-active #toast,
+.screensaver-transition.screensaver-active #screensaverDim {
+  transition-duration: 1200ms;
+}
+.screensaver-transition #screen,
+.screensaver-transition #modalBackdrop,
+.screensaver-transition .item-options,
+.screensaver-transition #toast,
+.screensaver-transition #screensaverDim {
+  will-change: opacity;
+}
+/* Rows have inline visibility; fully hidden idle layers must override it. */
+.screensaver-asleep #screen,
+.screensaver-asleep #screen *,
+.screensaver-asleep #modalBackdrop,
+.screensaver-asleep #modalBackdrop *,
+.screensaver-asleep .item-options,
+.screensaver-asleep .item-options *,
+.screensaver-asleep #toast {
+  visibility: hidden !important;
+}

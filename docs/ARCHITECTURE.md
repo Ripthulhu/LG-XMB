@@ -21,7 +21,9 @@ page structure. Read the controller only when a change crosses feature boundarie
 | Item options | `app/item-options.js`, `app/item-options.css` | Long-press panel, hide/restore, category selection and uninstall confirmation |
 | Input handling | `app/hold-gesture.js`, `app/directional-repeat.js`, `app/wheel-navigation.js`, `app/menu-focus.js`, `app/category-transition.js` | Hold state, key repeat pacing, wheel distance, focus/scroll and horizontal transitions |
 | Shared settings controls | `app/settings-ui.js` | Option rows, choice groups and generic panel navigation |
-| Appearance | `app/appearance-settings.js`, `app/wave-color-settings.js` | Theme, wave quality and colour controls |
+| Appearance | `app/appearance-settings.js`, `app/wave-color-settings.js` | Theme, colour, background and advanced rendering controls |
+| Wallpaper | `app/wallpaper.js` | Load the local image, retain a working background on failure and cancel stale loads |
+| Screensaver | `app/screensaver.js`, `app/screensaver-view.js`, `app/screensaver.css` | Idle deadline, wake gestures and temporary UI/background fades |
 | Other settings panels | `app/remote-settings.js`, `app/date-time-settings.js` | Feature-specific controls and keyboard navigation |
 | TV APIs | `app/tv-bridge.js`, `app/app-manager.js`, `app/system-time.js` | Bounded native requests for launch/input/audio, app information/removal and clock settings |
 | HDMI pictures | `app/thumbnail.js`, `app/input-preview.js` | Cached images and optional live video; separate lifecycles |
@@ -101,7 +103,7 @@ document-level key listener for each panel. Back closes or returns to the parent
 panel. Opening a panel must set a predictable initial focus, and later status
 replies must not move it.
 
-`app/appearance-settings.js` builds Theme and Appearance. Audio and helper
+`app/appearance-settings.js` builds Appearance and its submenus. Audio and helper
 status handling remain in the launcher, with playback in the audio modules.
 Keep new feature-specific rendering in a module and let the launcher provide
 its dependencies.
@@ -143,13 +145,32 @@ ordering and failure paths are covered by `tests/test_home_registration.py`.
 
 | Source | Edit it for |
 | --- | --- |
-| `app/launcher-preferences.js` | Theme definitions and launcher quality defaults |
+| `app/launcher-preferences.js` | Original/Classic, colour choices, brightness levels, migration and quality defaults |
 | `app/wave-colors.js` | Monthly presets, colour normalisation and interpolation |
 | `app/ps3-background-clock.js` | Calendar and day/night calculations |
 | `app/ps3-native-core.js` | CPU wave/particle simulation |
 | `app/ps3-particle-birth.js` | Particle-birth equations |
 | `app/ps3-native-renderer.js` | WebGL resources, draw passes and the `C5Wave` interface |
+| `app/wallpaper.js` | Optional local image loading and brightness |
 | `shaders/*.vert`, `shaders/*.frag` | Shader behaviour |
+
+`backgroundTheme()`, `waveStyle()` and `waveQuality()` derive the renderer inputs
+from saved preferences. Original and Classic control particles; colour is either
+the native calendar-driven background or a fixed month at daytime. Keep these
+decisions in preferences rather than adding competing switches to the renderer.
+
+The launcher pauses WebGL while a wallpaper is visible. Brightness dims the
+rendered background or image, leaving the menu unchanged. The wallpaper module
+preloads replacements, invalidates cancelled requests and reports failures to
+the existing panel without moving focus. Its fixed runtime link is optional;
+the helper must not read or overwrite the user's image.
+
+The screensaver controller owns one idle deadline; cursor events update its
+timestamp without replacing the timer. The view captures wake gestures before
+normal navigation and fades whole UI layers with CSS. Keep idle dimming separate
+from the saved background brightness. The launcher enables it only while Home
+is active, stops live previews while asleep and resets it when returning from
+another app. Cursor movement and lifecycle events must not rebuild the menu.
 
 `app/ps3-native-shaders.js` is generated. Edit `shaders/`, then run
 `python3 tools/bundle-ps3-shaders.py` and its `--check` mode. Commit both the

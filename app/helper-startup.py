@@ -493,7 +493,7 @@ def read_sound_identity(directory, name, limit=131072, developer_reference=False
         os.close(fd)
 
 
-def checked_sound_home_payload():
+def checked_home_payload():
     """Return an open, validated payload, or None when takeover is not installed.
 
     A bind mount does not preserve the developer path. Validate the copied
@@ -624,7 +624,7 @@ def prepare_user_sounds():
         app = None
         try:
             app = (open_directory(APP_DIR, app_path=True) if destination == "developer"
-                   else checked_sound_home_payload())
+                   else checked_home_payload())
             if app is None:
                 continue
             prepare_sound_aliases(app, repair_developer=destination == "developer")
@@ -632,6 +632,51 @@ def prepare_user_sounds():
         except (OSError, SetupError, ValueError, TypeError) as error:
             ready = False
             record_startup("sound_path_unavailable", error, destination=destination)
+        finally:
+            if app is not None:
+                os.close(app)
+    return ready
+
+
+def prepare_fixed_asset_alias(app, name, target):
+    """Create one fixed link without opening user data or replacing an entry."""
+    require(not os.fstat(app).st_mode & 0o022)
+    try:
+        os.symlink(target, name, dir_fd=app)
+    except FileExistsError:
+        pass
+    before = os.stat(name, dir_fd=app, follow_symlinks=False)
+    require(stat.S_ISLNK(before.st_mode) and before.st_uid == 0 and before.st_nlink == 1
+            and os.readlink(name, dir_fd=app) == target, "asset_path_conflict")
+    after = os.stat(name, dir_fd=app, follow_symlinks=False)
+    require(sound_entry_identity(before) == sound_entry_identity(after), "asset_path_changed")
+
+
+def prepare_user_wallpaper():
+    """Expose an optional personal image in the verified developer and Home apps."""
+    try:
+        parent = open_directory(os.path.dirname(MUSIC_DIR), app_path=True)
+        try:
+            directory = make_directory(parent, os.path.basename(MUSIC_DIR))
+            os.close(directory)
+        finally:
+            os.close(parent)
+    except (OSError, SetupError) as error:
+        record_startup("wallpaper_path_unavailable", error)
+        return False
+    ready = True
+    for destination in ("developer", "home"):
+        app = None
+        try:
+            app = (open_directory(APP_DIR, app_path=True) if destination == "developer"
+                   else checked_home_payload())
+            if app is None:
+                continue
+            prepare_fixed_asset_alias(app, "user-wallpaper.jpg", MUSIC_DIR + "/wallpaper.jpg")
+            record_startup("wallpaper_path_ready", destination=destination)
+        except (OSError, SetupError, ValueError, TypeError) as error:
+            ready = False
+            record_startup("wallpaper_path_unavailable", error, destination=destination)
         finally:
             if app is not None:
                 os.close(app)
@@ -659,6 +704,7 @@ def start():
         capture, recovery, bundle = load_bundle()
         prepare_user_music()
         prepare_user_sounds()
+        prepare_user_wallpaper()
         raw = read_file(base, "installed.json", 4096, optional=True)
         previous = json.loads(raw) if raw is not None else None
         require(previous is None or (isinstance(previous, dict)

@@ -143,6 +143,19 @@ class SetupFixture(unittest.TestCase):
         self.assertFalse((self.music / 'background.mp3').exists())
         self.assertEqual(stat.S_IMODE(self.music.stat().st_mode), 0o755)
 
+    def test_optional_wallpaper_alias_is_prepared_by_setup(self):
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual(os.readlink(self.app / 'user-wallpaper.jpg'), str(self.music / 'wallpaper.jpg'))
+        self.assertFalse((self.music / 'wallpaper.jpg').exists())
+
+    def test_conflicting_wallpaper_does_not_disable_helper(self):
+        (self.app / 'user-wallpaper.jpg').write_bytes(b'keep my picture')
+        result, _ = self.run_setup()
+        self.assertTrue(result['ready'])
+        self.assertEqual((self.app / 'user-wallpaper.jpg').read_bytes(), b'keep my picture')
+        self.assertIn('wallpaper_path_unavailable', (self.log / startup.LOG_NAME).read_text())
+
     def test_music_survives_link_loss_and_repeated_upgrade_preparation(self):
         self.run_setup()
         track = self.music / 'background.mp3'

@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-// Theme and wave controls. Hardware allocation remains the renderer's concern.
+// Appearance choices are separate from rendering quality and hardware allocation.
 (function (root) {
   'use strict';
   function AppearanceSettings(options) {
     var preferences = options.preferences,
-      themes = options.themes,
       wave = options.wave,
       ui = options.ui;
     var save = options.save,
@@ -12,10 +11,19 @@
       openModal = options.openPanel,
       setWaveOnly = options.setWaveOnly;
     function open() {
-      var colorButton = ui.row('Wave colours', null, false, function () {
-        openModal('wave-colors');
+      [
+        ['Theme', 'theme', 'openTheme'],
+        ['Colour', 'colour', 'openColour'],
+        ['Background', 'background', 'openBackground'],
+        ['Screensaver', 'screensaver', 'openScreensaver'],
+        ['Advanced', 'appearance-advanced', 'openAppearanceAdvanced']
+      ].forEach(function (entry) {
+        ui.row(entry[0], null, false, function () {
+          openModal(entry[1]);
+        }).id = entry[2];
       });
-      colorButton.id = 'openWaveColors';
+    }
+    function openAdvanced() {
       ui.row('Show waves full screen', null, false, function () {
         setWaveOnly(true);
       }).id = 'showWavesOnly';
@@ -42,20 +50,6 @@
         preferences.waveSpeed,
         function (value) {
           preferences.waveSpeed = value;
-          applyPreferences();
-          save();
-        }
-      );
-      ui.choiceGroup(
-        'Brightness',
-        [
-          ['dim', 'Low'],
-          ['low', 'Medium'],
-          ['normal', 'High']
-        ],
-        preferences.waveBrightness,
-        function (value) {
-          preferences.waveBrightness = value;
           applyPreferences();
           save();
         }
@@ -102,14 +96,6 @@
         ],
         'waveSoftness'
       );
-      qualityChoice(
-        'Particles',
-        [
-          [true, 'On'],
-          [false, 'Off']
-        ],
-        'waveParticles'
-      );
       // The emitter has a 4,096-slot pool; density limits the live population.
       qualityChoice(
         'Particle density',
@@ -140,22 +126,145 @@
     }
     function openTheme() {
       var content = options.content;
-      content.classList.add('theme-options');
-      Object.keys(themes).forEach(function (key) {
-        var colour =
-          key === 'seasonal'
-            ? LGXMBPreferences.monthColours[new Date().getMonth()]
-            : themes[key].wave;
-        var button = ui.row(themes[key].name, colour, preferences.theme === key, function () {
-          preferences.theme = key;
+      [
+        ['original', 'Original'],
+        ['classic', 'Classic']
+      ].forEach(function (choice) {
+        var button = ui.row(choice[1], null, preferences.theme === choice[0], function () {
+          preferences.theme = choice[0];
           applyPreferences();
           save();
-          ui.selectChoice(content, key);
+          ui.selectChoice(content, choice[0]);
         });
-        button.setAttribute('data-choice', key);
+        button.setAttribute('data-choice', choice[0]);
       });
     }
-    return { open: open, openTheme: openTheme };
+    function openColour() {
+      LGXMBWaveColorSettings.open({
+        content: options.content,
+        ui: ui,
+        preferences: preferences,
+        onChange: function (value) {
+          preferences.colour = value;
+          applyPreferences();
+          save();
+        }
+      });
+    }
+    function updateBackgroundStatus() {
+      var status = options.content.querySelector('#wallpaperStatus');
+      if (!status) return;
+      var wallpaper = options.wallpaper;
+      status.textContent = wallpaper.loading ? 'Loading wallpaper…' : wallpaper.error;
+    }
+    function openBackground() {
+      var content = options.content,
+        source = document.createElement('div');
+      source.className = 'background-source';
+      content.appendChild(source);
+      function selectBackground(value) {
+        if (value === 'theme') {
+          preferences.background = value;
+          applyPreferences();
+          save();
+          ui.selectChoice(source, value);
+          return;
+        }
+        options.wallpaper.reload().then(function (loaded) {
+          if (!loaded) return;
+          preferences.background = 'wallpaper';
+          applyPreferences();
+          save();
+          ui.selectChoice(source, 'wallpaper');
+        });
+      }
+      [
+        ['theme', 'Theme'],
+        ['wallpaper', 'Wallpaper']
+      ].forEach(function (choice) {
+        var button = ui.row(
+          choice[1],
+          null,
+          preferences.background === choice[0],
+          function () {
+            selectBackground(choice[0]);
+          },
+          source
+        );
+        button.setAttribute('data-choice', choice[0]);
+      });
+      ui.row('Reload wallpaper', null, false, function () {
+        selectBackground('wallpaper');
+      }).id = 'reloadWallpaper';
+      var status = document.createElement('p');
+      status.id = 'wallpaperStatus';
+      status.className = 'wallpaper-status';
+      status.setAttribute('role', 'status');
+      content.appendChild(status);
+      ui.choiceGroup(
+        'Brightness',
+        [
+          [0, 'Normal'],
+          [-1, '-1'],
+          [-2, '-2'],
+          [-3, '-3'],
+          [-4, '-4'],
+          [-5, '-5']
+        ],
+        preferences.backgroundBrightness,
+        function (value) {
+          preferences.backgroundBrightness = value;
+          applyPreferences();
+          save();
+        }
+      );
+      updateBackgroundStatus();
+    }
+    function openScreensaver() {
+      function preferenceChoice(label, choices, key) {
+        ui.choiceGroup(label, choices, preferences[key], function (value) {
+          preferences[key] = value;
+          applyPreferences();
+          save();
+        });
+      }
+      preferenceChoice(
+        'Start after',
+        [
+          [0, 'Off'],
+          [30000, '30 sec'],
+          [60000, '1 min'],
+          [120000, '2 min'],
+          [300000, '5 min'],
+          [600000, '10 min']
+        ],
+        'screensaverDelay'
+      );
+      preferenceChoice(
+        'Background brightness',
+        [
+          [0, '0%'],
+          [0.1, '10%'],
+          [0.25, '25%'],
+          [0.5, '50%'],
+          [0.75, '75%'],
+          [1, '100%']
+        ],
+        'screensaverBrightness'
+      );
+      ui.row('Preview screensaver', null, false, function () {
+        options.previewScreensaver();
+      }).id = 'previewScreensaver';
+    }
+    return {
+      open: open,
+      openTheme: openTheme,
+      openColour: openColour,
+      openBackground: openBackground,
+      openScreensaver: openScreensaver,
+      openAdvanced: openAdvanced,
+      updateBackgroundStatus: updateBackgroundStatus
+    };
   }
   root.LGXMBAppearanceSettings = AppearanceSettings;
 })(window);

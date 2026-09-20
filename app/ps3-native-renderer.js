@@ -834,7 +834,9 @@
     gl.enable(gl.BLEND);
     gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
     gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
-    this.wavePass(w / h, wave, brightness);
+    // Dim the completed background once, after wave/background composition.
+    // Particles are drawn later and receive the same display gain below.
+    this.wavePass(w / h, wave, 1);
     this.lastCount = 0;
 
     gl.disable(gl.BLEND);
@@ -854,6 +856,7 @@
     gl.uniform1i(u.uBackdrop, 1);
     gl.uniform1i(u.uAmbient, 2);
     gl.uniform1f(u.uBackdropScale, this.backdropScale);
+    gl.uniform1f(u.uBrightness, brightness);
     gl.uniform1i(u.uAmbientEnabled, monthly ? 0 : 1);
     gl.uniform2f(u.uBand, band[0], band[1]);
     gl.uniform2f(u.uTexel, 1 / w, 1 / h);
@@ -1061,7 +1064,8 @@
     this.cancel();
     if (this.renderer) this.renderer.destroy(this.contextLost);
     this.renderer = null;
-    this.canvas.style.background = 'linear-gradient(160deg,#111e31,#061017 68%,#04080d)';
+    this.paintStatic();
+    this.scheduleClock();
     if (this.onRenderStatus) this.onRenderStatus();
   };
   C5Wave.prototype.initialize = function () {
@@ -1109,6 +1113,7 @@
       if (this.renderer.compiled()) {
         this.renderer.finish();
         this.mode = 'webgl';
+        this.clearStatic();
         this.error = null;
         this.compileMs = performance.now() - this.compileStarted;
         this.resize();
@@ -1211,13 +1216,14 @@
     }
   };
   C5Wave.prototype.scheduleClock = function () {
+    var staticMode = this.mode === 'static';
     if (
       this.clockTimer ||
       this.motionHeld ||
-      !this.reducedMotion ||
+      (!this.reducedMotion && !staticMode) ||
       !this.clockDriven() ||
       !this.allowed() ||
-      this.mode !== 'webgl'
+      (this.mode !== 'webgl' && !staticMode)
     )
       return;
     this.clockTimer = root.setTimeout(
@@ -1225,11 +1231,85 @@
         this.clockTimer = 0;
         this.draw();
       }.bind(this),
-      1000
+      staticMode ? 60000 : 1000
     );
   };
+  C5Wave.prototype.paintStatic = function () {
+    // CSS approximates the monthly backdrop when WebGL is unavailable. Reuse
+    // the calendar and gradient palette; never sample native textures on CPU.
+    var palette = this.palette,
+      settings = this.colorSettings,
+      colors = root.LGXMBWaveColors,
+      background = this.background || [0.02, 0.035, 0.065],
+      gain = this.brightness || 1;
+    if (settings && colors) {
+      try {
+        palette = colors.resolve(
+          settings.mode === 'ps3' ? Object.assign({}, settings, { mode: 'monthly' }) : settings,
+          new Date()
+        );
+      } catch (ignored) {
+        palette = null;
+      }
+    }
+    var start =
+        (palette && palette.start) ||
+        background.map(function (v) {
+          return v * 0.78;
+        }),
+      end =
+        (palette && palette.end) ||
+        background.map(function (v) {
+          return v * 1.05;
+        }),
+      angle =
+        palette && palette.dir
+          ? 90 + (Math.atan2(palette.dir[1], palette.dir[0]) * 180) / Math.PI
+          : 180;
+    function rgb(values) {
+      return (
+        'rgb(' +
+        values
+          .map(function (value) {
+            return Math.round(255 * Math.max(0, Math.min(1, value)) * gain);
+          })
+          .join(',') +
+        ')'
+      );
+    }
+    if (!this.staticBackground && this.canvas.parentNode) {
+      this.staticBackground = document.createElement('div');
+      this.staticBackground.className = 'static-background';
+      this.staticBackground.setAttribute('aria-hidden', 'true');
+      this.canvas.parentNode.insertBefore(this.staticBackground, this.canvas);
+      this.canvas.setAttribute('data-static-background', 'true');
+      // A failed opaque WebGL surface can otherwise cover its CSS background.
+      this.canvas.style.visibility = 'hidden';
+    }
+    var target = this.staticBackground || this.canvas,
+      value = 'linear-gradient(' + angle + 'deg,' + rgb(start) + ',' + rgb(end) + ')';
+    if (this.staticBackgroundCSS !== value) {
+      target.style.background = value;
+      this.staticBackgroundCSS = value;
+    }
+  };
+  C5Wave.prototype.clearStatic = function () {
+    if (!this.staticBackground) return;
+    if (this.staticBackground.parentNode)
+      this.staticBackground.parentNode.removeChild(this.staticBackground);
+    this.staticBackground = null;
+    this.staticBackgroundCSS = null;
+    this.canvas.style.visibility = '';
+    this.canvas.removeAttribute('data-static-background');
+  };
   C5Wave.prototype.draw = function () {
-    if (!this.allowed() || this.mode !== 'webgl') return;
+    if (!this.allowed()) return;
+    if (this.mode === 'static') {
+      this.paintStatic();
+      this.scheduleClock();
+      return;
+    }
+    if (this.mode !== 'webgl') return;
     try {
       this.refreshClock();
       var changed = this.renderer.draw(
@@ -1395,7 +1475,10 @@
     if (this.destroyed) return;
     o = o || {};
     if ([0.5, 1, 1.5, 2.25].indexOf(o.speed) >= 0) this.speed = o.speed;
-    if ([0.3, 0.6, 1].indexOf(o.brightness) >= 0 && this.brightness !== o.brightness) {
+    if (
+      [0.3, 0.45, 0.6, 0.7, 0.85, 1].indexOf(o.brightness) >= 0 &&
+      this.brightness !== o.brightness
+    ) {
       this.brightness = o.brightness;
       this.draw();
     }
@@ -1441,6 +1524,7 @@
   C5Wave.prototype.destroy = function () {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.clearStatic();
     this.syncBackgroundLayer(false);
     this.cancel();
     document.removeEventListener('visibilitychange', this.visibilityBound);

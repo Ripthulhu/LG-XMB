@@ -4,6 +4,7 @@
 const {chromium} = require('playwright');
 const assert = require('node:assert/strict');
 const navigation = require('./support/menu-navigation.cjs');
+const preview = process.env.OPENXMB_TEST_URL || 'http://127.0.0.1:8787/';
 
 (async () => {
   const browser = await chromium.launch(navigation.launchOptions());
@@ -19,7 +20,7 @@ const navigation = require('./support/menu-navigation.cjs');
       };
     });
     async function appearance() {
-      await page.goto('http://127.0.0.1:8787/');
+      await page.goto(preview);
       await page.waitForFunction(() => window.C5App);
       await navigation.item(page, 'settings', 'appearance');
       await page.keyboard.press('Enter');
@@ -30,6 +31,7 @@ const navigation = require('./support/menu-navigation.cjs');
       const pair = [];
       for (const key of ['ArrowDown', 'ArrowUp']) {
         await appearance();
+        await page.locator('#openColour').click();
         const result = await page.evaluate(async ({flagged, key}) => {
           const content = document.querySelector('#modalContent');
           const rows = [...new Set([...content.querySelectorAll('button')]
@@ -87,7 +89,7 @@ const navigation = require('./support/menu-navigation.cjs');
       send('keyup', 'ArrowUp');
       return {first, second, reversed};
     });
-    assert.deepEqual(taps, {first: 'openWaveColors', second: 'showWavesOnly', reversed: 'openWaveColors'});
+    assert.deepEqual(taps, {first: 'openColour', second: 'openBackground', reversed: 'openColour'});
     checks.push('rapid explicit taps and reversal move immediately');
 
     for (const action of ['keyup', 'blur', 'reverse', 'back', 'submenu']) {
@@ -97,12 +99,12 @@ const navigation = require('./support/menu-navigation.cjs');
         const snapshot = () => ({modal: C5App.getState().modal, item: C5App.getState().item,
           focus: document.activeElement.id || document.activeElement.dataset.value || document.activeElement.textContent});
         send('keydown', 'ArrowDown');
-        send('keydown', 'ArrowDown'); // Pending move into Show waves full screen.
+        send('keydown', 'ArrowDown'); // Pending move into Background.
         if (action === 'keyup') send('keyup', 'ArrowDown');
         else if (action === 'blur') window.dispatchEvent(new Event('blur'));
         else if (action === 'reverse') send('keydown', 'ArrowUp');
         else if (action === 'back') send('keydown', 'Escape');
-        else document.querySelector('#openWaveColors').click();
+        else document.querySelector('#openColour').click();
         const immediate = snapshot();
         await new Promise(resolve => setTimeout(resolve, 150));
         const later = snapshot();
@@ -112,11 +114,12 @@ const navigation = require('./support/menu-navigation.cjs');
       assert.deepEqual(state.later, state.immediate, action + ' must cancel the queued direction');
       if (action === 'reverse') assert.equal(state.immediate.focus, 'openTheme');
       if (action === 'back') assert.equal(state.immediate.modal, null);
-      if (action === 'submenu') assert.equal(state.immediate.modal, 'wave-colors');
+      if (action === 'submenu') assert.equal(state.immediate.modal, 'colour');
       checks.push('pending direction cancelled by ' + action);
     }
 
     await appearance();
+    await page.locator('#openAppearanceAdvanced').click();
     const boundary = await page.evaluate(() => {
       const group = [...document.querySelectorAll('#modalContent .choice-group')].at(-1);
       const button = [...group.querySelectorAll('button')].find(b => b.getAttribute('aria-pressed') !== 'true');
@@ -126,6 +129,7 @@ const navigation = require('./support/menu-navigation.cjs');
     assert.equal(await page.evaluate(() => document.activeElement.textContent), boundary);
     checks.push('bottom-row unselected option keeps horizontal position');
 
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     await page.keyboard.press('F2');
     const actions = page.locator('.item-options-actions button');

@@ -127,6 +127,8 @@ function makeWave() {
     'clockDriven',
     'refreshClock',
     'scheduleClock',
+    'paintStatic',
+    'clearStatic',
     'syncBackgroundLayer',
     'draw',
     'fail',

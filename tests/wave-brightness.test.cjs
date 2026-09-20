@@ -24,7 +24,7 @@ function loadPreferences(value, legacy = false, raw = false) {
   if (value !== undefined) storage[legacy ? 'openxmb-c5-preferences-v1' : 'lg-xmb-preferences-v1'] = raw ? value : JSON.stringify(value);
   return preferencesAPI.load({getItem: key => storage[key] || null}, false, waveColors.normalize);
 }
-function gain(key) { return preferencesAPI.waveStyle({waveBrightness: key}).brightness; }
+function gain(offset) { return preferencesAPI.waveStyle({backgroundBrightness: offset}).brightness; }
 function wave() {
   const context = {C5Wave: function () {}};
   vm.runInNewContext(styleMethod, context);
@@ -33,52 +33,53 @@ function wave() {
     simulation: {}, renderer: {}, draw() { this.draws++; }});
   return instance;
 }
-for (const [stored, key, value] of [['low','low',0.6],['normal','normal',1],['high','normal',1],['dim','dim',0.3]]) {
+for (const [stored, offset, value] of [['low',-3,0.6],['normal',0,1],['high',0,1],['dim',-5,0.3]]) {
   test('saved '+stored+' loads with gain '+value, () => {
     const p = loadPreferences({waveBrightness: stored});
-    assert.equal(p.waveBrightness, key); assert.equal(gain(p.waveBrightness), value);
+    assert.equal(p.backgroundBrightness, offset); assert.equal(gain(p.backgroundBrightness), value);
   });
 }
 test('new installation keeps former Normal as the default maximum', () => {
-  assert.equal(loadPreferences().waveBrightness, 'normal'); assert.equal(gain('normal'), 1);
+  assert.equal(loadPreferences().backgroundBrightness, 0); assert.equal(gain(0), 1);
 });
 test('legacy preference key is migrated without altering other choices', () => {
   const p = loadPreferences({waveBrightness: 'high', waveSpeed: 'fast', sound: true, theme: 'ocean'}, true);
-  assert.equal(p.waveBrightness, 'normal'); assert.equal(p.waveSpeed, 'fast');
-  assert.equal(p.sound, true); assert.equal(p.theme, 'ocean');
+  assert.equal(p.backgroundBrightness, 0); assert.equal(p.waveSpeed, 'fast');
+  assert.equal(p.sound, true); assert.equal(p.colour, 7);
 });
 test('invalid and corrupt brightness storage retains a valid default', () => {
   for (const input of [null, [], {waveBrightness: 99}, {waveBrightness: 'medium'}, {waveBrightness: '__proto__'}])
-    assert.equal(loadPreferences(input).waveBrightness, 'normal');
-  assert.equal(loadPreferences('{broken', false, true).waveBrightness, 'normal');
+    assert.equal(loadPreferences(input).backgroundBrightness, 0);
+  assert.equal(loadPreferences('{broken', false, true).backgroundBrightness, 0);
 });
-test('menu offers Low/Medium/High, applies each gain and saves stable keys', () => {
+test('Background offers Normal through -5, applies each gain and saves stable values', () => {
   let settings, handler, saves = 0, applied;
   const preferences = loadPreferences();
-  const context = {window: {}, LGXMBPreferences: preferencesAPI};
+  const element = () => ({appendChild() {}, setAttribute() {}, querySelector() { return null; }});
+  const context = {window: {}, LGXMBPreferences: preferencesAPI, document: {createElement: element}};
   vm.runInNewContext(appearance, context);
   const panel = new context.window.LGXMBAppearanceSettings({
-    preferences, themes: preferencesAPI.createThemes(),
-    ui: {row: () => ({}), choiceGroup(label, choices, selected, callback) {
+    preferences, content: element(),
+    ui: {row: element, choiceGroup(label, choices, selected, callback) {
       if (label === 'Brightness') { settings = {label, choices, selected}; handler = callback; }
     }},
     wave: {},
-    applyPreferences() { applied = gain(preferences.waveBrightness); }, save() { saves++; }
+    applyPreferences() { applied = gain(preferences.backgroundBrightness); }, save() { saves++; }
   });
-  panel.open();
-  assert.deepEqual(JSON.parse(JSON.stringify(settings.choices)), [['dim','Low'],['low','Medium'],['normal','High']]);
-  assert.equal(settings.selected, 'normal');
-  for (const [key, value] of [['dim',0.3],['low',0.6],['normal',1]]) {
-    handler(key); assert.equal(applied, value);
-    assert.equal(loadPreferences(preferences).waveBrightness, key);
+  panel.openBackground();
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.choices)), [[0,'Normal'],[-1,'-1'],[-2,'-2'],[-3,'-3'],[-4,'-4'],[-5,'-5']]);
+  assert.equal(settings.selected, 0);
+  for (const [offset, value] of [[0,1],[-1,.85],[-2,.7],[-3,.6],[-4,.45],[-5,.3]]) {
+    handler(offset); assert.equal(applied, value);
+    assert.equal(loadPreferences(preferences).backgroundBrightness, offset);
   }
-  assert.equal(saves, 3);
+  assert.equal(saves, 6);
 });
 
-test('renderer accepts all three levels and leaves time/resources intact', () => {
+test('renderer accepts all six levels and leaves time/resources intact', () => {
   const w = wave(), before = [w.time,w.renderer,w.simulation];
-  for (const value of [0.3,0.6,1]) { w.setStyle({brightness:value}); assert.equal(w.brightness,value); }
-  assert.equal(w.draws,3); assert.deepEqual([w.time,w.renderer,w.simulation],before);
+  for (const value of [0.3,0.45,0.6,0.7,0.85,1]) { w.setStyle({brightness:value}); assert.equal(w.brightness,value); }
+  assert.equal(w.draws,6); assert.deepEqual([w.time,w.renderer,w.simulation],before);
 });
 test('unchanged brightness causes no repaint', () => {
   const w = wave(); w.setStyle({brightness:1}); assert.equal(w.draws,0);
@@ -94,4 +95,30 @@ test('speed handling and destroyed guard are unchanged', () => {
   assert.equal(w.speed,2.25); assert.equal(w.brightness,0.6);
   w.destroyed=true; w.setStyle({speed:0.5,brightness:0.3});
   assert.equal(w.speed,2.25); assert.equal(w.brightness,0.6); assert.equal(w.draws,1);
+});
+
+test('one display gain dims the composed background and both sparkle passes', () => {
+  const draw = required(renderer, /Renderer\.prototype\.draw = function \(w, h, wave, brightness, background, palette\) \{[\s\S]*?\n  \};/)[0];
+  const context = {Renderer: function () {}};
+  vm.runInNewContext(draw, context);
+  for (const brightness of [1, .85, .7, .6, .45, .3]) {
+    const calls = [];
+    const gl = new Proxy({}, {get(_, name) {
+      return (...args) => {if (name === 'uniform1f') calls.push([name, ...args]);};
+    }});
+    const instance = Object.create(context.Renderer.prototype);
+    Object.assign(instance, {
+      ready: true, gl, changed: false, settings: {particles: true, particleCount: 1000},
+      simulation: {particles: {count: 0, revision: 0, render: new Float32Array()}},
+      filterTunings: {}, uniforms: {composite: {uBrightness: 'display-gain'}},
+      target: {}, backdrop: {}, drawCount: 0, uploadedBytes: 0,
+      updateGrid() {}, resize() {}, prepareAmbient() {}, backdropPass() {},
+      band: () => [0, 1], wavePass: (_, __, gain) => calls.push(['wave', gain]),
+      particlePass: (_, __, ___, gain) => calls.push(['particle', gain])
+    });
+    instance.draw(1920, 1080, [1, 1, 1], brightness, [0, 0, 0], null);
+    assert.deepEqual(calls.filter(c => c[0] === 'wave'), [['wave', 1]]);
+    assert.deepEqual(calls.filter(c => c[1] === 'display-gain'), [['uniform1f', 'display-gain', brightness]]);
+    assert.deepEqual(calls.filter(c => c[0] === 'particle'), [['particle', brightness], ['particle', brightness]]);
+  }
 });

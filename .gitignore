@@ -12,8 +12,9 @@ __pycache__/
 Thumbs.db
 .tools/
 
-# Local preview recording/runtime link; never distribute user music.
+# Personal preview assets/runtime links; never distribute user files.
 app/user-music.mp3
+app/user-wallpaper.jpg
 app/audio/
 
 # Raw capture inputs and validation output. The app's own data files are
