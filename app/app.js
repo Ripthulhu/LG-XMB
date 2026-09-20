@@ -1084,7 +1084,6 @@
       directionRepeat.cancel();
       return;
     }
-    directionRepeat.interval = !modalOpen && /^Arrow(Up|Down)$/.test(event.key) ? 60 : 100;
     if (directionRepeat.handle(event)) return;
     // An action changes the target of navigation; never deliver an old arrow afterward.
     directionRepeat.cancel();

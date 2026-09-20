@@ -67,12 +67,11 @@ and defer metadata until after opening. Closed panels are hidden rather than per
 Keep text opacity at 1; dim text through colour alpha without animating that
 colour. Don't add `will-change` across the interface as a blanket fix.
 
-Held arrows use a 60 ms minimum interval for vertical main-list navigation and
-100 ms in settings panels or horizontal navigation, with one pending event. Dropping every
-event that arrives too soon turns an 80 ms remote cadence into 160 ms navigation;
-the pending event instead runs at the next deadline. There is no backlog or
-repeat without incoming input. Release, reversal, blur, suspension and menu
-changes cancel pending movement. Separate taps remain immediate.
+Held arrows share a 100 ms minimum interval in every direction, with one pending
+event. Dropping every event that arrives too soon turns an 80 ms remote cadence
+into 160 ms navigation; the pending event instead runs at the next deadline.
+There is no backlog or repeat without incoming input. Release, reversal, blur,
+suspension and menu changes cancel pending movement. Separate taps remain immediate.
 
 Main-list rows and icons settle over 240 ms rather than the category bar's
 400 ms. This reduces visual lag during repeated Up/Down presses; it does not

@@ -25,10 +25,10 @@ make it travel four times farther than a lower row. Up and Down share the repeat
 interval and animation curve, including when held or reversed mid-animation.
 
 Rows and their icon scaling use a 240 ms transition with the same easing curve.
-The category bar retains 400 ms. Main-list Up/Down repeats have a 60 ms minimum
-interval; settings panels and Left/Right keep 100 ms. This is responsiveness
-tuning, not an increase to the background frame rate. Particle interaction
-keeps its original position approach curve.
+The category bar retains 400 ms. All held directions share a 100 ms minimum
+repeat interval, both on the main screen and in settings panels. This is
+responsiveness tuning, not an increase to the background frame rate. Particle
+interaction keeps its original position approach curve.
 
 Detail text updates 140 ms after navigation, so a burst of presses produces one
 text update. The selected item changes immediately. HDMI preview routing also
@@ -52,6 +52,7 @@ node tests/upper-items-browser.cjs
 node tests/launcher-category-work-browser.cjs
 node tests/settings-traversal-browser.cjs
 node tests/vertical-navigation-browser.cjs
+node tests/launcher-repeat-browser.cjs
 ```
 
 For tests that load the preview URL, start `npm run preview` first. Browser
