@@ -158,7 +158,77 @@ test('The HDMI helper uses ordinary app launch with no settings', async () => {
     assert.equal((await result).id, expected);
   }
   assert.ok(h.calls.every(call => /\/(getAppLoadStatus|launch)$/.test(call.uri)));
-  assert.equal(Object.keys(h.tv).sort().join(','), 'connectMusicAudio,getInputPreviewStatus,isTV,launch,listApps,listInputLabels,openInput,platformBack');
+  assert.equal(Object.keys(h.tv).sort().join(','), 'connectMusicAudio,getInputPreviewStatus,isTV,launch,listApps,listInputLabels,openInput,platformBack,returnToPrevious');
+});
+
+test('Back uses native recent order, skips Home and checks the last app or input before launching', async () => {
+  for (const id of ['com.webos.app.hdmi2', 'netflix']) {
+    const h = setup();
+    const result = h.tv.returnToPrevious();
+    assert.equal(h.calls[0].uri, 'luna://com.webos.surfacemanager/getRecentsAppList');
+    assert.deepEqual(h.calls[0].payload, {});
+    h.respond(0, {returnValue: true, ready: true, recentsAppList: ['com.webos.app.home', 'org.local.openxmb.c5', id, 'com.webos.app.hdmi1']});
+    await Promise.resolve();
+    assert.deepEqual(h.calls[1].payload, {appId: id});
+    h.respond(1, {returnValue: true, exist: true});
+    await Promise.resolve();
+    assert.deepEqual(h.calls[2].payload, {id});
+    h.respond(2, {returnValue: true});
+    assert.deepEqual(JSON.parse(JSON.stringify(await result)), {ok: true, preview: false, id, returned: true});
+    assert.equal(h.timers.size, 0);
+  }
+});
+
+test('Back stays in Home when there is no previous app and never sends TV calls from a preview', async () => {
+  const desktop = setup({location: {protocol: 'http:', search: ''}});
+  assert.equal((await desktop.tv.returnToPrevious()).preview, true);
+  assert.equal(desktop.calls.length, 0);
+  for (const list of [[], ['com.webos.app.home', 'org.local.openxmb.c5']]) {
+    const h = setup(), result = h.tv.returnToPrevious();
+    h.respond(0, {returnValue: true, ready: true, recentsAppList: list});
+    assert.equal((await result).returned, false);
+    assert.equal(h.calls.length, 1);
+  }
+});
+
+test('Back never launches after Home invalidates either pending read', async () => {
+  for (const stage of ['before', 'recents', 'installed']) {
+    let current = stage !== 'before';
+    const h = setup(), result = h.tv.returnToPrevious(() => current);
+    if (stage !== 'before') {
+      if (stage === 'recents') current = false;
+      h.respond(0, {returnValue: true, ready: true, recentsAppList: ['netflix']});
+      await Promise.resolve();
+      if (stage === 'installed') {
+        current = false;
+        h.respond(1, {returnValue: true, exist: true});
+      }
+    }
+    assert.equal((await result).cancelled, true);
+    assert.ok(h.calls.every(call => !call.uri.endsWith('/launch')));
+    assert.equal(h.timers.size, 0);
+  }
+});
+
+test('unavailable, malformed or denied recents never guess a different return target', async () => {
+  for (const response of [
+    {returnValue: false, errorText: 'Denied'},
+    {returnValue: true, ready: false, recentsAppList: ['netflix']},
+    {returnValue: true, ready: true, recentsAppList: ['bad/id', 'netflix']},
+    {returnValue: true, ready: true, recentsAppList: [{id: 'netflix'}]},
+    {returnValue: true, ready: true, recentsAppList: 'netflix'}
+  ]) {
+    const h = setup(), result = h.tv.returnToPrevious();
+    h.respond(0, response);
+    await assert.rejects(result);
+    assert.equal(h.calls.length, 1);
+  }
+  const h = setup(), result = h.tv.returnToPrevious();
+  h.respond(0, {returnValue: true, ready: true, recentsAppList: ['uninstalled.app', 'netflix']});
+  await Promise.resolve();
+  h.respond(1, {returnValue: true, exist: false});
+  await assert.rejects(result, error => error.code === 'APP_NOT_INSTALLED');
+  assert.equal(h.calls.length, 2);
 });
 
 function previewEntry(overrides = {}) {

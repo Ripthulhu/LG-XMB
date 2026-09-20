@@ -40,7 +40,7 @@
           title: 'Back button',
           icon: 'remotesettings',
           type: 'SETTING',
-          description: 'Choose whether Back keeps Home open or shows the TV exit prompt.',
+          description: 'Choose what Back does on the home screen.',
           action: 'remote'
         },
         {

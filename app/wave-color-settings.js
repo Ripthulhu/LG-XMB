@@ -127,18 +127,19 @@
     visibility();
   }
   function key(event, modal) {
+    if (event.key !== 'Tab' && !/^Arrow/.test(event.key)) return;
     var current = document.activeElement,
-      group = current.closest('.color-group'),
-      groups = Array.from(modal.querySelectorAll('.color-group')).filter(function (g) {
-        return !g.hidden;
-      });
-    var controls = Array.from(modal.querySelectorAll('button,input')).filter(function (el) {
-      return !el.hidden && !el.closest('[hidden]');
-    });
+      group = current.closest('.color-group');
     function focus(el) {
       root.LGXMBMenuFocus(el);
     }
-    function toGroup(index, delta) {
+    function toGroup(delta) {
+      // Read current visibility when crossing groups. Local choices and slider
+      // steps do not need to walk the rest of the panel.
+      var groups = Array.from(modal.querySelectorAll('.color-group')).filter(function (g) {
+        return !g.hidden;
+      });
+      var index = group ? groups.indexOf(group) + delta : delta < 0 ? groups.length - 1 : 0;
       if (index < 0 || index >= groups.length) return;
       var destination = groups[index],
         box = destination && destination.querySelector('.color-choices');
@@ -158,21 +159,23 @@
     }
     if (event.key === 'Tab') {
       event.preventDefault();
+      var controls = Array.from(modal.querySelectorAll('button,input')).filter(function (el) {
+        return !el.hidden && !el.closest('[hidden]');
+      });
       var index = controls.indexOf(current);
       focus(controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length]);
       return;
     }
-    if (!/^Arrow/.test(event.key)) return;
     event.preventDefault();
     if (!group) {
-      toGroup(event.key === 'ArrowUp' ? groups.length - 1 : 0, event.key === 'ArrowUp' ? -1 : 1);
+      toGroup(event.key === 'ArrowUp' ? -1 : 1);
       return;
     }
     var vertical = event.key === 'ArrowUp' || event.key === 'ArrowDown',
       delta = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
     if (current.tagName === 'INPUT') {
       if (vertical) {
-        toGroup(groups.indexOf(group) + delta, delta);
+        toGroup(delta);
         return;
       }
       var previous = current.value;
@@ -189,7 +192,7 @@
     if (vertical) {
       var next = index + delta * columns;
       if (buttons.length > columns && next >= 0 && next < buttons.length) focus(buttons[next]);
-      else toGroup(groups.indexOf(group) + delta, delta);
+      else toGroup(delta);
     } else if (columns > 1) focus(buttons[(index + delta + buttons.length) % buttons.length]);
   }
   root.LGXMBWaveColorSettings = Object.freeze({ open: open, key: key });

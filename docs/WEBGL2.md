@@ -59,6 +59,10 @@ using February 28's month coordinate. Day/night parameters match the supplied
 RPCS3 background object. Preset interpolation and optional theme dimming are
 launcher features rather than a claim of exact PS3 output in those modes.
 
+PS3 original uses the recovered shader's bottom-up coordinates. Monthly presets
+use their upstream top-down gradients, so their direction can differ from PS3
+original. Custom RGB uses the labelled top and bottom intensities.
+
 **Show waves full screen** hides the menu without changing its selection.
 Back or Home returns to the menu.
 
@@ -122,6 +126,12 @@ Don't edit the generated copy directly.
 
 `npm test` runs the Node tests. Focused renderer tests cover the numerical core,
 particle emitter, gradient pipeline, wave coverage and stored settings.
+
+`node tests/background-orientation-browser.cjs` checks rendered gradient
+direction and reference pixels for day, night and month blending. It also checks
+regular themes, custom RGB and monthly presets through the final compositor.
+It uses the [shared browser settings](BUILDING.md#browser-tests) and needs no
+preview server or private fixtures.
 
 The Python tools `tests/ps3-native-browser.py` and
 `tests/ps3-native-launcher-browser.py` exercise WebGL rendering and launcher

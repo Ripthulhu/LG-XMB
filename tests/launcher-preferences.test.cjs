@@ -5,6 +5,14 @@ const assert = require('node:assert/strict');
 const preferences = require('../app/launcher-preferences.js');
 const colors = value => value || {source: 'theme'};
 
+test('Back defaults to the previous app while explicit saved choices survive updates', () => {
+  assert.equal(preferences.load({getItem: () => null}, false, colors).backBehavior, 'previous');
+  for (const backBehavior of ['previous', 'stay', 'lg']) {
+    const storage = {getItem: () => JSON.stringify({backBehavior})};
+    assert.equal(preferences.load(storage, false, colors).backBehavior, backBehavior);
+  }
+});
+
 test('storage and media-query failures preserve a usable preference snapshot', () => {
   const inaccessible = {getItem() {throw new Error('Storage denied');}};
   assert.equal(preferences.load(inaccessible, false, colors).waveFrameRate, 60);

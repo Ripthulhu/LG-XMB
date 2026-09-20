@@ -75,21 +75,26 @@
       slot.appendChild(button);
     }
     function key(event, panel) {
+      if (event.key !== 'Tab' && !/^Arrow/.test(event.key)) return;
       var current = document.activeElement,
+        group = current.closest && current.closest('.choice-group'),
+        horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight',
+        controls,
+        target;
+      // Left/Right stays within its choice row; only row changes and Tab need
+      // the full panel, including any actions that just became visible.
+      if (!horizontal || !group)
         controls = Array.from(panel.querySelectorAll('button')).filter(function (b) {
           return !b.closest('[hidden]');
         });
-      var group = current.closest && current.closest('.choice-group'),
-        target;
       if (event.key === 'Tab') {
         target =
           controls[
             (Math.max(controls.indexOf(current), 0) + (event.shiftKey ? -1 : 1) + controls.length) %
               controls.length
           ];
-      } else if (/^Arrow/.test(event.key)) {
-        var horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight',
-          delta = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
+      } else {
+        var delta = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
         if (horizontal && group) {
           var choices = Array.from(group.querySelectorAll('button'));
           target = choices[(choices.indexOf(current) + delta + choices.length) % choices.length];
@@ -114,7 +119,7 @@
               ? row
               : row.querySelector('[aria-pressed="true"]') || row.querySelector('button'));
         }
-      } else return;
+      }
       event.preventDefault();
       if (target && target !== current) {
         options.focus(target);

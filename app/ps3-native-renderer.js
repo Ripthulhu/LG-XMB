@@ -364,6 +364,8 @@
       reference.settings.BRIGHTNESS,
       reference.settings['MIPMAP BIAS']
     ]);
+    this.prepareParticleMaterial(this.particleProgram, this.uniforms.particle);
+    this.prepareParticleMaterial(this.glareProgram, this.uniforms.glare);
     this.ready = true;
     this.updateGrid();
     if (gl.getError() !== gl.NO_ERROR) throw new Error('WebGL 2 resource initialization failed');
@@ -570,26 +572,36 @@
     gl.uniform3fv(u.uMaterial, this.waveMaterial);
     gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
   };
+  // Material values belong to the linked program and survive program switches.
+  // Each renderer uploads them once, including after a context restoration.
+  Renderer.prototype.prepareParticleMaterial = function (program, u) {
+    var gl = this.gl,
+      m = this.material;
+    gl.useProgram(program);
+    for (var name in m)
+      if (u[name] !== undefined && name !== 'uModelviewProjection' && name !== 'uColor')
+        gl.uniform4fv(u[name], m[name]);
+    gl.uniform4fv(u.uColor, this.colorVector);
+    gl.uniform1f(
+      u.uIridescentExponent,
+      this.simulation.reference.particleMaterial['iridescent exp']
+    );
+  };
   Renderer.prototype.particlePass = function (program, u, aspect, brightness) {
     var gl = this.gl,
       m = this.material,
-      rows = this.materialRows,
-      ref = this.simulation.reference;
+      rows = this.materialRows;
     gl.useProgram(program);
     gl.bindVertexArray(this.particleVAO);
-    for (var name in m)
-      if (u[name] !== undefined && name !== 'uModelviewProjection') gl.uniform4fv(u[name], m[name]);
     rows.set(m.uModelviewProjection);
     for (var k = 0; k < 4; k++) rows[k] *= 16 / 9 / aspect;
     gl.uniform4fv(u.uModelviewProjection, rows);
-    gl.uniform4fv(u.uColor, this.colorVector);
     gl.uniform1f(u.uGamma, brightness);
     // A cached spatial lookup in the vertex shader, not per-fragment math.
     gl.uniform1i(u.uAmbientEnabled, this.monthlyActive ? 0 : 1);
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, this.ambientTexture || this.fresnelTexture);
     gl.uniform1i(u.uAmbient, 2);
-    gl.uniform1f(u.uIridescentExponent, ref.particleMaterial['iridescent exp']);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.iridescenceTexture);
     gl.uniform1i(u.uIridescent, 1);
@@ -1214,7 +1226,6 @@
     if (!this.allowed() || this.mode !== 'webgl') return;
     try {
       this.refreshClock();
-      this.renderer.configure(this.ps3Quality);
       var changed = this.renderer.draw(
         this.canvas.width,
         this.canvas.height,
@@ -1312,6 +1323,7 @@
     var q = quality(o, this.ps3Quality);
     if (!same(q, this.ps3Quality)) {
       this.ps3Quality = q;
+      if (this.renderer) this.renderer.configure(q);
       this.draw();
     }
   };

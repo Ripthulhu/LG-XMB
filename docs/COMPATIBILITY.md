@@ -51,6 +51,7 @@ responses rather than a TV.
 | --- | --- |
 | Menu and desktop preview | Browser support for the app's JavaScript and CSS |
 | Native app launching and HDMI names | The packaged app must be allowed to call the TV services |
+| Return to last app or input | Access to `com.webos.surfacemanager/getRecentsAppList`; verified from Home on the C5 |
 | Cached HDMI pictures | Rooted Homebrew environment, Python and compatible capture behaviour |
 | Live HDMI preview | A working TV media pipeline; starting it can change HDR mode |
 | Home replacement | Root access and the matching stock Home layout; follow [Home setup](HOME-TAKEOVER.md) |
@@ -73,9 +74,9 @@ for another model or a long-standby cycle.
 On [webOS 26 Re:New, LG applies ACG permissions](https://webostv.developer.lge.com/develop/guides/acg-guide)
 when `requiredACG` is present. The app declares `application.launcher` and
 `application.query` for the public launch and installation-check APIs. That
-does not grant the private app-list, input-label, capture, clock-write, removal
-or audio-routing methods. Test those from the installed app under its actual
-identity; a successful root-shell call is not equivalent.
+does not grant the private app-list, input-label, capture, clock-write, removal,
+recent-app or audio-routing methods. Test those from the installed app under
+its actual identity; a successful root-shell call is not equivalent.
 
 The helper doesn't assign Home or manage background services. Home replacement
 is a separate root setup, not part of installing the IPK. Its stock Home paths

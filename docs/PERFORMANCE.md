@@ -27,6 +27,18 @@ The full-size cache uses four bytes per pixel, about 7.91 MiB at 1920 × 1080.
 That's pixel storage, not total GPU allocation. The lookup adds 8 KiB. Wave
 supersampling uses a separate target; see [the renderer](WEBGL2.md).
 
+## Renderer state
+
+Particle and glare materials are uploaded when their programs are initialized,
+including after context restoration. Projection, brightness and ambient mode
+still update during drawing. Quality settings are normalized when changed,
+including while paused, rather than on every frame.
+
+This removes 28 of 58 uniform uploads from a normal particle-enabled frame.
+The rendered output matched byte for byte in six desktop comparisons covering
+animation, quality, brightness, colour source and aspect changes. This measures
+less work submitted to WebGL, not a TV frame-rate increase.
+
 ## Menu work
 
 Vertical navigation leaves the category bar alone. Rows and category faces are
@@ -54,10 +66,20 @@ Default browser focus can recenter a partly hidden row and jump several rows.
 Up/Down stop at list boundaries; Tab retains its focus loop. Moving beyond the
 last choice row does not switch focus to that row's selected value.
 
+Left/Right inspects only the current choice group or RGB slider. Vertical
+movement and Tab still read the current panel, so newly visible controls are
+included without maintaining a second focus cache.
+
 On the C5, a short 80 ms repeat-input comparison traversed 40 Appearance rows
 versus 24 before the coalescer, with roughly 52–54 animation callbacks per second
 in both runs. Some intervals remained 33 ms, so this is an input/scrolling fix,
 not a claim of locked 60 fps while navigating.
+
+The later material-upload and menu-traversal pass kept the C5 near 60 fps idle
+and 56 fps during 80 ms main-Settings navigation, using 1× sampling, FXAA and a
+4,000-particle limit. It reduced repeated work but did not show a clear frame-rate
+gain in that workload. Command counts and desktop timings are not a substitute
+for measuring the TV.
 
 [Navigation details](performance/navigation.md) describe the row and category
 state. Keep that work separate from changing mesh detail or reducing particles.
@@ -80,6 +102,7 @@ node --test tests/category-transition.test.cjs tests/performance-cache.test.cjs 
 node tests/performance-layers-browser.cjs
 node tests/menu-focus-browser.cjs
 node tests/menu-repeat-browser.cjs
+node tests/renderer-state-browser.cjs
 python3 tools/bundle-ps3-shaders.py --check
 ```
 

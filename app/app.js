@@ -419,7 +419,7 @@
       direction,
       function () {
         selectedCategory = index;
-        buildItems();
+        launcherView.activateCategory();
         render(true);
       },
       preferences.motion === 'full'
@@ -553,7 +553,7 @@
           return preferences.backBehavior;
         },
         setBack: function (value) {
-          if (['stay', 'lg'].indexOf(value) === -1)
+          if (['previous', 'stay', 'lg'].indexOf(value) === -1)
             throw new Error('Choose a valid Back button setting.');
           var next = Object.assign({}, preferences, { backBehavior: value });
           try {
@@ -911,6 +911,33 @@
       return;
     }
     tick('decide');
+    await leaveHome(
+      function () {
+        return item.action === 'input' ? C5TV.openInput(item.id) : C5TV.launch(item.id);
+      },
+      function (result, generation) {
+        if (!result.preview) {
+          recordRecent(item);
+          if (
+            generation !== launchGeneration &&
+            pageActive &&
+            !document.hidden &&
+            !busy &&
+            !modalOpen
+          )
+            refreshRecent();
+        } else if (generation === launchGeneration && pageActive && !document.hidden) {
+          toast('Preview · ' + item.title + ' opens on your TV.');
+        }
+      },
+      'Could not open ' + item.title + '. '
+    );
+  }
+  // Both explicit launches and idle-screen Back leave through the same media
+  // lifecycle. A Home press invalidates pending work before it can launch late.
+  async function leaveHome(operation, onResult, failureMessage) {
+    cancelHold();
+    categoryTransition.cancel();
     var generation = ++launchGeneration;
     clearToast();
     busy = true;
@@ -919,26 +946,16 @@
     var launched = false;
     $('items').setAttribute('aria-busy', 'true');
     try {
-      var result =
-        item.action === 'input' ? await C5TV.openInput(item.id) : await C5TV.launch(item.id);
-      if (!result.preview) {
-        recordRecent(item);
-        if (
-          generation !== launchGeneration &&
-          pageActive &&
-          !document.hidden &&
-          !busy &&
-          !modalOpen
-        )
-          refreshRecent();
-      }
+      var result = await operation(function () {
+        return generation === launchGeneration && pageActive && !document.hidden;
+      });
+      if (onResult) onResult(result, generation);
       if (generation !== launchGeneration || !pageActive || document.hidden) return;
-      launched = !result.preview;
-      if (result.preview) toast('Preview · ' + item.title + ' opens on your TV.');
+      launched = !result.preview && result.returned !== false;
     } catch (error) {
       if (generation === launchGeneration && pageActive && !document.hidden) {
         tick('error');
-        toast('Could not open ' + item.title + '. ' + (error.message || 'Please try again.'));
+        toast(failureMessage + (error.message || 'Please try again.'));
       }
     } finally {
       if (generation === launchGeneration) {
@@ -957,8 +974,18 @@
       closeModal();
       return;
     }
-    if (preferences.backBehavior !== 'lg' || busy || !pageActive || document.hidden) return;
+    if (busy || !pageActive || document.hidden || preferences.backBehavior === 'stay') return;
     tick('cancel');
+    if (preferences.backBehavior === 'previous') {
+      leaveHome(
+        function (isCurrent) {
+          return C5TV.returnToPrevious(isCurrent);
+        },
+        null,
+        'Could not return to the previous app. '
+      );
+      return;
+    }
     var generation = ++launchGeneration;
     C5TV.platformBack().catch(function (error) {
       if (generation === launchGeneration && pageActive && !document.hidden)

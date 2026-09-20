@@ -57,7 +57,8 @@
     var itemButtons = new WeakMap(),
       itemOffsets = new WeakMap(),
       itemLists = [],
-      itemListKeys = [];
+      itemListKeys = [],
+      activeCategory = -1;
     function buildItems() {
       var selectedCategory = options.getCategory();
       var list = $('items');
@@ -128,6 +129,34 @@
         // A parked list is kept in its remembered state, so showing it changes nothing.
         if (!active) renderRows(ci);
       });
+      activeCategory = selectedCategory;
+    }
+    // Membership changes go through buildItems. A category move only touches
+    // the two lists changing roles; the other retained lists stay untouched.
+    function activateCategory() {
+      var next = options.getCategory();
+      if (next === activeCategory) return;
+      var previous = itemLists[activeCategory],
+        current = itemLists[next];
+      if (previous) {
+        previous.classList.add('parked');
+        previous.setAttribute('aria-hidden', 'true');
+        [].forEach.call(previous.children, function (button) {
+          button.removeAttribute('id');
+        });
+      }
+      current.classList.remove('parked');
+      current.setAttribute('aria-hidden', 'false');
+      $('items').setAttribute('aria-label', categories[next].title);
+      [].forEach.call(current.children, function (button, index) {
+        button.id = 'item-' + index;
+        var title = categories[next].items[index].title;
+        if (button.getAttribute('aria-label') !== title) {
+          button.setAttribute('aria-label', title);
+          button.querySelector('.item-text').textContent = title;
+        }
+      });
+      activeCategory = next;
     }
     function render() {
       var selectedCategory = options.getCategory();
@@ -210,6 +239,7 @@
     return {
       buildCategories: buildCategories,
       buildItems: buildItems,
+      activateCategory: activateCategory,
       render: render,
       renderRows: renderRows,
       detail: detail,

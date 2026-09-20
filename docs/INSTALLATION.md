@@ -73,6 +73,9 @@ elevated; a working root SSH connection alone isn't enough. If it reports
 The helper creates cached HDMI pictures and prepares links to optional user
 audio. It doesn't assign Home, stop LG services or manage background apps.
 The **Back button** setting only changes Back inside this launcher.
+With no panel open, **Return to last app or input** uses the TV's recent-app
+list. Back still closes an open panel or leaves the full-screen waves first.
+Existing Back settings are kept when updating; new installs use Return by default.
 
 A non-root installation can use the menu and permitted native APIs. The capture
 helper and Home replacement require root.

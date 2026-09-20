@@ -11,9 +11,10 @@ uniform float _MonthTime;
 uniform float _NightBrightness;
 uniform float _NightDayBlend;
 uniform float _NightTime;
-// Fullscreen vUV has y up; the recovered program's TEX0 runs the other way.
+// The recovered shader and raw month textures already use bottom-up UVs.
+// Keep the shared fullscreen coordinates so lighting and month blends agree.
 void main() {
-    vec2 uv=vec2(vUV.x,1.0-vUV.y);
+    vec2 uv=vUV;
     float s0=(_MonthTime + -15.0); // 0x00a0
     float s1=(_NightTime + -1200.0); // 0x00c0
     float s2=(s0 * s0); // 0x0130

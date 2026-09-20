@@ -57,6 +57,7 @@
     var back = group(
       'Back button',
       [
+        ['previous', 'Return to last app or input'],
         ['stay', 'Stay in Home'],
         ['lg', 'Show exit prompt']
       ],

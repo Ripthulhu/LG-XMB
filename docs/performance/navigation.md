@@ -9,6 +9,12 @@ state rather than rebuilding the whole menu.
 selected row. Inactive row groups stay parked offscreen, and only the active
 group owns the `item-N` accessibility IDs.
 
+Switching categories updates only the outgoing and incoming lists. Catalog
+membership is reconciled when apps, ordering or categories actually change.
+The 726-row browser fixture produces the same DOM and particle targets while
+avoiding all 726 membership reads on each category switch. Incoming labels are
+still refreshed, including renamed inputs.
+
 Up and Down don't change the horizontal bar's styles or interrupt its
 transition. The controller changes row visibility, selection and accessibility
 attributes only when their values change. Matching detail icons are reused.
@@ -38,6 +44,8 @@ a test needs a non-HDMI item.
 node --test tests/category-transition.test.cjs tests/menu-navigation.test.cjs
 node tests/category-transition-browser.cjs
 node tests/upper-items-browser.cjs
+node tests/launcher-category-work-browser.cjs
+node tests/settings-traversal-browser.cjs
 ```
 
 For tests that load the preview URL, start `npm run preview` first. Browser

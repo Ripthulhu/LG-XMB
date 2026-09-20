@@ -12,6 +12,7 @@
     listApps: SERVICE + 'listApps',
     getAppLoadStatus: SERVICE + 'getAppLoadStatus',
     launch: SERVICE + 'launch',
+    recentApps: 'luna://com.webos.surfacemanager/getRecentsAppList',
     previewStatus: 'luna://com.webos.service.videooutput/getStatus',
     inputStatus: 'luna://com.webos.service.eim/getAllInputStatus',
     mediaPipelines: 'luna://com.webos.media/getActivePipelines',
@@ -288,26 +289,64 @@
     return result;
   }
 
-  function launch(id) {
+  function launch(id, isCurrent) {
     if (!validId(id))
       return Promise.reject(error('INVALID_APP_ID', 'Choose a valid installed TV application.'));
     if (!isTV()) return Promise.resolve(previewResult('launch', id));
     // Failure or denial of the installation check must not trigger an unchecked launch.
-    return request('getAppLoadStatus', { appId: id })
-      .then(function (response) {
-        if (response.exist !== true) {
-          throw error(
-            response.exist === false ? 'APP_NOT_INSTALLED' : 'INVALID_RESPONSE',
-            response.exist === false
-              ? 'This application is not installed on the TV.'
-              : 'The TV could not confirm that this application is installed.'
-          );
-        }
-        return request('launch', { id: id });
-      })
-      .then(function () {
+    return request('getAppLoadStatus', { appId: id }).then(function (response) {
+      if (response.exist !== true) {
+        throw error(
+          response.exist === false ? 'APP_NOT_INSTALLED' : 'INVALID_RESPONSE',
+          response.exist === false
+            ? 'This application is not installed on the TV.'
+            : 'The TV could not confirm that this application is installed.'
+        );
+      }
+      if (isCurrent && !isCurrent()) return { ok: true, returned: false, cancelled: true };
+      return request('launch', { id: id }).then(function () {
         return { ok: true, preview: false, id: id };
       });
+    });
+  }
+
+  // Read the compositor's order only when Back is pressed. It also includes
+  // apps opened outside Home, without keeping a second usage history here.
+  function returnToPrevious(isCurrent) {
+    if (!isTV()) return Promise.resolve(previewResult('returnToPrevious'));
+    isCurrent =
+      typeof isCurrent === 'function'
+        ? isCurrent
+        : function () {
+            return true;
+          };
+    if (!isCurrent()) return Promise.resolve({ ok: true, returned: false, cancelled: true });
+    return request('recentApps', {}).then(function (response) {
+      if (!isCurrent()) return { ok: true, returned: false, cancelled: true };
+      var apps = response.recentsAppList;
+      if (
+        response.ready !== true ||
+        !Array.isArray(apps) ||
+        apps.length > 1000 ||
+        !apps.every(validId)
+      ) {
+        throw error('INVALID_RESPONSE', 'The TV could not read the previous app.');
+      }
+      var system = root.PalmSystem || root.webOSSystem;
+      var ownId = String(system.identifier).split(' ')[0];
+      var id = apps.find(function (candidate) {
+        return (
+          candidate !== ownId &&
+          candidate !== 'com.webos.app.home' &&
+          candidate !== 'org.local.openxmb.c5'
+        );
+      });
+      if (!id) return { ok: true, preview: false, returned: false };
+      return launch(id, isCurrent).then(function (result) {
+        if (!result.cancelled) result.returned = true;
+        return result;
+      });
+    });
   }
 
   function openInput(id) {
@@ -414,6 +453,7 @@
     openInput: openInput,
     getInputPreviewStatus: getInputPreviewStatus,
     platformBack: platformBack,
+    returnToPrevious: returnToPrevious,
     connectMusicAudio: connectMusicAudio
   });
 })(typeof window !== 'undefined' ? window : globalThis);

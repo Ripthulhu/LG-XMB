@@ -11,7 +11,7 @@
     previewMode: 'cached',
     waveSpeed: 'normal',
     waveBrightness: 'normal',
-    backBehavior: 'stay',
+    backBehavior: 'previous',
     waveSampling: 1.5,
     waveDetail: 'high',
     waveSoftness: 1.5,
@@ -67,7 +67,8 @@
       if (['dim', 'low', 'normal'].indexOf(saved.waveBrightness) !== -1)
         preferences.waveBrightness = saved.waveBrightness;
       else if (saved.waveBrightness === 'high') preferences.waveBrightness = 'normal';
-      if (saved.backBehavior === 'lg') preferences.backBehavior = 'lg';
+      if (['previous', 'stay', 'lg'].indexOf(saved.backBehavior) !== -1)
+        preferences.backBehavior = saved.backBehavior;
     } catch (ignore) {}
     // Load quality settings separately from appearance and TV preferences.
     if (saved && typeof saved === 'object') {
