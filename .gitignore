@@ -16,6 +16,7 @@ Thumbs.db
 app/user-music.mp3
 app/user-wallpaper.jpg
 app/audio/
+app/user-fonts/
 
 # Raw capture inputs and validation output. The app's own data files are
 # committed, so a clone builds the real waves.

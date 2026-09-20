@@ -72,6 +72,8 @@ Use `python` instead of `python3` on Windows when that's the installed command.
 
 ## Desktop preview
 
+For optional local PS3 fonts and personal builds, see [Fonts](FONTS.md).
+
 ```sh
 npm run preview
 ```

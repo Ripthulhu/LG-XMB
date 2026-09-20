@@ -53,6 +53,7 @@
   font-size: 1.55vw;
   font-weight: 400;
   color: #fff;
+  line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
 }
@@ -67,12 +68,12 @@
   margin-left: 0.05vw;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 2.7;
   stroke-linecap: round;
 }
 .clock-face .clock-hour {
-  stroke-width: 2.5;
+  stroke-width: 3;
 }
 .clock-face .clock-minute {
-  stroke-width: 1.6;
+  stroke-width: 2.3;
 }

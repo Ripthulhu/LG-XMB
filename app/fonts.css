@@ -1,0 +1,39 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Optional local fonts. Without these files the system font remains in use.
+   Rodin capitals are 780 units tall in a 1000-unit em. The original ascent
+   and descent centre them above the line. A 100%/22% split centres the ink,
+   consistently across browser platforms, without moving individual controls. */
+@font-face {
+  font-family: 'XMB Rodin';
+  src: url('user-fonts/SCE-PS3-RD-L-LATIN2.TTF') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+  ascent-override: 100%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'XMB Rodin';
+  src: url('user-fonts/SCE-PS3-RD-R-LATIN2.TTF') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  ascent-override: 100%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'XMB Rodin';
+  src: url('user-fonts/SCE-PS3-RD-B-LATIN2.TTF') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  ascent-override: 100%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+html,
+body {
+  font-family: 'XMB Rodin', 'LG Smart UI', 'Segoe UI', Arial, sans-serif;
+}

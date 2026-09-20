@@ -18,6 +18,7 @@ const expectedId = 'org.local.openxmb.c5';
 const expectedVersion = '0.1.31';
 const packagePath = path.join(outputDir, `${expectedId}_${expectedVersion}_all.ipk`);
 const verifyOnly = process.argv.includes('--verify-only');
+const personalFonts = process.argv.includes('--personal-fonts');
 
 function requireCondition(condition, message) {
   if (!condition) throw new Error(message);
@@ -56,6 +57,13 @@ try {
   requireCondition(appinfo.id === expectedId, `App ID must be ${expectedId}`);
   requireCondition(appinfo.version === expectedVersion, `App version must be ${expectedVersion}`);
   requireCondition(appinfo.type === 'web', 'Expected a web app, without a native service.');
+  requireCondition(fs.existsSync(path.join(appDir, 'fonts.css')), 'Missing app/fonts.css');
+  if (personalFonts && !verifyOnly) {
+    for (const weight of ['L', 'R', 'B']) {
+      requireCondition(fs.existsSync(path.join(appDir, 'user-fonts', `SCE-PS3-RD-${weight}-LATIN2.TTF`)),
+        'Missing personal fonts. Prepare them with tools/import-ps3-fonts.py first.');
+    }
+  }
   if (!verifyOnly) {
     const licenseDir = path.join(appDir, 'licenses');
     fs.mkdirSync(licenseDir, { recursive: true });
@@ -82,7 +90,8 @@ try {
     const stagedApp = path.join(projectDir, '.build', 'package', 'app');
     fs.rmSync(path.dirname(stagedApp), {recursive: true, force: true});
     fs.cpSync(appDir, stagedApp, {recursive: true,
-      filter: source => packageFiles.includeAppFile(appDir, source)});
+      filter: source => packageFiles.includeAppFile(appDir, source, {personalFonts})});
+    if (personalFonts) console.log('Personal build: includes local fonts from app/user-fonts/.');
     stageHelper(projectDir, stagedApp);
     process.stdout.write(runCli(['--no-minify', '--outdir', outputDir, stagedApp]));
     // The pinned CLI recreates directories with mode 0777. Normalize the IPK,
