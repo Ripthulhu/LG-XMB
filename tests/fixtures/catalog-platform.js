@@ -2,9 +2,10 @@
 (() => {
   const h = window.catalogHarness = {launches:[],inputLaunches:[],objects:[],directions:[],failLaunch:false};
   window.C5Wave = class {
-    constructor() { this.mode='static'; this.error=null; }
+    constructor() { this.mode='static'; this.error=null; this.motionHeld=false; }
     setTheme() {} setStyle() {} setQuality() {} setReducedMotion() {} setPaused() {} destroy() {}
-    getDiagnostics() { return {mode:'static',surface:null}; }
+    setMotionHeld(held) { this.motionHeld=!!held; }
+    getDiagnostics() { return {mode:'static',surface:null,motionHeld:this.motionHeld}; }
     setMenuObjects(items) { h.objects=items; }
     navigated(direction) { h.directions.push(direction); }
   };

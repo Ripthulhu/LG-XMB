@@ -19,7 +19,7 @@ page structure. Read the controller only when a change crosses feature boundarie
 | App organisation | `app/app-categories.js`, `app/menu-order.js` | Category assignments, hidden apps, sorting and successful-launch history |
 | App discovery | `app/app-refresh.js` | Schedule inventory reads and defer reconciliation while the user interacts |
 | Item options | `app/item-options.js`, `app/item-options.css` | Long-press panel, hide/restore, category selection and uninstall confirmation |
-| Input handling | `app/hold-gesture.js`, `app/directional-repeat.js`, `app/menu-focus.js`, `app/category-transition.js` | Hold state, repeat pacing, focus/scroll and horizontal transitions |
+| Input handling | `app/hold-gesture.js`, `app/directional-repeat.js`, `app/wheel-navigation.js`, `app/menu-focus.js`, `app/category-transition.js` | Hold state, key repeat pacing, wheel distance, focus/scroll and horizontal transitions |
 | Shared settings controls | `app/settings-ui.js` | Option rows, choice groups and generic panel navigation |
 | Appearance | `app/appearance-settings.js`, `app/wave-color-settings.js` | Theme, wave quality and colour controls |
 | Other settings panels | `app/remote-settings.js`, `app/date-time-settings.js` | Feature-specific controls and keyboard navigation |

@@ -43,7 +43,7 @@ async function load(p){
    else throw Error('Unexpected call '+uri);
   };};
  });
- for(const name of ['menu-focus.js','directional-repeat.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
+ for(const name of ['menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.waitForFunction(()=>window.C5App);
  await p.evaluate(()=>{
   catalogHarness.apps({preview:false,apps:[{id:'org.test.two',title:'Beta Tools'},{id:'org.test.one',title:'Alpha Player'},{id:'cdp-30',title:'Plex'}]});

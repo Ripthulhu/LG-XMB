@@ -37,6 +37,9 @@ body {
 body {
   transition: background 1s ease;
 }
+.wheel-navigation {
+  --row-navigation-duration: 0.09s;
+}
 button {
   font: inherit;
   color: inherit;

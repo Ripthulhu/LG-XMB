@@ -38,6 +38,14 @@ Holding OK uses the same 650 ms gesture timer for keyboard and pointer input.
 A short press launches on release. Launching on key-down would open the app
 before the options hold could finish.
 
+Wheel navigation has its own controller in `app/wheel-navigation.js`. The C5
+reports 120 pixel units per notch and can combine fast notches into 240 or 360.
+The first step is immediate; additional events within a frame update the final
+selection together. Small deltas accumulate, and reversal clears pending motion.
+There is no timed repeat or inertia after the wheel stops. Row transitions use
+90 ms while scrolling with the wheel; keyboard input restores the 240 ms curve.
+Settings panels and application information retain native browser scrolling.
+
 ## What to check
 
 Use stable catalog IDs in tests. `tests/support/menu-navigation.cjs` finds a
@@ -53,6 +61,7 @@ node tests/launcher-category-work-browser.cjs
 node tests/settings-traversal-browser.cjs
 node tests/vertical-navigation-browser.cjs
 node tests/launcher-repeat-browser.cjs
+node tests/wheel-navigation-browser.cjs
 ```
 
 For tests that load the preview URL, start `npm run preview` first. Browser

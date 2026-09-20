@@ -156,6 +156,7 @@
       return menuOrder.modes[id];
     },
     onOpen: function () {
+      cancelNavigation();
       document.body.classList.add('item-options-visible');
       categoryTransition.cancel();
       clearToast();
@@ -167,7 +168,7 @@
       syncInputPreview();
     },
     onClose: function (reason) {
-      if (directionRepeat) directionRepeat.cancel();
+      cancelNavigation();
       document.body.classList.remove('item-options-visible');
       modalOpen = false;
       modalType = '';
@@ -424,6 +425,7 @@
   }
   function selectCategory(index) {
     if (busy || modalOpen || !pageActive || document.hidden) return;
+    cancelWheelNavigation();
     if (index === selectedCategory) return;
     cancelHold();
     var direction = index - selectedCategory;
@@ -439,7 +441,7 @@
     wave.navigated(direction > 0 ? 'right' : 'left');
     tick('category');
   }
-  function navigate(direction) {
+  function navigate(direction, steps) {
     if (busy || !pageActive || document.hidden) return;
     cancelHold();
     var next;
@@ -455,7 +457,7 @@
       0,
       Math.min(
         categories[selectedCategory].items.length - 1,
-        selections[selectedCategory] + (direction === 'down' ? 1 : -1)
+        selections[selectedCategory] + (direction === 'down' ? 1 : -1) * (steps || 1)
       )
     );
     if (next === selections[selectedCategory]) return;
@@ -489,7 +491,7 @@
     setWaveOnly: setWaveOnly
   });
   function openModal(type) {
-    if (directionRepeat) directionRepeat.cancel();
+    cancelNavigation();
     cancelHold();
     categoryTransition.cancel();
     if (!modalOpen || modalType !== type) clearToast();
@@ -591,6 +593,7 @@
   function setWaveOnly(on) {
     on = on === true;
     if (waveOnly === on) return;
+    cancelNavigation();
     waveOnly = on;
     if (on && modalOpen) closeModal(true);
     document.body.classList.toggle('wave-only', on);
@@ -867,7 +870,7 @@
   });
   document.addEventListener('lg-xmb-helper-status', updateHelperStatus);
   function closeModal(quiet) {
-    if (directionRepeat) directionRepeat.cancel();
+    cancelNavigation();
     if (itemOptions.opened) {
       itemOptions.close(quiet === true ? 'lifecycle' : 'back');
       return;
@@ -949,6 +952,7 @@
   // Both explicit launches and idle-screen Back leave through the same media
   // lifecycle. A Home press invalidates pending work before it can launch late.
   async function leaveHome(operation, onResult, failureMessage) {
+    cancelNavigation();
     cancelHold();
     categoryTransition.cancel();
     var generation = ++launchGeneration;
@@ -1008,6 +1012,31 @@
   // Main-menu activation happens on release; otherwise a long OK would launch
   // the app before the options timer had a chance to fire.
   var directionRepeat = new LGXMBDirectionalRepeat({ onDirection: handleKey });
+  var wheelNavigation = new LGXMBWheelNavigation({
+    pixelStep: C5TV.isTV() ? 120 : 100,
+    onSteps: function (steps) {
+      if (busy || modalOpen || waveOnly || !pageActive || document.hidden) return;
+      if (!wheelInputActive) {
+        wheelInputActive = true;
+        document.body.classList.add('wheel-navigation');
+      }
+      // Apply a fast spin's distance once, so skipped rows do not start previews
+      // or produce extra sounds and layout work within the same frame.
+      navigate(steps > 0 ? 'down' : 'up', Math.abs(steps));
+    }
+  });
+  var wheelInputActive = false;
+  function cancelWheelNavigation() {
+    if (wheelNavigation) wheelNavigation.cancel();
+    if (wheelInputActive) {
+      wheelInputActive = false;
+      document.body.classList.remove('wheel-navigation');
+    }
+  }
+  function cancelNavigation() {
+    if (directionRepeat) directionRepeat.cancel();
+    cancelWheelNavigation();
+  }
   function handleKey(event) {
     if (!pageActive || document.hidden) {
       directionRepeat.cancel();
@@ -1080,6 +1109,7 @@
     }
   }
   document.addEventListener('keydown', function (event) {
+    cancelWheelNavigation();
     if (!pageActive || document.hidden) {
       directionRepeat.cancel();
       return;
@@ -1098,7 +1128,7 @@
     }
   });
   window.addEventListener('blur', function () {
-    directionRepeat.cancel();
+    cancelNavigation();
   });
   // Holding an item with the Magic Remote, mouse or touch uses the same timer.
   function pointerItem(target) {
@@ -1107,7 +1137,7 @@
   document.addEventListener(
     'pointerdown',
     function (e) {
-      directionRepeat.cancel();
+      cancelNavigation();
       suppressHoldClick = false;
       if (
         e.button !== 0 ||
@@ -1176,6 +1206,7 @@
   document.addEventListener(
     'click',
     function (e) {
+      cancelWheelNavigation();
       if (suppressHoldClick) {
         suppressHoldClick = false;
         e.preventDefault();
@@ -1221,22 +1252,23 @@
   document.addEventListener(
     'wheel',
     function (event) {
-      if (waveOnly) {
+      if (waveOnly || busy || !pageActive || document.hidden) {
+        cancelWheelNavigation();
         event.preventDefault();
         return;
       }
       if (modalOpen) {
+        cancelNavigation();
         if (itemOptions.opened && itemOptions.panel.contains(event.target)) return;
         if ($('modal').contains(event.target)) return;
         event.preventDefault();
         return;
       }
-      event.preventDefault();
-      if (busy || Math.abs(event.deltaY) < 2) return;
-      var now = performance.now();
-      if (now - lastDirection < 130) return;
-      lastDirection = now;
-      navigate(event.deltaY > 0 ? 'down' : 'up');
+      if (wheelNavigation.handle(event)) {
+        directionRepeat.cancel();
+        cancelHold();
+        lastDirection = performance.now();
+      }
     },
     { passive: false }
   );
@@ -1368,7 +1400,7 @@
   }
   function suspendPage() {
     helperLifecycle('suspend');
-    directionRepeat.cancel();
+    cancelNavigation();
     appRefresh.pause();
     if (modalType === 'datetime') {
       dateTimeSettings.close();
@@ -1396,7 +1428,7 @@
     }
   }
   function handleRelaunch() {
-    directionRepeat.cancel();
+    cancelNavigation();
     cancelHold();
     if (itemOptions.opened) itemOptions.close('lifecycle');
     setWaveOnly(false);
@@ -1431,6 +1463,7 @@
     } else restorePage(false);
   });
   window.addEventListener('resize', function () {
+    cancelNavigation();
     cancelHold();
     categoryTransition.cancel();
   });
