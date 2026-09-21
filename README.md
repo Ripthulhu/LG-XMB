@@ -26,8 +26,6 @@ Replacing LG Home requires root. Cached HDMI pictures also need Homebrew
 Channel with an elevated service and Python 3.7 or newer on the TV. Animated
 backgrounds need WebGL 2; otherwise the menu uses a static background.
 
-Use your existing root SSH connection. **Don't enable Developer Mode on a rooted TV.**
-
 ## Install
 
 Download an IPK from [Releases](https://github.com/Ripthulhu/LG-XMB/releases),
