@@ -29,6 +29,13 @@ async function checkScreensaver(browser, url) {
     page
       .getByRole('group', { name: group, exact: true })
       .getByRole('button', { name: label, exact: true });
+  function brightnessMatches(actual, expected) {
+    for (const layer of Object.keys(expected))
+      assert.ok(
+        Math.abs(actual[layer] - expected[layer]) < 0.000001,
+        layer + ' brightness: expected ' + expected[layer] + ', got ' + actual[layer]
+      );
+  }
   async function openPanel(id = 'openScreensaver') {
     if ((await state()).screensaver.active) await page.keyboard.press('Shift');
     while ((await state()).modal) await page.keyboard.press('Escape');
@@ -102,11 +109,15 @@ async function checkScreensaver(browser, url) {
     await page.waitForFunction(() => window.C5App && C5App.getState().screensaver);
     assert.equal((await state()).screensaver.delayMs, 120000);
     assert.equal((await state()).screensaver.brightness, 0.25);
+    assert.equal((await state()).screensaver.waveBrightness, 0.25);
+    assert.equal((await state()).screensaver.particleBrightness, 0.25);
     await openPanel();
     assert.equal((await state()).modal, 'screensaver');
     for (const [group, labels] of [
       ['Start after', ['Off', '30 sec', '1 min', '2 min', '5 min', '10 min']],
-      ['Background brightness', ['0%', '10%', '25%', '50%', '75%', '100%']]
+      ['Background brightness', ['0%', '10%', '25%', '50%', '75%', '100%']],
+      ['Wave brightness', ['0%', '10%', '25%', '50%', '75%', '100%']],
+      ['Sparkle brightness', ['0%', '10%', '25%', '50%', '75%', '100%']]
     ]) {
       assert.deepEqual(
         await page
@@ -117,24 +128,51 @@ async function checkScreensaver(browser, url) {
       );
     }
     await screenshot('screensaver-settings-1080.png');
+    await choice('Start after', '2 min').focus();
+    for (const group of ['Background brightness', 'Wave brightness', 'Sparkle brightness']) {
+      await page.keyboard.press('ArrowDown');
+      assert.equal(
+        await page.evaluate(() =>
+          document.activeElement.closest('[role="group"]').getAttribute('aria-label')
+        ),
+        group
+      );
+    }
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'previewScreensaver');
+    await page.keyboard.press('ArrowUp');
+    assert.equal(
+      await page.evaluate(() =>
+        document.activeElement.closest('[role="group"]').getAttribute('aria-label')
+      ),
+      'Sparkle brightness'
+    );
+    checks.push('Remote Up and Down visit each brightness row and the preview action in order');
     await page.keyboard.press('Escape');
     assert.equal((await state()).modal, 'appearance');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'openScreensaver');
     await page.keyboard.press('Enter');
     await choice('Start after', '5 min').click();
     await choice('Background brightness', '50%').click();
+    await choice('Wave brightness', '75%').click();
+    await choice('Sparkle brightness', '100%').click();
     assert.equal((await state()).screensaver.delayMs, 300000);
     assert.equal((await state()).screensaver.brightness, 0.5);
+    assert.equal((await state()).screensaver.waveBrightness, 0.75);
+    assert.equal((await state()).screensaver.particleBrightness, 1);
     await page.reload();
     await page.waitForFunction(() => window.C5App);
     assert.equal((await state()).screensaver.delayMs, 300000);
     assert.equal((await state()).screensaver.brightness, 0.5);
+    assert.equal((await state()).screensaver.waveBrightness, 0.75);
+    assert.equal((await state()).screensaver.particleBrightness, 1);
     checks.push(
-      'Appearance exposes delay and brightness choices, keeps its return focus, and persists both settings'
+      'Appearance exposes delay and three independent brightness controls, keeps its return focus, and saves them across reloads'
     );
 
     await openPanel();
     await choice('Background brightness', '25%').click();
+    await choice('Wave brightness', '10%').click();
     await page.locator('#previewScreensaver').focus();
     await page.keyboard.press('Enter');
     assert.equal(
@@ -150,6 +188,18 @@ async function checkScreensaver(browser, url) {
       mid > 0 && mid < 1,
       'Screensaver entry must fade the menu instead of hiding it immediately'
     );
+    const entryGains = (await state()).waveDiagnostics;
+    assert.deepEqual(entryGains.idleBrightnessTarget, {
+      background: 0.25,
+      wave: 0.1,
+      particles: 1
+    });
+    assert.ok(
+      entryGains.idleBrightness.background > 0.25 && entryGains.idleBrightness.background < 1
+    );
+    assert.ok(entryGains.idleBrightness.wave > 0.1 && entryGains.idleBrightness.wave < 1);
+    assert.equal(entryGains.idleBrightness.particles, 1);
+    assert.equal(entryGains.idleBrightnessTransitioning, true);
     await faded();
     const dimmed = await page.evaluate(() => ({
       dim: Number(getComputedStyle(document.getElementById('screensaverDim')).opacity),
@@ -158,7 +208,10 @@ async function checkScreensaver(browser, url) {
       waveFilter: getComputedStyle(document.getElementById('wave')).filter,
       screenVisibility: getComputedStyle(document.getElementById('screen')).visibility
     }));
-    assert.ok(Math.abs(dimmed.dim - 0.75) < 0.005);
+    const sleepingGains = (await state()).waveDiagnostics;
+    brightnessMatches(sleepingGains.idleBrightness, { background: 0.25, wave: 0.1, particles: 1 });
+    assert.equal(sleepingGains.idleBrightnessTransitioning, false);
+    assert.equal(dimmed.dim, 0, 'A full-screen shade would also dim the sparkles');
     assert.equal(dimmed.modal, 0);
     assert.equal(dimmed.toast, 0);
     assert.equal(
@@ -187,6 +240,12 @@ async function checkScreensaver(browser, url) {
     await screenshot('screensaver-asleep-1080.png');
     await page.keyboard.press('Escape');
     await awake();
+    brightnessMatches((await state()).waveDiagnostics.idleBrightness, {
+      background: 1,
+      wave: 1,
+      particles: 1
+    });
+    assert.equal((await state()).waveDiagnostics.idleBrightnessTransitioning, false);
     await noTemporaryLayers();
     assert.equal(
       await page.locator('#screen').evaluate((node) => getComputedStyle(node).transitionDuration),
@@ -198,7 +257,7 @@ async function checkScreensaver(browser, url) {
       'The waking Back press must not close the hidden menu'
     );
     checks.push(
-      'Keyboard preview fades all launcher UI; Back wakes without changing the menu, and temporary compositor layers are released'
+      'Preview fades the background and waves independently while sparkles stay bright; Back restores all layers without changing the menu'
     );
 
     await page.locator('#previewScreensaver').focus();
@@ -249,6 +308,7 @@ async function checkScreensaver(browser, url) {
     );
 
     const fifty = choice('Background brightness', '50%');
+    await fifty.scrollIntoViewIfNeeded();
     const box = await fifty.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await preview();

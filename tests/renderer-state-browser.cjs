@@ -63,11 +63,11 @@ async function main() {
       for (let i = 0; i < 20; i++) testWave.draw();
       return { uniforms, calls: { ...calls }, configurations, frame: frameState() };
     });
-    assert.equal(measured.uniforms, 30, 'stable frame uploads only dynamic particle values');
+    assert.equal(measured.uniforms, 32, 'stable frame uploads only dynamic values, including idle gains');
     assert.equal(measured.calls.uniform4fv, 4 * 21, 'two wave basis uploads and two particle projections per frame');
     assert.equal(measured.configurations, 0, 'drawing does not normalize unchanged quality settings');
     assert.deepEqual(measured.frame, original);
-    checks.push('Repeated draws preserve pixels with 30 uniform uploads per frame and no quality normalization');
+    checks.push('Repeated draws preserve pixels with 32 uniform uploads per frame and no quality normalization');
 
     const changed = await page.evaluate(() => {
       testWave.setPaused(true);
@@ -116,6 +116,54 @@ async function main() {
     assert.equal(transitioned.disabled.particles, 0);
     assert.deepEqual(transitioned.restored, original);
     checks.push('Colour-source and particle toggles keep the same restored frame');
+
+    const idleLayers = await page.evaluate(() => {
+      const gl = testWave.gl, canvas = testWave.canvas;
+      function capture(gains, particles) {
+        testWave.setIdleBrightness(gains);
+        testWave.setQuality({particles});
+        testWave.draw();
+        const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+        gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        return pixels;
+      }
+      const full = {background: 1, wave: 1, particles: 1};
+      const zero = {background: 0, wave: 0, particles: 0};
+      const bright = capture(full, true), brightWithoutParticles = capture(full, false);
+      const dimGains = {background: 0.2, wave: 0.2, particles: 1};
+      const dim = capture(dimGains, true), dimWithoutParticles = capture(dimGains, false);
+      let matchingSparkles = 0, changedSparkles = 0;
+      for (let i = 0; i < bright.length; i++) {
+        if (i % 4 === 3 || bright[i] >= 245) continue;
+        const contribution = bright[i] - brightWithoutParticles[i];
+        if (contribution < 5) continue;
+        if (Math.abs(contribution - (dim[i] - dimWithoutParticles[i])) <= 2) matchingSparkles++;
+        else changedSparkles++;
+      }
+      const black = capture(zero, true);
+      const backgroundOnly = capture({...zero, background: 1}, false);
+      const savedWave = testWave.wave;
+      testWave.wave = [0, 0, 0];
+      const withoutWaveGeometry = capture(full, false);
+      testWave.wave = savedWave;
+      const waveOnly = capture({...zero, wave: 1}, false);
+      const particlesOnly = capture({...zero, particles: 1}, true);
+      const lit = pixels => pixels.reduce((sum, value, i) => sum + (i % 4 !== 3 && value > 0 ? 1 : 0), 0);
+      let backgroundDifference = 0;
+      for (let i = 0; i < backgroundOnly.length; i++)
+        backgroundDifference = Math.max(backgroundDifference, Math.abs(backgroundOnly[i] - withoutWaveGeometry[i]));
+      capture(full, true);
+      return {matchingSparkles, changedSparkles, black: lit(black), backgroundDifference,
+        background: lit(backgroundOnly), wave: lit(waveOnly), particles: lit(particlesOnly), restored: frameState(), error: gl.getError()};
+    });
+    assert.equal(idleLayers.error, 0);
+    assert.equal(idleLayers.black, 0, 'all zero gains give a black frame including sparkles');
+    assert.ok(idleLayers.backgroundDifference <= 1, 'wave gain zero reveals the same unoccluded background as removing its signal');
+    assert.ok(idleLayers.background > 0 && idleLayers.wave > 0 && idleLayers.particles > 0, 'all three channels can be displayed independently');
+    assert.ok(idleLayers.matchingSparkles > 100, 'sparkles retain their additive brightness over the dimmed background');
+    assert.equal(idleLayers.changedSparkles, 0);
+    assert.deepEqual(idleLayers.restored, original);
+    checks.push('Independent screensaver gains retain sparkle brightness, hide each layer completely, and restore the original frame');
 
     await page.evaluate(() => {
       window.oldRenderer = testWave.renderer;

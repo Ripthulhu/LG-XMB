@@ -34,7 +34,9 @@
 .screensaver-active #toast {
   opacity: 0;
 }
-.screensaver-active #screensaverDim {
+/* The renderer dims its three layers independently. Only wallpapers need
+   the full-screen shade; putting it over WebGL would also dim the sparkles. */
+.screensaver-active.wallpaper-active #screensaverDim {
   opacity: var(--screensaver-shade, 0.75);
 }
 .screensaver-transition.screensaver-active #screen,

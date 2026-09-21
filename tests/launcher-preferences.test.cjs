@@ -115,10 +115,12 @@ test('background selection and six dimming levels are bounded and round-trip', (
   }
 });
 
-test('screensaver settings default to two minutes and a quarter of background brightness', () => {
+test('screensaver defaults to two minutes and a quarter brightness for each layer', () => {
   const state = preferences.load({getItem: () => null}, false, colors);
   assert.equal(state.screensaverDelay, 120000);
   assert.equal(state.screensaverBrightness, 0.25);
+  assert.equal(state.screensaverWaveBrightness, 0.25);
+  assert.equal(state.screensaverParticleBrightness, 0.25);
 });
 
 test('every screensaver delay and brightness choice survives saving, including zero', () => {
@@ -129,12 +131,39 @@ test('every screensaver delay and brightness choice survives saving, including z
       })}, false, colors);
       assert.equal(state.screensaverDelay, screensaverDelay);
       assert.equal(state.screensaverBrightness, screensaverBrightness);
+      assert.equal(state.screensaverWaveBrightness, screensaverBrightness);
+      assert.equal(state.screensaverParticleBrightness, screensaverBrightness);
       assert.equal(preferences.waveStyle(state).brightness, 0.6);
       let saved;
       preferences.save({setItem: (_, value) => {saved = value;}}, state);
       assert.deepEqual(preferences.load({getItem: () => saved}, false, colors), state);
     }
   }
+});
+
+test('screensaver layer brightness stays independent and round-trips, including zero', () => {
+  for (const screensaverWaveBrightness of [0, 0.1, 0.25, 0.5, 0.75, 1]) {
+    for (const screensaverParticleBrightness of [0, 0.1, 0.25, 0.5, 0.75, 1]) {
+      const state = preferences.load({getItem: () => JSON.stringify({
+        screensaverBrightness: 0.1, screensaverWaveBrightness, screensaverParticleBrightness
+      })}, false, colors);
+      assert.equal(state.screensaverBrightness, 0.1);
+      assert.equal(state.screensaverWaveBrightness, screensaverWaveBrightness);
+      assert.equal(state.screensaverParticleBrightness, screensaverParticleBrightness);
+      let saved;
+      preferences.save({setItem: (_, value) => {saved = value;}}, state);
+      assert.deepEqual(preferences.load({getItem: () => saved}, false, colors), state);
+    }
+  }
+});
+
+test('a missing screensaver layer inherits legacy brightness without overriding saved layers', () => {
+  const state = preferences.load({getItem: () => JSON.stringify({
+    screensaverBrightness: 0, screensaverParticleBrightness: 1
+  })}, false, colors);
+  assert.equal(state.screensaverBrightness, 0);
+  assert.equal(state.screensaverWaveBrightness, 0);
+  assert.equal(state.screensaverParticleBrightness, 1);
 });
 
 test('unsupported or coerced screensaver values fall back to their defaults', () => {
@@ -144,9 +173,11 @@ test('unsupported or coerced screensaver values fall back to their defaults', ()
     const state = preferences.load({getItem: () => JSON.stringify({screensaverDelay})}, false, colors);
     assert.equal(state.screensaverDelay, 120000, JSON.stringify(screensaverDelay));
   }
-  for (const screensaverBrightness of invalidBrightness) {
-    const state = preferences.load({getItem: () => JSON.stringify({screensaverBrightness})}, false, colors);
-    assert.equal(state.screensaverBrightness, 0.25, JSON.stringify(screensaverBrightness));
+  for (const key of ['screensaverBrightness', 'screensaverWaveBrightness', 'screensaverParticleBrightness']) {
+    for (const brightness of invalidBrightness) {
+      const state = preferences.load({getItem: () => JSON.stringify({[key]: brightness})}, false, colors);
+      assert.equal(state[key], 0.25, `${key}: ${JSON.stringify(brightness)}`);
+    }
   }
 });
 

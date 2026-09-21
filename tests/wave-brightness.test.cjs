@@ -98,8 +98,8 @@ test('speed handling and destroyed guard are unchanged', () => {
 });
 
 test('one display gain dims the composed background and both sparkle passes', () => {
-  const draw = required(renderer, /Renderer\.prototype\.draw = function \(w, h, wave, brightness, background, palette\) \{[\s\S]*?\n  \};/)[0];
-  const context = {Renderer: function () {}};
+  const draw = required(renderer, /Renderer\.prototype\.draw = function \(w, h, wave, brightness, background, palette, idle\) \{[\s\S]*?\n  \};/)[0];
+  const context = {Renderer: function () {}, IDLE_BRIGHTNESS: {background: 1, wave: 1, particles: 1}};
   vm.runInNewContext(draw, context);
   for (const brightness of [1, .85, .7, .6, .45, .3]) {
     const calls = [];

@@ -42,6 +42,7 @@ function fixture(colour = 'original') {
   wave.initialize();
   return {wave, canvas, ambient, parent, timers, frames, context,
     advance(date) {now = date.getTime();},
+    frame(ms = 1000 / 60) {now += ms; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(fn => fn(now));},
     tick() {const [key, timer] = [...timers][0]; timers.delete(key); timer.fn();}};
 }
 
@@ -113,4 +114,20 @@ test('restoration cleanup and destruction remove only the fallback layer', () =>
   f.wave.destroy(); f.wave.destroy();
   assert.deepEqual(f.parent.children, [f.canvas, f.ambient]);
   assert.equal(f.timers.size, 0);
+});
+
+test('static fallback fades only its background channel, then stops repainting', () => {
+  const f = fixture(4), full = channels(f.wave.staticBackground.style.background);
+  f.wave.setStyle({brightness: 0.6});
+  f.wave.setIdleBrightness({background: 0.2, wave: 0, particles: 0}, 1200);
+  assert.equal(f.frames.size, 1);
+  for (let i = 0; i < 80; i++) f.frame();
+  const dim = f.wave.staticBackground.style.background;
+  channels(dim).forEach((value, i) => assert.ok(Math.abs(value - full[i] * 0.6 * 0.2) <= 1));
+  assert.equal(f.frames.size, 0);
+  assert.equal(f.wave.time, 0);
+  f.wave.setIdleBrightness({wave: 1, particles: 1});
+  assert.equal(f.wave.staticBackground.style.background, dim);
+  f.wave.setIdleBrightness({background: 0});
+  assert.ok(channels(f.wave.staticBackground.style.background).every(value => value === 0));
 });

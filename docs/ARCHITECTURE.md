@@ -25,7 +25,7 @@ page structure. Read the controller only when a change crosses feature boundarie
 | Wallpaper | `app/wallpaper.js` | Load the local image, retain a working background on failure and cancel stale loads |
 | Clock display | `app/clock-view.js`, `app/clock.css` | Current and PS3 clock layouts, date formatting and analogue hands |
 | Fonts | `app/fonts.css` | Optional local Rodin faces and system font fallback; see [Fonts](FONTS.md) |
-| Screensaver | `app/screensaver.js`, `app/screensaver-view.js`, `app/screensaver.css` | Idle deadline, wake gestures and temporary UI/background fades |
+| Screensaver | `app/screensaver.js`, `app/screensaver-view.js`, `app/screensaver.css` | Idle deadline, layer brightness targets, wake gestures, UI and wallpaper fades |
 | Other settings panels | `app/remote-settings.js`, `app/date-time-settings.js` | Feature-specific controls and keyboard navigation |
 | TV APIs | `app/tv-bridge.js`, `app/app-manager.js`, `app/system-time.js` | Bounded native requests for launch/input/audio, app information/removal and clock settings |
 | HDMI pictures | `app/thumbnail.js`, `app/input-preview.js` | Cached images and optional live video; separate lifecycles |

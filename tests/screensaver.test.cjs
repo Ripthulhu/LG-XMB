@@ -52,6 +52,8 @@ test('the default starts after two idle minutes only while Home is available', (
     active: false,
     delayMs: 120000,
     brightness: 0.25,
+    waveBrightness: 0.25,
+    particleBrightness: 0.25,
     available: false
   });
   assert.equal(f.timers.size, 0);
@@ -235,10 +237,34 @@ test('destruction cancels pending callbacks and rejects later operations', () =>
     active: false,
     delayMs: 1000,
     brightness: 0.25,
+    waveBrightness: 0.25,
+    particleBrightness: 0.25,
     available: false
   });
   assert.deepEqual(
     f.changes.map((state) => state.active),
     [true, false]
   );
+});
+
+test('independent dim levels preserve zero and do not restart idle timing', () => {
+  const f = fixture({ delayMs: 1000 });
+  f.saver.setAvailable(true);
+  const timer = f.callback();
+  f.saver.configure({ brightness: 0, waveBrightness: 0.1, particleBrightness: 1 });
+  assert.equal(f.callback(), timer);
+  f.advance(1000);
+  assert.equal(f.changes.at(-1).brightness, 0);
+  assert.equal(f.changes.at(-1).waveBrightness, 0.1);
+  assert.equal(f.changes.at(-1).particleBrightness, 1);
+  f.saver.configure({ waveBrightness: 0 });
+  assert.equal(f.changes.at(-1).active, true);
+  assert.equal(f.changes.at(-1).waveBrightness, 0);
+  assert.equal(f.changes.at(-1).particleBrightness, 1);
+  const count = f.changes.length;
+  f.saver.configure({ waveBrightness: NaN, particleBrightness: '0.5' });
+  assert.equal(f.changes.length, count);
+  f.saver.activity();
+  assert.equal(f.saver.getState().active, false);
+  assert.equal(f.saver.getState().particleBrightness, 1);
 });

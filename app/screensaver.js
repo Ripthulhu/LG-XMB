@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-// Idle timing only. The launcher handles input and CSS handles the fades.
+// Idle timing and saved dim levels. The view and renderer handle the fades.
 (function (root) {
   'use strict';
   function Screensaver(options) {
@@ -24,6 +24,8 @@
     this.onChange = options.onChange || function () {};
     this.delayMs = 120000;
     this.brightness = 0.25;
+    this.waveBrightness = 0.25;
+    this.particleBrightness = 0.25;
     this.available = false;
     this.active = false;
     this.lastActivity = this.now();
@@ -36,6 +38,8 @@
       active: this.active,
       delayMs: this.delayMs,
       brightness: this.brightness,
+      waveBrightness: this.waveBrightness,
+      particleBrightness: this.particleBrightness,
       available: this.available
     };
   };
@@ -65,7 +69,7 @@
     if (this.destroyed) return;
     settings = settings || {};
     var wasActive = this.active,
-      oldBrightness = this.brightness,
+      brightnessChanged = false,
       delay = settings.delayMs;
     if (typeof delay === 'number' && isFinite(delay) && delay >= 0) {
       // Browser timers cannot safely represent a longer interval.
@@ -78,10 +82,14 @@
         this.arm(delay);
       }
     }
-    if (typeof settings.brightness === 'number' && isFinite(settings.brightness))
-      this.brightness = Math.max(0, Math.min(1, settings.brightness));
-    if (wasActive !== this.active || oldBrightness !== this.brightness)
-      this.onChange(this.getState());
+    var self = this;
+    ['brightness', 'waveBrightness', 'particleBrightness'].forEach(function (key) {
+      if (typeof settings[key] !== 'number' || !isFinite(settings[key])) return;
+      var value = Math.max(0, Math.min(1, settings[key]));
+      if (self[key] !== value) brightnessChanged = true;
+      self[key] = value;
+    });
+    if (wasActive !== this.active || brightnessChanged) this.onChange(this.getState());
   };
   Screensaver.prototype.setAvailable = function (available) {
     if (this.destroyed || this.available === (available === true)) return;

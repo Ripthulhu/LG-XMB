@@ -247,3 +247,95 @@ test('held backgrounds do not keep clock repaint timers alive', () => {
   assert.equal(t.timers.size, 0);
   assert.equal(t.frames.size, 0);
 });
+
+test('screensaver gains fade a held frame without advancing waves or particles', () => {
+  const t = setup();
+  t.wave.setMotionHeld(true);
+  t.run(14);
+  const time = t.wave.time,
+    steps = t.steps.length,
+    draws = t.draws;
+  t.wave.setIdleBrightness({ background: 0.2, wave: 0.5, particles: 1 }, 1200);
+  assert.equal(t.wave.idleBrightness.background, 1);
+  t.run(36);
+  assert.ok(Math.abs(t.wave.idleBrightness.background - 0.6) < 0.03);
+  assert.ok(Math.abs(t.wave.idleBrightness.wave - 0.75) < 0.03);
+  assert.equal(t.wave.idleBrightness.particles, 1);
+  t.run(40);
+  assert.equal(t.wave.idleBrightness.background, 0.2);
+  assert.equal(t.wave.idleBrightness.wave, 0.5);
+  assert.equal(t.wave.time, time);
+  assert.equal(t.steps.length, steps);
+  assert.ok(t.draws > draws);
+  assert.equal(t.frames.size, 0);
+  assert.equal(t.wave.getDiagnostics().idleBrightnessTransitioning, false);
+  t.wave.setIdleBrightness({ background: 1, wave: 1, particles: 1 }, 160);
+  t.run(11);
+  assert.equal(t.wave.idleBrightness.background, 1);
+  assert.equal(t.wave.motionHeld, true);
+  assert.equal(t.wave.time, time);
+  assert.equal(t.frames.size, 0);
+});
+
+test('reduced motion permits an explicit brightness fade and stops after it', () => {
+  const t = setup();
+  t.wave.setReducedMotion(true);
+  const time = t.wave.time,
+    steps = t.steps.length;
+  t.wave.setIdleBrightness({ background: 0, wave: 0, particles: 0 }, 1200);
+  t.run(36);
+  assert.ok(t.wave.idleBrightness.background > 0.45 && t.wave.idleBrightness.background < 0.55);
+  t.run(40);
+  assert.equal(t.wave.idleBrightness.background, 0);
+  assert.equal(t.wave.idleBrightness.wave, 0);
+  assert.equal(t.wave.idleBrightness.particles, 0);
+  assert.equal(t.wave.time, time);
+  assert.equal(t.steps.length, steps);
+  assert.equal(t.frames.size, 0);
+});
+
+test('waking during the dimming fade starts from the presented brightness', () => {
+  const t = setup();
+  t.wave.setReducedMotion(true);
+  t.wave.setIdleBrightness({ background: 0.2, wave: 0.4, particles: 0.8 }, 1200);
+  t.run(18);
+  const before = JSON.stringify(t.wave.idleBrightness),
+    elapsed = t.wave.idleBrightnessElapsed;
+  t.wave.setIdleBrightness({ background: 0.2, wave: 0.4, particles: 0.8 }, 1200);
+  assert.equal(t.wave.idleBrightnessElapsed, elapsed, 'repeated targets do not restart the fade');
+  t.wave.setIdleBrightness({ background: 1, wave: 1, particles: 1 }, 160);
+  assert.equal(JSON.stringify(t.wave.idleBrightness), before);
+  t.frame();
+  assert.ok(t.wave.idleBrightness.background > JSON.parse(before).background);
+  assert.ok(t.wave.idleBrightness.background < 1);
+  t.run(10);
+  assert.equal(t.wave.idleBrightness.background, 1);
+  assert.equal(t.frames.size, 0);
+});
+
+test('hidden resets settle before the first visible frame and reject invalid gains', () => {
+  const t = setup();
+  t.wave.setReducedMotion(true);
+  t.wave.setIdleBrightness({ background: 0.2, wave: 0.4, particles: 0.8 });
+  const target = JSON.stringify(t.wave.idleBrightnessTarget);
+  t.wave.setIdleBrightness({ background: -1, wave: Infinity, particles: '0.5' }, 1200);
+  assert.equal(JSON.stringify(t.wave.idleBrightnessTarget), target);
+  t.wave.setPaused(true);
+  t.wave.setIdleBrightness({ background: 1, wave: 1, particles: 1 }, 160);
+  assert.equal(t.wave.idleBrightness.background, 1);
+  assert.equal(t.wave.getDiagnostics().idleBrightnessTransitioning, false);
+  assert.equal(t.frames.size, 0);
+  t.wave.setPaused(false);
+  assert.equal(t.wave.idleBrightness.background, 1);
+  assert.equal(t.frames.size, 0);
+  t.wave.setIdleBrightness({ background: 0.2 }, 1200);
+  t.run(3);
+  t.wave.setIdleBrightness({ background: 0.2 }, 0);
+  assert.equal(
+    t.wave.idleBrightness.background,
+    0.2,
+    'zero-duration requests can finish the current target'
+  );
+  t.frame();
+  assert.equal(t.frames.size, 0);
+});

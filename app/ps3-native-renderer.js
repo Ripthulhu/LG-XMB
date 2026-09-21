@@ -8,6 +8,7 @@
   var Core = root.LGXMBPS3Core,
     Shaders = root.LGXMBPS3Shaders;
   var MOTION_EASE_MS = 220;
+  var IDLE_BRIGHTNESS = { background: 1, wave: 1, particles: 1 };
   var DEFAULT = {
     sampling: 1,
     detail: 'high',
@@ -808,8 +809,9 @@
     };
     this.backdropRenders = (this.backdropRenders || 0) + 1;
   };
-  Renderer.prototype.draw = function (w, h, wave, brightness, background, palette) {
+  Renderer.prototype.draw = function (w, h, wave, brightness, background, palette, idle) {
     if (!this.ready || this.dead) return false;
+    idle = idle || IDLE_BRIGHTNESS;
     this.updateGrid();
     this.resize(w, h);
     var monthly = !!(palette && palette.monthly && this.monthlyPass(palette.monthly));
@@ -834,8 +836,8 @@
     gl.enable(gl.BLEND);
     gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
     gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
-    // Dim the completed background once, after wave/background composition.
-    // Particles are drawn later and receive the same display gain below.
+    // Keep the original wave signal for filtering. Independent idle gains are
+    // applied after tone mapping, before the existing appearance brightness.
     this.wavePass(w / h, wave, 1);
     this.lastCount = 0;
 
@@ -857,6 +859,7 @@
     gl.uniform1i(u.uAmbient, 2);
     gl.uniform1f(u.uBackdropScale, this.backdropScale);
     gl.uniform1f(u.uBrightness, brightness);
+    gl.uniform2f(u.uIdleBrightness, idle.background, idle.wave);
     gl.uniform1i(u.uAmbientEnabled, monthly ? 0 : 1);
     gl.uniform2f(u.uBand, band[0], band[1]);
     gl.uniform2f(u.uTexel, 1 / w, 1 / h);
@@ -878,8 +881,9 @@
         this.particlesUploaded = true;
         this.uploadedBytes += p.count * 32;
       }
-      this.particlePass(this.particleProgram, this.uniforms.particle, w / h, brightness);
-      this.particlePass(this.glareProgram, this.uniforms.glare, w / h, brightness);
+      var particleBrightness = brightness * idle.particles;
+      this.particlePass(this.particleProgram, this.uniforms.particle, w / h, particleBrightness);
+      this.particlePass(this.glareProgram, this.uniforms.glare, w / h, particleBrightness);
     }
     gl.disable(gl.BLEND);
     gl.bindVertexArray(null);
@@ -996,6 +1000,11 @@
     this.palette = null;
     this.speed = 1.5;
     this.brightness = 1;
+    this.idleBrightness = Object.assign({}, IDLE_BRIGHTNESS);
+    this.idleBrightnessFrom = Object.assign({}, IDLE_BRIGHTNESS);
+    this.idleBrightnessTarget = Object.assign({}, IDLE_BRIGHTNESS);
+    this.idleBrightnessDuration = 0;
+    this.idleBrightnessElapsed = 0;
     this.ps3Quality = quality();
     this.paused = false;
     this.motionHeld = false;
@@ -1066,6 +1075,7 @@
     this.renderer = null;
     this.paintStatic();
     this.scheduleClock();
+    this.scheduleFrame();
     if (this.onRenderStatus) this.onRenderStatus();
   };
   C5Wave.prototype.initialize = function () {
@@ -1219,6 +1229,7 @@
     var staticMode = this.mode === 'static';
     if (
       this.clockTimer ||
+      this.idleBrightnessElapsed < this.idleBrightnessDuration ||
       this.motionHeld ||
       (!this.reducedMotion && !staticMode) ||
       !this.clockDriven() ||
@@ -1241,7 +1252,7 @@
       settings = this.colorSettings,
       colors = root.LGXMBWaveColors,
       background = this.background || [0.02, 0.035, 0.065],
-      gain = this.brightness || 1;
+      gain = this.brightness * this.idleBrightness.background;
     if (settings && colors) {
       try {
         palette = colors.resolve(
@@ -1318,7 +1329,8 @@
         this.wave,
         this.brightness,
         this.background,
-        this.palette
+        this.palette,
+        this.idleBrightness
       );
       this.syncBackgroundLayer(this.renderer.monthlyActive === true);
       this.scheduleClock();
@@ -1364,17 +1376,43 @@
     }
     // resize() already paints when the size changed; don't paint it twice.
     if (!(this.resizePending && this.resize())) this.draw();
+    this.scheduleFrame();
+  };
+  C5Wave.prototype.motionRunning = function () {
+    return (
+      this.mode === 'webgl' && !this.reducedMotion && (!this.motionHeld || this.motionGain > 0)
+    );
+  };
+  C5Wave.prototype.scheduleFrame = function () {
+    // An idle fade repaints retained geometry, even when its motion is held.
+    // Static and reduced-motion backgrounds stop again at the final gain.
+    var fading = this.idleBrightnessElapsed < this.idleBrightnessDuration;
     if (
-      !this.reducedMotion &&
-      (!this.motionHeld || this.motionGain > 0) &&
-      this.mode === 'webgl' &&
-      !this.raf
+      this.allowed() &&
+      !this.raf &&
+      (this.motionRunning() || (fading && (this.mode === 'webgl' || this.mode === 'static')))
     )
       this.raf = root.requestAnimationFrame(this.tickBound);
+    else if (!this.raf) this.lastFrame = 0;
+  };
+  C5Wave.prototype.advanceIdleBrightness = function (milliseconds) {
+    if (this.idleBrightnessElapsed >= this.idleBrightnessDuration) return;
+    this.idleBrightnessElapsed = Math.min(
+      this.idleBrightnessDuration,
+      this.idleBrightnessElapsed + milliseconds
+    );
+    var progress = this.idleBrightnessElapsed / this.idleBrightnessDuration,
+      eased = progress * progress * (3 - 2 * progress);
+    for (var name in IDLE_BRIGHTNESS)
+      this.idleBrightness[name] =
+        progress === 1
+          ? this.idleBrightnessTarget[name]
+          : this.idleBrightnessFrom[name] +
+            (this.idleBrightnessTarget[name] - this.idleBrightnessFrom[name]) * eased;
   };
   C5Wave.prototype.tick = function (now) {
     this.raf = 0;
-    if (!this.allowed() || this.reducedMotion) return;
+    if (!this.allowed()) return;
     var interval = 1000 / this.ps3Quality.frameRate;
     if (!this.lastFrame) this.lastFrame = now - interval;
     // Draw once at least an interval minus half a vsync has gone by. The old
@@ -1385,7 +1423,8 @@
     if (now - this.lastFrame >= interval - 8) {
       var milliseconds = Math.min(100, Math.max(0, now - this.lastFrame)),
         previousGain = this.motionGain;
-      if (this.motionElapsed < MOTION_EASE_MS) {
+      this.advanceIdleBrightness(milliseconds);
+      if (this.motionRunning() && this.motionElapsed < MOTION_EASE_MS) {
         this.motionElapsed = Math.min(MOTION_EASE_MS, this.motionElapsed + milliseconds);
         var progress = this.motionElapsed / MOTION_EASE_MS,
           eased = progress * progress * (3 - 2 * progress);
@@ -1393,20 +1432,23 @@
       }
       // Scale simulation time, rather than its positions or configured speed.
       // Waves and particles slow together and resume from the retained frame.
-      var seconds = (milliseconds * this.speed * (previousGain + this.motionGain)) / 3000;
-      try {
-        this.simulation.advance(seconds, this.ps3Quality.particles);
-      } catch (error) {
-        this.fail(error);
-        return;
+      if (
+        this.motionRunning() ||
+        (previousGain > 0 && this.mode === 'webgl' && !this.reducedMotion)
+      ) {
+        var seconds = (milliseconds * this.speed * (previousGain + this.motionGain)) / 3000;
+        try {
+          this.simulation.advance(seconds, this.ps3Quality.particles);
+        } catch (error) {
+          this.fail(error);
+          return;
+        }
+        this.time += seconds;
       }
-      this.time += seconds;
       this.lastFrame = now;
       this.draw();
     }
-    if (this.motionHeld && this.motionGain === 0) this.lastFrame = 0;
-    else if (this.mode === 'webgl' && !this.raf)
-      this.raf = root.requestAnimationFrame(this.tickBound);
+    this.scheduleFrame();
   };
   C5Wave.prototype.visibility = function () {
     this.documentHidden = !!document.hidden;
@@ -1483,6 +1525,29 @@
       this.draw();
     }
   };
+  // Independent display gains for the screensaver. Retargeting starts from
+  // the last presented values, so waking partway through a fade cannot jump.
+  C5Wave.prototype.setIdleBrightness = function (values, durationMs) {
+    if (this.destroyed) return;
+    values = values || {};
+    var changed = false;
+    for (var name in IDLE_BRIGHTNESS) {
+      var value = values[name];
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) continue;
+      if (this.idleBrightnessTarget[name] !== value) changed = true;
+      this.idleBrightnessTarget[name] = value;
+    }
+    var duration = this.allowed() && Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
+    if (!changed && (duration || this.idleBrightnessElapsed >= this.idleBrightnessDuration)) return;
+    this.idleBrightnessFrom = Object.assign({}, this.idleBrightness);
+    this.idleBrightnessElapsed = 0;
+    this.idleBrightnessDuration = duration;
+    if (!this.idleBrightnessDuration)
+      this.idleBrightness = Object.assign({}, this.idleBrightnessTarget);
+    if (this.clockTimer) root.clearTimeout(this.clockTimer);
+    this.clockTimer = 0;
+    this.resume();
+  };
   // Menu hooks for the particles. Both are cheap and do nothing until the
   // simulation exists or when the recovered module isn't loaded.
   C5Wave.prototype.navigated = function (direction) {
@@ -1518,6 +1583,9 @@
       error: this.error,
       speed: this.speed,
       brightness: this.brightness,
+      idleBrightness: Object.assign({}, this.idleBrightness),
+      idleBrightnessTarget: Object.assign({}, this.idleBrightnessTarget),
+      idleBrightnessTransitioning: this.idleBrightnessElapsed < this.idleBrightnessDuration,
       time: this.time
     };
   };

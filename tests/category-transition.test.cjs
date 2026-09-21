@@ -223,7 +223,8 @@ test('opacity is confined to non-text markers and explicit screensaver layers', 
         assert.ok(screensaverLayers(filename, selector, 'transition'), filename + ': ' + selector);
       if (/(?:^|;)\s*opacity\s*:/i.test(body))
         assert.ok(allowed.has(selector) || screensaverLayers(filename, selector, 'active') ||
-          (path.basename(filename) === 'screensaver.css' && selector === '#screensaverDim'),
+          (path.basename(filename) === 'screensaver.css' &&
+            ['#screensaverDim', '.screensaver-active.wallpaper-active #screensaverDim'].includes(selector)),
           filename + ': text opacity is not allowed on ' + selector);
     }
   }

@@ -11,6 +11,8 @@
     backgroundBrightness: 0,
     screensaverDelay: 120000,
     screensaverBrightness: 0.25,
+    screensaverWaveBrightness: 0.25,
+    screensaverParticleBrightness: 0.25,
     clockStyle: 'current',
     motion: 'full',
     sound: false,
@@ -40,6 +42,7 @@
   // These are display dimming steps, independent of the calendar's day/night
   // changes. They are not recovered PS3 brightness constants.
   var backgroundGains = [1, 0.85, 0.7, 0.6, 0.45, 0.3];
+  var screensaverBrightnessLevels = [0, 0.1, 0.25, 0.5, 0.75, 1];
   var colourOptions = [
     { value: 1, label: 'Grey', colour: '#c7c7c7' },
     { value: 2, label: 'Yellow', colour: '#d3ba1b' },
@@ -130,8 +133,14 @@
       else if (saved.waveBrightness === 'low') preferences.backgroundBrightness = -3;
       if ([0, 30000, 60000, 120000, 300000, 600000].indexOf(saved.screensaverDelay) !== -1)
         preferences.screensaverDelay = saved.screensaverDelay;
-      if ([0, 0.1, 0.25, 0.5, 0.75, 1].indexOf(saved.screensaverBrightness) !== -1)
+      if (screensaverBrightnessLevels.indexOf(saved.screensaverBrightness) !== -1)
         preferences.screensaverBrightness = saved.screensaverBrightness;
+      ['screensaverWaveBrightness', 'screensaverParticleBrightness'].forEach(function (key) {
+        if (screensaverBrightnessLevels.indexOf(saved[key]) !== -1) preferences[key] = saved[key];
+        // Before separate layer controls, one brightness applied to everything.
+        else if (!Object.prototype.hasOwnProperty.call(saved, key))
+          preferences[key] = preferences.screensaverBrightness;
+      });
       if (['current', 'ps3'].indexOf(saved.clockStyle) !== -1)
         preferences.clockStyle = saved.clockStyle;
       if (saved.motion === 'reduced' || saved.motion === 'full') preferences.motion = saved.motion;

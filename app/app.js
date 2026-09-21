@@ -72,6 +72,14 @@
   var screensaver = new LGXMBScreensaver({
     onChange: function (state) {
       screensaverView.render(state);
+      wave.setIdleBrightness(
+        {
+          background: state.active ? state.brightness : 1,
+          wave: state.active ? state.waveBrightness : 1,
+          particles: state.active ? state.particleBrightness : 1
+        },
+        preferences.motion === 'reduced' ? 0 : state.active ? 1200 : 160
+      );
       syncInputPreview();
     }
   });
@@ -284,7 +292,9 @@
     syncWavePlayback();
     screensaver.configure({
       delayMs: preferences.screensaverDelay,
-      brightness: preferences.screensaverBrightness
+      brightness: preferences.screensaverBrightness,
+      waveBrightness: preferences.screensaverWaveBrightness,
+      particleBrightness: preferences.screensaverParticleBrightness
     });
     syncScreensaver();
   }

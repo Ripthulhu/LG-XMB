@@ -114,6 +114,9 @@ function makeWave() {
     mode: 'webgl',
     allowed: () => true,
     cancel() {},
+    scheduleFrame() {},
+    brightness: 1,
+    idleBrightness: {background: 1, wave: 1, particles: 1},
     renderer: {
       monthlyActive: true,
       configure() {},

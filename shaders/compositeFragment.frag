@@ -12,6 +12,7 @@ uniform sampler2D uAmbient;
 uniform bool uAmbientEnabled;
 uniform float uBackdropScale;
 uniform float uBrightness;
+uniform vec2 uIdleBrightness; // background, wave
 uniform highp vec2 uTexel;
 uniform float uSoftness;
 uniform bool uFilter;
@@ -100,9 +101,9 @@ void main() {
     background*=uBackdropScale;
     ambient=texture(uAmbient,vUV).rg;
   }
+  vec3 displayBackground=extended?clamp(background,0.0,1.0)*ambient.x+vec3(ambient.y):background;
   if(vUV.y<uBand.x||vUV.y>uBand.y) {
-    vec3 displayBackground=extended?clamp(background,0.0,1.0)*ambient.x+vec3(ambient.y):background;
-    outColor=vec4(displayColour(displayBackground,noise),1.0);
+    outColor=vec4(displayColour(displayBackground*uIdleBrightness.x,noise),1.0);
     return;
   }
   highp vec2 uv=uFilter?fxaaUV():vUV;
@@ -116,7 +117,7 @@ void main() {
     scene=mix(scene,neighbors*0.25,clamp(uSoftness/3.0,0.0,0.65));
   }
   if(!extended&&all(equal(scene,vec3(0.0)))) {
-    outColor=vec4(displayColour(background,noise),1.0);
+    outColor=vec4(displayColour(background*uIdleBrightness.x,noise),1.0);
     return;
   }
   // Only wave-covered fragments need the cached transmission/halo. Recovering
@@ -133,5 +134,9 @@ void main() {
     c*=(knee+room*(1.0-exp(-(peak-knee)/room)))/max(peak,0.000001);
   }
   c=clamp(c,0.0,1.0)*ambient.x+vec3(ambient.y);
+  // Separate the completed wave contribution from the decorated backdrop.
+  // Filtering and tone mapping stay unchanged; equal gains dim the original
+  // image exactly, and a zero wave gain leaves only the unoccluded backdrop.
+  c=c*uIdleBrightness.y+displayBackground*(uIdleBrightness.x-uIdleBrightness.y);
   outColor=vec4(displayColour(c,noise),1.0);
 }
