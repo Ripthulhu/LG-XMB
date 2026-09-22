@@ -901,6 +901,7 @@
     updateHelperStatus();
   }
   function refreshHelperAssets(generation) {
+    if (window.LGXMBUserFonts) LGXMBUserFonts.reload();
     if (preferences.sound) sounds.retry();
     if (preferences.background === 'wallpaper' && !wallpaper.active && !wallpaper.loading)
       wallpaper.reload();

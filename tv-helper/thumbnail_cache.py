@@ -46,7 +46,7 @@ class SafeError(Exception):
     """An internal code safe to include in bounded status output."""
 
 
-PIN_APPINFO_SHA256 = '26bdaacce6e295a37167b92549d19cfc22ba590719036f13473fcf177e12d129'
+PIN_APPINFO_SHA256 = 'a8a9de2311a01ccc0dbedabd448cdc5de88ddabbbeb7cf8cdbadea466edf866f'
 
 
 def require(value, code):

@@ -1,11 +1,21 @@
 # Fonts
 
-Home uses the TV's system font by default. To use the PS3's Original Latin font,
-the importer needs these three files from your local firmware:
+Home uses the system font unless you supply converted PS3 Rodin fonts. Copy
+these three files into `/media/internal/lg-xmb/Fonts/` (capital F):
 
-- `SCE-PS3-RD-L-LATIN2.TTF` — light
-- `SCE-PS3-RD-R-LATIN2.TTF` — regular
-- `SCE-PS3-RD-B-LATIN2.TTF` — bold
+- `SCE-PS3-RD-L-LATIN2.TTF` - light
+- `SCE-PS3-RD-R-LATIN2.TTF` - regular
+- `SCE-PS3-RD-B-LATIN2.TTF` - bold
+
+Use the browser-compatible copies, not the raw firmware files. No conversion
+runs on the TV. Keep the folder readable (`0755`) and files readable (`0644`).
+Open Home after copying them. If Home was already running, close and reopen it.
+On a rooted TV, helper setup creates `media-fonts` links in the installed app
+and matching Home replacement. Fonts stay in internal storage across updates;
+setup does not copy, change or delete them. Existing personal-build fonts remain
+a fallback. No fonts are included in normal IPKs.
+
+## Preparing your own copies
 
 They are in `dev_flash/data/font/` in an extracted PS3 firmware installation.
 The [PS3 font reference](https://www.psdevwiki.com/ps3/XMB_Fonts) identifies
@@ -16,7 +26,7 @@ The raw fonts have an inconsistent glyph-name table that Chromium rejects.
 The importer removes that optional name table, preserving glyph outlines,
 character mappings and spacing. It writes browser-compatible copies to
 `app/user-fonts/` and leaves the originals untouched. FontTools is only needed
-for this import, not for normal builds:
+for this import, not for normal builds. Copy its output files into the TV folder above:
 
 ```sh
 python -m pip install fonttools

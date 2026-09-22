@@ -31,3 +31,5 @@ experiments/ps3-wave-webgl2/private/
 
 # Browser-test screenshots and generated reports.
 /artifacts/
+
+app/media-fonts

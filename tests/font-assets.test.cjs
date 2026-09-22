@@ -6,7 +6,7 @@ const { includeAppFile } = require('../tools/package-files.cjs');
 const app = path.resolve('app');
 
 test('normal builds exclude personal fonts even when they exist locally', () => {
-  for (const file of ['user-fonts', 'user-fonts/SCE-PS3-RD-R-LATIN2.TTF']) {
+  for (const file of ['user-fonts', 'user-fonts/SCE-PS3-RD-R-LATIN2.TTF', 'media-fonts', 'media-fonts/SCE-PS3-RD-R-LATIN2.TTF']) {
     assert.equal(includeAppFile(app, path.join(app, file)), false);
   }
   assert.equal(includeAppFile(app, path.join(app, 'fonts.css')), true);

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' ext:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data:; media-src 'self' file: ext:; connect-src 'self' file:; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <title>Home</title>
     <link rel="stylesheet" href="style.css" />
@@ -81,6 +81,7 @@
       </section>
     </div>
     <script src="browser-compat.js"></script>
+    <script src="user-fonts.js"></script>
     <script src="icons.js"></script>
     <script src="catalog.js"></script>
     <script src="tv-bridge.js"></script>

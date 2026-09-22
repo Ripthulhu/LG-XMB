@@ -2,6 +2,7 @@
 const path = require('node:path');
 function includeAppFile(appDir, source, options = {}) {
   const relative = path.relative(appDir, source);
+  if (relative === 'media-fonts' || relative.startsWith('media-fonts' + path.sep)) return false;
   if (relative === 'user-fonts' || relative.startsWith('user-fonts' + path.sep)) {
     return options.personalFonts === true && (relative === 'user-fonts' ||
       /^user-fonts[\\/]SCE-PS3-RD-[LRB]-LATIN2\.TTF$/.test(relative));

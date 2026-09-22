@@ -19,7 +19,7 @@ On macOS, use `shasum -a 256 -c SHA256SUMS`. On Windows, use
 Copy the IPK to `/tmp/lg-xmb.ipk` on the TV. For example, from your computer:
 
 ```sh
-scp org.local.openxmb.c5_0.1.32_all.ipk YOUR_TV_CONNECTION:/tmp/lg-xmb.ipk
+scp org.local.openxmb.c5_0.1.33_all.ipk YOUR_TV_CONNECTION:/tmp/lg-xmb.ipk
 ```
 
 Use the filename of your chosen release and your existing SSH alias or

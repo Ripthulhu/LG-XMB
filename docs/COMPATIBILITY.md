@@ -10,6 +10,7 @@ than the model's purchase year. LG publishes the
 
 | Installed platform | Chromium | Current validation |
 | --- | --- | --- |
+| webOS 6.x | 79 | Community report: launcher runs after a CSP workaround; performance limited, native features unverified |
 | webOS 22 | 87 | Browser baseline; no current hardware test |
 | webOS 23 | 94 | Browser target; no current hardware test |
 | webOS 24 | 108 | Browser target; no current hardware test |
@@ -23,8 +24,16 @@ TV. See [LG's resolution requirements](https://webostv.developer.lge.com/develop
 
 ## Chromium 79 fallbacks
 
-webOS 6.x uses Chromium 79. The UI includes fallbacks for that engine, but has
-not been validated on a webOS 6.x TV. The hardware support claim is unchanged.
+webOS 6.x uses Chromium 79. On 22 September 2026, a community user reported
+that the launcher ran after relaxing its Content Security Policy (CSP), with
+limited performance. The model and native-feature results were not supplied.
+This is a community report, not a full compatibility test.
+
+Version 0.1.33 explicitly permits `file:` sources for packaged scripts and
+local assets. It keeps the existing restrictions on plugins, base URLs and
+form submissions. The reported workaround also permitted inline scripts and
+other URL schemes; those are not used by Home and are not enabled here.
+This narrower policy still needs confirmation on the reporting TV.
 
 Checked against Can I Use on 22 September 2026:
 

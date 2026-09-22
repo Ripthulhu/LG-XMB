@@ -59,6 +59,37 @@ class WallpaperLinks(unittest.TestCase):
         self.assertEqual(os.readlink(link), str(self.data / 'wallpaper.jpg'))
         self.assertEqual(link.lstat().st_uid, 0)
 
+    def test_font_folder_and_links_preserve_existing_personal_fonts(self):
+        self.add_home()
+        old = self.dev / 'user-fonts'
+        old.mkdir()
+        (old / 'keep.ttf').write_bytes(b'personal font')
+        self.assertTrue(startup.prepare_user_fonts())
+        font = self.data / 'Fonts' / 'SCE-PS3-RD-R-LATIN2.TTF'
+        font.write_bytes(b'user font')
+        before = font.stat().st_ino, font.read_bytes()
+        self.assertTrue(startup.prepare_user_fonts())
+        for app in (self.dev, self.home):
+            self.assertEqual(os.readlink(app / 'media-fonts'), str(self.data / 'Fonts'))
+        self.assertEqual(before, (font.stat().st_ino, font.read_bytes()))
+        self.assertEqual((old / 'keep.ttf').read_bytes(), b'personal font')
+
+    def test_font_alias_conflict_is_preserved(self):
+        self.add_home()
+        (self.dev / 'media-fonts').write_bytes(b'keep')
+        self.assertFalse(startup.prepare_user_fonts())
+        self.assertEqual((self.dev / 'media-fonts').read_bytes(), b'keep')
+        self.assertTrue((self.home / 'media-fonts').is_symlink())
+
+    def test_symlinked_font_folder_is_refused(self):
+        self.data.mkdir()
+        outside = self.root / 'outside'
+        outside.mkdir()
+        (self.data / 'Fonts').symlink_to(outside)
+        self.assertFalse(startup.prepare_user_fonts())
+        self.assertFalse(os.path.lexists(self.dev / 'media-fonts'))
+        self.assertEqual(list(outside.iterdir()), [])
+
     def test_prepares_both_apps_without_creating_an_image(self):
         self.add_home()
         self.assertTrue(startup.prepare_user_wallpaper())

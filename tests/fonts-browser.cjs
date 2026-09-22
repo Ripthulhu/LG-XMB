@@ -47,10 +47,15 @@ const app = path.resolve(__dirname, '../app');
         page.on('console', (message) => {
           if (/font|OTS/i.test(message.text())) console.log(message.text());
         });
+        let fontsReady = false;
         await page.route('**/*', (route) => {
           const url = new URL(route.request().url());
           if (url.origin !== origin) return route.abort();
-          if (!withFont && url.pathname.startsWith('/user-fonts/'))
+          if (url.pathname.startsWith('/user-fonts/'))
+            return route.fulfill({ status: 404, body: '' });
+          if (withFont && fontsReady && url.pathname.startsWith('/media-fonts/'))
+            return route.fulfill({ path: path.join(app, 'user-fonts', path.basename(url.pathname)), contentType: 'font/ttf' });
+          if (url.pathname.startsWith('/media-fonts/'))
             return route.fulfill({ status: 404, body: '' });
           return route.continue();
         });
@@ -62,11 +67,14 @@ const app = path.resolve(__dirname, '../app');
         );
         await page.goto(origin);
         await page.waitForFunction(() => window.C5App);
+        await page.evaluate(() => document.fonts.ready);
+        fontsReady = true;
+        await page.evaluate(() => LGXMBUserFonts.reload());
         const loaded = await page.evaluate(async () => {
           const results = [];
           for (const weight of [300, 400, 700]) {
             results.push(
-              await document.fonts.load(weight + ' 24px "XMB Rodin"', 'Appearance Sound 20/9').then(
+              await document.fonts.load(weight + ' 24px "XMB Media Rodin"', 'Appearance Sound 20/9').then(
                 (faces) => faces.length > 0,
                 () => false
               )
@@ -80,7 +88,7 @@ const app = path.resolve(__dirname, '../app');
             return [300, 400, 700].map((weight) => {
               const probe = document.createElement('span');
               probe.style.cssText =
-                'position:fixed;left:-1000px;display:inline-block;line-height:1.2;font-family:"XMB Rodin";font-size:40px;font-weight:' +
+                'position:fixed;left:-1000px;display:inline-block;line-height:1.2;font-family:"XMB Media Rodin";font-size:40px;font-weight:' +
                 weight;
               probe.textContent = 'H0129';
               const baseline = document.createElement('span');
@@ -89,7 +97,7 @@ const app = path.resolve(__dirname, '../app');
               probe.appendChild(baseline);
               document.body.appendChild(probe);
               const context = document.createElement('canvas').getContext('2d');
-              context.font = weight + ' 40px "XMB Rodin"';
+              context.font = weight + ' 40px "XMB Media Rodin"';
               const ink = context.measureText('H0129');
               const rect = probe.getBoundingClientRect();
               const inkMiddle =
@@ -116,13 +124,13 @@ const app = path.resolve(__dirname, '../app');
         );
         assert.ok(geometry.length > 0);
         for (const row of geometry) {
-          assert.ok(row.font.includes('XMB Rodin'));
+          assert.ok(row.font.includes('XMB Media Rodin'));
           assert.ok(row.scroll <= row.width + 1, row.label + ' overflows');
         }
         assert.equal(
           await page
             .locator('#time')
-            .evaluate((node) => getComputedStyle(node).fontFamily.includes('XMB Rodin')),
+            .evaluate((node) => getComputedStyle(node).fontFamily.includes('XMB Media Rodin')),
           true
         );
         if (process.env.OPENXMB_SCREENSHOT_DIR) {

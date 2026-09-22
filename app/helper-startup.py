@@ -652,17 +652,22 @@ def prepare_fixed_asset_alias(app, name, target):
     require(sound_entry_identity(before) == sound_entry_identity(after), "asset_path_changed")
 
 
-def prepare_user_wallpaper():
-    """Expose an optional personal image in the verified developer and Home apps."""
+def prepare_user_asset(alias, relative, label, directory_asset=False):
+    """Expose a fixed media path without replacing existing files or links."""
     try:
         parent = open_directory(os.path.dirname(MUSIC_DIR), app_path=True)
         try:
             directory = make_directory(parent, os.path.basename(MUSIC_DIR))
-            os.close(directory)
+            try:
+                if directory_asset:
+                    child = make_directory(directory, relative)
+                    os.close(child)
+            finally:
+                os.close(directory)
         finally:
             os.close(parent)
     except (OSError, SetupError) as error:
-        record_startup("wallpaper_path_unavailable", error)
+        record_startup(label + "_path_unavailable", error)
         return False
     ready = True
     for destination in ("developer", "home"):
@@ -672,15 +677,23 @@ def prepare_user_wallpaper():
                    else checked_home_payload())
             if app is None:
                 continue
-            prepare_fixed_asset_alias(app, "user-wallpaper.jpg", MUSIC_DIR + "/wallpaper.jpg")
-            record_startup("wallpaper_path_ready", destination=destination)
+            prepare_fixed_asset_alias(app, alias, MUSIC_DIR + "/" + relative)
+            record_startup(label + "_path_ready", destination=destination)
         except (OSError, SetupError, ValueError, TypeError) as error:
             ready = False
-            record_startup("wallpaper_path_unavailable", error, destination=destination)
+            record_startup(label + "_path_unavailable", error, destination=destination)
         finally:
             if app is not None:
                 os.close(app)
     return ready
+
+
+def prepare_user_wallpaper():
+    return prepare_user_asset("user-wallpaper.jpg", "wallpaper.jpg", "wallpaper")
+
+
+def prepare_user_fonts():
+    return prepare_user_asset("media-fonts", "Fonts", "fonts", directory_asset=True)
 
 
 def start():
@@ -705,6 +718,7 @@ def start():
         prepare_user_music()
         prepare_user_sounds()
         prepare_user_wallpaper()
+        prepare_user_fonts()
         raw = read_file(base, "installed.json", 4096, optional=True)
         previous = json.loads(raw) if raw is not None else None
         require(previous is None or (isinstance(previous, dict)
