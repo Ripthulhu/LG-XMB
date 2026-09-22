@@ -21,6 +21,26 @@ models and 1280 × 720 for Full HD models. There is currently no separate 720p
 package. A desktop 720p layout check doesn't validate installation on a Full HD
 TV. See [LG's resolution requirements](https://webostv.developer.lge.com/develop/specifications/app-resolution).
 
+## Chromium 79 fallbacks
+
+webOS 6.x uses Chromium 79. The UI includes fallbacks for that engine, but has
+not been validated on a webOS 6.x TV. The hardware support claim is unchanged.
+
+Checked against Can I Use on 22 September 2026:
+
+- [`inset`](https://caniuse.com/mdn-css_properties_inset) starts in Chromium 87.
+  Positioned layers use explicit top/right/bottom/left instead.
+- [Flex gaps](https://caniuse.com/flexbox-gap) start in Chromium 84.
+  `browser-compat.js` measures support once; `browser-compat.css` supplies margins
+  for affected rows, including reordered clock contents. Grid gaps stay native.
+- [`min()`, `max()` and `clamp()`](https://caniuse.com/css-math-functions) work in
+  Chromium 79, so responsive sizing remains unchanged.
+
+The layout test forces legacy spacing and aspect-ratio paths at 720p and 1080p,
+checking previews, full-screen layers, choice rows and both clock styles.
+It does not emulate Chromium 79 or validate LG's native APIs. Optional font
+metric overrides can still render differently on older engines.
+
 ## Browser and graphics behaviour
 
 The Chromium 87 `aspect-ratio` fallback remains in `app/style.css`, so cached and

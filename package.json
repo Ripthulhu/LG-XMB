@@ -1,6 +1,6 @@
 {
   "name": "lg-xmb",
-  "version": "0.1.31",
+  "version": "0.1.32",
   "private": true,
   "description": "An XMB-style app launcher for LG webOS TVs",
   "license": "GPL-3.0-only",

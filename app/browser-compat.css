@@ -1,0 +1,26 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Chromium 79 has grid gaps but no flex gaps. Keep these scoped to flex rows;
+   the colour grid uses its native gaps. No per-frame checks are needed. */
+.no-flex-gap .clock,
+.no-flex-gap .input-preview-placeholder,
+.no-flex-gap .option,
+.no-flex-gap .option span:first-child,
+.no-flex-gap .choice-options,
+.no-flex-gap .background-option,
+.no-flex-gap .background-option-control,
+.no-flex-gap .date-time-fields {
+  gap: 0;
+}
+.no-flex-gap .clock #date { margin-left: 1.25vw; }
+.no-flex-gap .clock[data-style='ps3'] #date { margin-left: 0; }
+.no-flex-gap .clock[data-style='ps3'] #time { margin-left: 0.5vw; }
+.no-flex-gap .clock[data-style='ps3'] .clock-face { margin-left: 0.55vw; }
+.no-flex-gap .input-preview-message:not(:empty) { margin-top: 1.3vh; }
+.no-flex-gap .option > * + * { margin-left: 1vw; }
+.no-flex-gap .option span:first-child > * + * { margin-left: 1.15vw; }
+.no-flex-gap .choice-options > * + * { margin-left: 0.6vw; }
+.no-flex-gap .background-option > * + * { margin-left: 1.3vw; }
+.no-flex-gap .background-option-control > * + * { margin-left: 0.9vw; }
+.no-flex-gap .date-time-fields > * + * { margin-left: 0.65vw; }
+.no-flex-gap .date-time-fields > :nth-child(4) { margin-left: 1.65vw; }
+.no-flex-gap .screensaver-settings .choice-options .option > * + * { margin-left: 0.3vw; }

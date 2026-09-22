@@ -3,7 +3,10 @@
    Closed DOM is retained for reuse, but contributes no painted surfaces. */
 .item-options {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 30;
   display: none;
   align-items: center;
@@ -22,7 +25,10 @@
 }
 .item-options-shade {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 0;
 }
 .item-options-panel {

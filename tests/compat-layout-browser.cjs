@@ -49,6 +49,28 @@ async function checkStaticFallback(browser, app, width) {
   await page.close();
 }
 
+async function checkLegacyGeometry(page, width, height) {
+  await page.evaluate(() => {
+    document.getElementById('modalBackdrop').hidden = false;
+    document.getElementById('modalContent').innerHTML = '<div class="choice-options"><button class="option"><span>A</span><span>Yes</span></button><button class="option"><span>B</span><span>No</span></button></div>';
+    document.getElementById('time').textContent = '12:34';
+    document.getElementById('date').textContent = '22/9';
+  });
+  for (const selector of ['#modalBackdrop', '#screensaverDim']) {
+    assert.deepEqual(await page.locator(selector).boundingBox(), {x: 0, y: 0, width, height}, selector + ' covers screen');
+  }
+  const choices = await page.locator('.choice-options > button').all();
+  const a = await choices[0].boundingBox(), b = await choices[1].boundingBox();
+  assert.ok(Math.abs(b.x - a.x - a.width - width * 0.006) < 1, 'Choice spacing');
+  for (const style of ['current', 'ps3']) {
+    await page.locator('.clock').evaluate((el, style) => el.dataset.style = style, style);
+    const time = await page.locator('#time').boundingBox(), date = await page.locator('#date').boundingBox();
+    const gap = style === 'current' ? date.x - time.x - time.width : time.x - date.x - date.width;
+    assert.ok(Math.abs(gap - width * (style === 'current' ? 0.0125 : 0.005)) < 1, style + ' clock spacing');
+  }
+  await page.evaluate(() => document.getElementById('modalBackdrop').hidden = true);
+}
+
 async function main() {
   const app = path.resolve(__dirname, '../app');
   const html = fs.readFileSync(path.join(app, 'index.html'), 'utf8')
@@ -71,6 +93,8 @@ async function main() {
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
         await page.setContent(fallback ? legacyHtml : layoutHtml);
+        if (fallback) await page.evaluate(() => document.documentElement.classList.add('no-flex-gap'));
+        await checkLegacyGeometry(page, width, height);
         await page.evaluate(() => {
           document.querySelector('.detail').classList.add('has-input-preview');
           document.getElementById('previewPanel').hidden = false;
