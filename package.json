@@ -1,13 +1,13 @@
 {
   "name": "lg-xmb",
-  "version": "0.1.33",
+  "version": "0.1.34",
   "private": true,
   "description": "An XMB-style app launcher for LG webOS TVs",
   "license": "GPL-3.0-only",
   "scripts": {
     "preview": "node tools/preview.cjs",
     "test": "node --test tests/*.test.cjs",
-    "test:browser": "node tests/input-labels-browser.cjs && node tools/browser-check.cjs && node tests/upper-items-browser.cjs && node tests/wave-retention-browser.cjs",
+    "test:browser": "node tests/input-labels-browser.cjs && node tools/browser-check.cjs && node tests/xmb-layout-browser.cjs && node tests/upper-items-browser.cjs && node tests/wave-retention-browser.cjs",
     "package": "node tools/package.mjs",
     "verify:package": "node tools/package.mjs --verify-only",
     "test:compat": "node tests/compat-layout-browser.cjs",

@@ -23,7 +23,7 @@ async function select(page,id){
     for(const [width,height] of [[1280,720],[1920,1080],[1024,768]]){
       const context=await browser.newContext({viewport:{width,height},bypassCSP:true});
       const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
-      const scripts=['icons.js','catalog.js','category-transition.js','catalog-platform.js','menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','clock-view.js','app.js'];
+      const scripts=['icons.js','input-discovery.js','catalog.js','category-transition.js','catalog-platform.js','menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','clock-view.js','app.js'];
       let html=fs.readFileSync(path.join(root,'app/index.html'),'utf8').replace(/  <script src="[^"]+"><\/script>\n/g,'');
       // Load only local source strings. No server or network is needed. CSP is
       // bypassed for this harness's injected scripts, never changed in the app.
@@ -36,7 +36,7 @@ async function select(page,id){
         const file=name==='catalog-platform.js'?path.join(__dirname,'fixtures',name):path.join(root,'app',name);
         await page.addScriptTag({content:fs.readFileSync(file,'utf8')});
       }
-      await page.waitForFunction(()=>window.C5App);
+      await page.waitForFunction(()=>window.C5App && C5App.getState().item==='com.webos.app.livetv');
       let pageState=await state(page);
       check(width+' starts at TV / Live TV',()=>{assert.equal(pageState.category,'tv');assert.equal(pageState.item,'com.webos.app.livetv');});
       const ids=await page.locator('#categories > button').evaluateAll(nodes=>nodes.map(n=>n.dataset.category));
@@ -45,7 +45,7 @@ async function select(page,id){
         catalogHarness.labels({preview:false,inputs:[{id:'com.webos.app.hdmi1',port:1,label:'PC'},
           {id:'com.webos.app.hdmi2',port:2,label:'Console'},
           {id:'com.webos.app.livetv',port:4,label:'Not an input'}]});
-        catalogHarness.apps({preview:false,apps:[{id:'org.test.media',title:'A TV app'},
+        catalogHarness.apps({preview:false,apps:[...catalogHarness.builtins,{id:'org.test.media',title:'A TV app'},
           {id:'org.test.media',title:'Duplicate'}, {id:'org.local.openxmb.c5',title:'Self'},
           {id:'com.webos.app.browser',title:'Duplicate browser'},
           {id:'org.webosbrew.hbchannel',title:'Duplicate Homebrew'},
@@ -74,7 +74,7 @@ async function select(page,id){
           return {center:b.x+b.width/2,width:b.width,labelLeft:label.left,labelRight:label.right};
         });
         check(width+' '+id+' anchored and label visible',()=>{
-          assert.ok(Math.abs(geometry.center-width*(width/height<=4/3?.26:.31))<1);
+          assert.ok(Math.abs(geometry.center-width*(width/height<=4/3?.26:.295))<1);
           assert.ok(geometry.labelLeft>=0&&geometry.labelRight<=width);
         });
         const a11y=await page.evaluate(()=>{
@@ -126,7 +126,7 @@ async function select(page,id){
         document.dispatchEvent(new Event('webOSRelaunch'));
         catalogHarness.labels({preview:false,inputs:[{id:'com.webos.app.hdmi2',port:2,label:'Game console'}]});
       });
-      await page.waitForTimeout(20);
+      await page.waitForFunction(()=>document.getElementById('detailTitle').textContent==='Game console');
       assert.equal(await page.evaluate(()=>window.savedInputRow===document.querySelector('#items .rows:not(.parked) [data-item="com.webos.app.hdmi2"]')),true);
       assert.equal(await page.locator('#detailTitle').textContent(),'Game console');
       assert.equal((await state(page)).item,'com.webos.app.hdmi2');

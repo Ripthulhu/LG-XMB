@@ -7,7 +7,17 @@
   --background-rgb: 5, 9, 17;
   --text: #ffffff;
   --muted: rgba(255, 255, 255, 0.65);
-  --anchor: 31%;
+  /* Launcher geometry. launcher-view.js reads these on startup and resize;
+     row placement and particle targets use the same coordinates. */
+  --anchor: 29.5%;
+  --xmb-category-center: 27vh;
+  --xmb-selected-center: 47vh;
+  --xmb-row-height: 6.5vh;
+  --xmb-row-step: 7.5vh;
+  --xmb-upper-gap: 28.4vh;
+  --xmb-lower-gap: 8.7vh;
+  --xmb-item-icon-size: 2.4vw;
+  --xmb-label-offset: 6vw;
   --ease: cubic-bezier(0.16, 0.92, 0.34, 1);
   --navigation-duration: 0.4s;
   --row-navigation-duration: 0.24s;
@@ -123,17 +133,13 @@ header {
 #categories {
   position: absolute;
   left: 0;
-  top: 29.5vh;
+  top: calc(var(--xmb-category-center) - 1.75vw);
   height: 15vh;
   width: 100%;
   isolation: isolate;
 }
-/* Menu dimming goes through colour alpha (--item-alpha, --category-alpha),
-   never element opacity, and never animates. Measured on the C5: any change
-   to a text element's opacity, instant or transitioned, cost about a dropped
-   frame per key press; an instant colour change is a plain repaint and cost
-   next to nothing, while a colour transition repaints every frame and was
-   worse than opacity. Transforms are the only thing that animates here. */
+/* Item dimming uses instant colour changes. Category icons swap painted faces;
+   only the selected category's name has a short opacity fade. */
 .category {
   position: absolute;
   top: 0;
@@ -178,7 +184,7 @@ header {
 }
 .cross-content {
   position: absolute;
-  top: 52%;
+  top: calc(var(--xmb-selected-center) - var(--xmb-row-height) / 2);
   right: 0;
   bottom: 14%;
   left: 0;
@@ -199,7 +205,7 @@ header {
   top: 0;
   left: 0;
   width: 100%;
-  height: 6.5vh;
+  height: var(--xmb-row-height);
   text-align: left;
   padding: 0;
   background: none;
@@ -210,16 +216,18 @@ header {
 }
 .item.above-bar {
   /* Switch sides of the bar immediately; only the equal row steps animate. */
-  top: var(--item-bar-gap);
+  top: calc(0vh - var(--xmb-upper-gap));
+}
+.item.below-selection {
+  top: var(--xmb-lower-gap);
 }
 .item-icon {
   display: block;
   flex: none;
-  width: 2.4vw;
-  height: 2.4vw;
-  min-width: 26px;
-  min-height: 26px;
-  margin: 0 2.15vw 0 1.8vw;
+  width: var(--xmb-item-icon-size);
+  height: var(--xmb-item-icon-size);
+  margin: 0 calc(var(--xmb-label-offset) - var(--xmb-item-icon-size) / 2) 0
+    calc(3vw - var(--xmb-item-icon-size) / 2);
   color: rgba(255, 255, 255, calc(var(--item-alpha, 0.24) * 0.74));
   transition: transform var(--row-navigation-duration) var(--ease);
 }
@@ -760,6 +768,12 @@ header {
   transition: none !important;
   animation: none !important;
 }
+/* Keep the minimum icon size centred on the column at smaller viewports. */
+@media (max-width: 1083px) {
+  :root {
+    --xmb-item-icon-size: 26px;
+  }
+}
 @media (max-aspect-ratio: 4/3) {
   :root {
     --anchor: 26%;
@@ -868,7 +882,8 @@ header {
 }
 #categories.categories-instant,
 #categories.categories-instant .category,
-#categories.categories-instant .category-icon {
+#categories.categories-instant .category-icon,
+#categories.categories-instant .category-label {
   transition: none !important;
 }
 /* Colour controls use the existing dark settings panel, independent of day palettes. */
@@ -926,9 +941,9 @@ header {
 
 /* Category changes move layers, they don't repaint. Each category's rows live in
    a wrapper that is its own GPU layer and parks off the right edge while it's
-   inactive. Each bar entry has a dim face and a lit face, painted once and
-   swapped by transform, cause recolouring two entries per step was most of what
-   a category change cost the C5. The 3D transforms are what make the layers.
+   inactive. Each bar entry has dim and lit icons, painted once and swapped by
+   transform, since recolouring two entries per step was most of what a category
+   change cost the C5. The 3D transforms are what make the layers.
    The lit icon is drawn at its full size, so it no longer grows into place. */
 .rows {
   position: absolute;
@@ -955,7 +970,7 @@ header {
 .category.active .lit {
   transform: translate3d(0, 0, 0);
 }
-.category.active .dim {
+.category.active .dim .category-icon {
   transform: translate3d(0, -100vh, 0);
 }
 .category .dim .category-icon {
@@ -964,7 +979,12 @@ header {
   transition: none;
 }
 .category .dim .category-label {
-  color: rgba(255, 255, 255, 0.5);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.category.active .dim .category-label {
+  opacity: 1;
 }
 .category .lit .category-icon {
   color: #fff;
@@ -972,7 +992,8 @@ header {
   transition: none;
 }
 .category .lit .category-label {
-  color: #fff;
+  /* Keep the dot's geometry; the anchored dim-face label handles both fades. */
+  visibility: hidden;
 }
 .category-dot {
   display: block;

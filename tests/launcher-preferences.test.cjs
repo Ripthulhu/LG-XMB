@@ -29,7 +29,7 @@ test('legacy settings migrate in memory, then save under the current key', () =>
   const stored = {'openxmb-c5-preferences-v1': JSON.stringify({waveParticleCount: 500, waveBrightness: 'high'})};
   const storage = {getItem: key => stored[key], setItem: (key, value) => {stored[key] = value;}};
   const loaded = preferences.load(storage, true, colors);
-  assert.equal(loaded.waveParticleCount, 1000);
+  assert.equal(loaded.waveParticleCount, 500);
   assert.equal(loaded.backgroundBrightness, 0);
   assert.equal('waveBrightness' in loaded, false);
   assert.equal(loaded.motion, 'reduced');
@@ -181,8 +181,8 @@ test('unsupported or coerced screensaver values fall back to their defaults', ()
   }
 });
 
-test('clock style preserves the current look by default and only restores supported choices', () => {
-  assert.equal(preferences.load({getItem: () => null}, false, colors).clockStyle, 'current');
+test('clock style defaults to PS3 and preserves supported saved choices', () => {
+  assert.equal(preferences.load({getItem: () => null}, false, colors).clockStyle, 'ps3');
   for (const clockStyle of ['current', 'ps3']) {
     const state = preferences.load({getItem: () => JSON.stringify({clockStyle})}, false, colors);
     assert.equal(state.clockStyle, clockStyle);
@@ -193,7 +193,7 @@ test('clock style preserves the current look by default and only restores suppor
   }
   for (const clockStyle of ['PS3', 'analog', '', 0, null, false, true, [], {}]) {
     const state = preferences.load({getItem: () => JSON.stringify({clockStyle})}, false, colors);
-    assert.equal(state.clockStyle, 'current', JSON.stringify(clockStyle));
+    assert.equal(state.clockStyle, 'ps3', JSON.stringify(clockStyle));
   }
 });
 
@@ -223,12 +223,12 @@ test('Appearance opens a Clock panel whose style choices apply and save immediat
   appearance.openClock();
   const group = groups['Clock style'];
   assert.deepEqual(JSON.parse(JSON.stringify(group.choices)), [['current', 'Current'], ['ps3', 'PS3']]);
-  assert.equal(group.selected, 'current');
-  group.set('ps3');
-  assert.equal(state.clockStyle, 'ps3');
-  assert.deepEqual(changes, [['apply', 'ps3'], ['save', 'ps3']]);
+  assert.equal(group.selected, 'ps3');
+  group.set('current');
+  assert.equal(state.clockStyle, 'current');
+  assert.deepEqual(changes, [['apply', 'current'], ['save', 'current']]);
   appearance.openClock();
-  assert.equal(groups['Clock style'].selected, 'ps3');
+  assert.equal(groups['Clock style'].selected, 'current');
 });
 
 test('independent launchers do not share settings or derived colour state', () => {
@@ -283,7 +283,7 @@ test('appearance controls expose only the supported mesh, softness and FXAA choi
   }).openAdvanced();
   const plain = value => JSON.parse(JSON.stringify(value));
   assert.equal(groups.MSAA, undefined);
-  assert.deepEqual(plain(groups['Mesh detail'].choices), [['standard', 'Reduced'], ['high', 'Original']]);
+  assert.deepEqual(plain(groups['Mesh detail'].choices), [['coarse', 'Low'], ['standard', 'Medium'], ['high', 'High']]);
   assert.deepEqual(plain(groups['Edge softness'].choices), [[0, 'Sharp'], [1.5, 'Subtle'], [3, 'Soft']]);
   assert.deepEqual(plain(groups['Post-process antialiasing'].choices), [['off', 'Off'], ['wave', 'FXAA']]);
   groups['Edge softness'].set(3); groups['Post-process antialiasing'].set('wave');

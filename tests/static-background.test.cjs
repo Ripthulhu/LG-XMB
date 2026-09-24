@@ -104,6 +104,21 @@ test('fixed colours remain unchanged across dates and allocate no clock timer', 
   assert.equal(f.timers.size, 0);
 });
 
+test('static theme-clock backgrounds update their day/night gain on scheduled and resumed draws', () => {
+  const f = fixture(8);
+  f.wave.setTheme({background: '#6090c0', wave: '#90c0f0', colors: {mode: 'theme', themeClock: true}});
+  const day = channels(f.wave.staticBackground.style.background);
+  assert.equal(f.timers.size, 1);
+  f.advance(new Date(2026, 0, 1, 0));
+  f.tick();
+  const night = channels(f.wave.staticBackground.style.background);
+  assert.ok(night.every((value, index) => value < day[index]));
+  f.wave.setPaused(true);
+  f.advance(new Date(2026, 0, 1, 12));
+  f.wave.setPaused(false);
+  assert.deepEqual(channels(f.wave.staticBackground.style.background), day);
+});
+
 test('restoration cleanup and destruction remove only the fallback layer', () => {
   const f = fixture();
   f.wave.clearStatic();

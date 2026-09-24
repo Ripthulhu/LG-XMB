@@ -5,6 +5,19 @@
     KEY = 'lg-xmb-menu-order-v1',
     RECENT = 'lg-xmb-recent-items-v1',
     MODES = ['default', 'az', 'za', 'recent'];
+  var titleCollator;
+  function compareTitles(a, b) {
+    if (titleCollator === undefined) {
+      titleCollator = null;
+      try {
+        if (root.Intl && typeof root.Intl.Collator === 'function')
+          titleCollator = new root.Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+      } catch (ignore) {}
+    }
+    return titleCollator
+      ? titleCollator.compare(a, b)
+      : a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
   function MenuOrder(categories, storage) {
     this.categories = categories;
     this.storage = storage;
@@ -54,20 +67,34 @@
   MenuOrder.prototype.apply = function (category, selected) {
     var order = this.order[category.id],
       mode = this.modes[category.id],
-      recent = this.recent;
-    category.items.forEach(function (item) {
-      if (order.indexOf(item) < 0) order.push(item);
+      recent = this.recent,
+      ranks = new Map(),
+      recentRanks = mode === 'recent' ? new Map() : null;
+    // Rank by object identity, retaining the first occurrence just like indexOf.
+    // Build once per apply: inventories and recent opens can change between reads.
+    order.forEach(function (item, at) {
+      if (!ranks.has(item)) ranks.set(item, at);
     });
+    category.items.forEach(function (item) {
+      if (!ranks.has(item)) {
+        ranks.set(item, order.length);
+        order.push(item);
+      }
+    });
+    if (recentRanks)
+      recent.forEach(function (id, at) {
+        if (!recentRanks.has(id)) recentRanks.set(id, at);
+      });
     category.items.sort(function (a, b) {
-      var aRecent = recent.indexOf(a.id),
-        bRecent = recent.indexOf(b.id);
-      var n =
-        mode === 'recent'
-          ? (aRecent < 0 ? recent.length : aRecent) - (bRecent < 0 ? recent.length : bRecent)
-          : mode === 'default'
-            ? 0
-            : a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
-      return (mode === 'za' ? -n : n) || order.indexOf(a) - order.indexOf(b);
+      var n = 0;
+      if (recentRanks) {
+        var aRecent = recentRanks.get(a.id),
+          bRecent = recentRanks.get(b.id);
+        n =
+          (aRecent === undefined ? recent.length : aRecent) -
+          (bRecent === undefined ? recent.length : bRecent);
+      } else if (mode !== 'default') n = compareTitles(a.title, b.title);
+      return (mode === 'za' ? -n : n) || ranks.get(a) - ranks.get(b);
     });
     var at = category.items.findIndex(function (i) {
       return i.id === selected;

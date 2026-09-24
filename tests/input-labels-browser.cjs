@@ -14,7 +14,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     // The UA activates TV detection; it does not emulate Chromium 87.
     localStorage.setItem('lg-xmb-preferences-v1', JSON.stringify({motion: 'reduced'}));
     window.labelTest = {reads: [], launches: [], commands: [], images: 0, videos: 0, releases: 0};
-    window.PalmSystem = {identifier: 'org.local.openxmb.c5'};
+    window.PalmSystem = {identifier: 'com.webos.app.home'};
     window.PalmServiceBridge = function () {
       this.cancel = () => { if (this.read) this.read.cancelled = true; };
       this.call = (uri, json) => {
@@ -25,7 +25,10 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
           return;
         }
         let result = {returnValue: true};
-        if (uri.endsWith('/listApps')) result.apps = [];
+        if (uri.endsWith('/listApps')) result.apps = [
+          {id:'com.webos.app.livetv',title:'Live TV',visible:true},
+          {id:'com.webos.app.lgchannels',title:'LG Channels',visible:true}
+        ];
         else if (uri.endsWith('/getAppLoadStatus')) result.exist = true;
         else if (uri.endsWith('/launch')) labelTest.launches.push(payload.id);
         else if (uri.endsWith('/getStatus')) result.video = [];
@@ -61,14 +64,17 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
   const home = () => page.evaluate(() => document.dispatchEvent(new Event('webOSRelaunch')));
   const reply = async (index, label, failure = false) => {
     await page.evaluate(({index, label, failure}) => {
-      const devices = label === null ? [] : [{id: 'HDMI_2', port: 2,
+      const devices = label === null ? [] : [{id:'HDMI_1',port:1,appId:'com.webos.app.hdmi1',label:'HDMI 1',connected:false}, {id: 'HDMI_2', port: 2,
         appId: 'com.webos.app.hdmi2', label, connected: false,
-        icon: 'https://example.invalid/tracker.png', subList: [{labelName: 'Not the chosen name'}]}];
+        icon: 'https://example.invalid/tracker.png', subList: [{labelName: 'Not the chosen name'}]},
+        {id:'AV_1',port:1,appId:'com.webos.app.externalinput.av1',label:'AV',connected:false},
+        {id:'COMP_1',port:1,appId:'com.webos.app.externalinput.component',label:'Component',connected:false}];
       labelTest.reads[index].reply(JSON.stringify(failure ? {returnValue: false, errorCode: -1} :
         {returnValue: true, devices}));
     }, {index, label, failure});
     // Flush both bridge normalization and the app's awaiting continuation.
     await page.evaluate(() => Promise.resolve());
+    await page.waitForTimeout(550);
   };
   // Navigation lets the detail panel follow a moment later; read it once it has.
   const title = async () => { await page.waitForFunction(() => !C5App.getState().detailPending); return page.locator('#detailTitle').textContent(); };
@@ -84,26 +90,31 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
   });
   try {
     await page.goto(pathToFileURL(path.resolve(__dirname, '../app/index.html')).href);
-    await page.waitForFunction(() => window.C5App && labelTest.reads.length === 1);
+    await page.waitForFunction(() => window.C5App && C5App.getState().item === 'com.webos.app.livetv' && labelTest.reads.length === 1);
     const storage = await page.evaluate(() => JSON.stringify(localStorage));
     const setupCommands = await page.evaluate(() => labelTest.commands.slice());
     assert.equal(setupCommands.length, 1, 'one independent bundled-helper setup');
     assert.match(setupCommands[0], /helper-startup\.py ensure/);
     assert.equal((await state()).busy, false);
-    await menu.item(page, 'tv', 'com.webos.app.hdmi2');
-    assert.equal(await title(), 'HDMI 2');
+    assert.equal(await title(), 'Live TV');
+    assert.equal(await page.locator('#items [data-item="com.webos.app.hdmi4"]').count(), 0);
     await reply(0, null, true);
-    assert.equal(await title(), 'HDMI 2');
+    assert.equal(await title(), 'Live TV');
     assert.equal(await page.locator('#toast').textContent(), '');
-    assert.deepEqual(await page.evaluate(() => labelTest.commands), setupCommands, 'denied label discovery adds no root fallback');
-    checks.push('Denied input-label discovery leaves usable HDMI defaults without root fallback or an error toast');
+    const afterDenied = await page.evaluate(() => labelTest.commands.slice());
+    assert.equal(afterDenied.length, setupCommands.length);
+    assert.equal(await page.locator('#items [data-item="com.webos.app.hdmi2"]').count(), 0);
+    checks.push('Denied Home discovery does not invent HDMI sockets or retry using another route');
 
     await home();
     const first = (await count()) - 1;
     await home();
     assert.equal(await count(), first + 1, 'duplicate Home events share one pending read');
+    await reply(first, 'Initial console');
+    await menu.item(page, 'tv', 'com.webos.app.hdmi2');
     await page.evaluate(() => { labelTest.row = document.querySelector('#items > .rows:not(.parked) > [data-item="com.webos.app.hdmi2"]'); labelTest.focus = document.activeElement; });
-    await reply(first, 'PS3 Konsola do gier');
+    await home();
+    await reply((await count()) - 1, 'PS3 Konsola do gier');
     assert.equal(await title(), 'PS3 Konsola do gier');
     assert.equal(await page.locator('#detailType').textContent(), 'HDMI 2');
     assert.equal(await page.locator('#detailDescription').textContent(), 'Switch to HDMI 2.');
@@ -113,7 +124,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
       C5Catalog.find(category => category.id === 'tv').items.length));
     const ports = await menu.activeRows(page).evaluateAll(rows => rows.filter(row =>
       /^com\.webos\.app\.hdmi[1-4]$/.test(row.dataset.item)).map(row => row.dataset.item));
-    assert.deepEqual(ports, [1, 2, 3, 4].map(port => 'com.webos.app.hdmi' + port));
+    assert.deepEqual(ports, [1, 2].map(port => 'com.webos.app.hdmi' + port));
     assert.equal(await menu.activeItem(page, 'com.webos.app.livetv').getAttribute('aria-label'), 'Live TV');
     assert.equal(await menu.activeItem(page, 'com.webos.app.lgchannels').getAttribute('aria-label'), 'LG Channels');
     assert.equal(await page.evaluate(() => labelTest.row === document.querySelector('#items > .rows:not(.parked) > [data-item="com.webos.app.hdmi2"]') &&
@@ -123,8 +134,9 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     checks.push('Native labels update rows, selected details and accessibility text without changing focus, ports or saved preferences');
 
     await home();
-    await reply((await count()) - 1, null);
-    assert.equal(await title(), 'PS3 Konsola do gier', 'an omitted port retains its last successful name');
+    await page.evaluate(() => labelTest.reads.at(-1).reply(JSON.stringify({returnValue:true,devices:'invalid'})));
+    await page.waitForTimeout(20);
+    assert.equal(await title(), 'PS3 Konsola do gier', 'a malformed read retains the last successful inventory');
     await home();
     const stale = (await count()) - 1;
     await hide();
@@ -142,7 +154,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     await home();
     await reply((await count()) - 1, null, true);
     assert.equal(await title(), 'Console 🎮');
-    checks.push('Foreground refresh retains good labels across partial/failed replies and ignores cancelled callbacks after returning');
+    checks.push('Foreground refresh retains good inputs across malformed/failed replies and ignores cancelled callbacks after returning');
 
     await home();
     const pending = (await count()) - 1;
@@ -159,6 +171,7 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     await page.keyboard.press('Escape');
     await menu.category(page, 'tv');
     assert.equal((await state()).item, 'com.webos.app.hdmi2');
+    await page.waitForFunction(() => document.getElementById('detailTitle').textContent === 'New console');
     assert.equal(await title(), 'New console');
     checks.push('A pending label read never blocks a launch or steals dialog focus, and category selection survives the update');
 
@@ -204,6 +217,19 @@ module.exports = async function checkInputLabels(browser, checks, errors) {
     assert.deepEqual(await page.evaluate(() => ({videos: labelTest.videos, releases: labelTest.releases,
       images: labelTest.images})), stopped);
     checks.push('A late label update cannot restart an input preview between launch confirmation and page hide');
+    await menu.item(page, 'tv', 'com.webos.app.externalinput.av1');
+    assert.equal((await state()).inputPreview.port, null);
+    assert.equal((await state()).thumbnail.port, null);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => labelTest.launches.at(-1) === 'com.webos.app.externalinput.av1');
+    checks.push('Detected analog input launches its reported application, without starting an HDMI preview');
+    await home();
+    await reply((await count()) - 1, null);
+    const remaining = await menu.activeRows(page).evaluateAll(rows => rows.map(row => row.dataset.item));
+    assert.deepEqual(remaining, ['com.webos.app.livetv', 'com.webos.app.lgchannels']);
+    assert.equal((await state()).inputPreview.port, null);
+    assert.equal((await state()).thumbnail.port, null);
+    checks.push('A complete empty inventory removes physical inputs without removing Live TV or LG Channels');
     const settled = await count();
     await page.waitForTimeout(300);
     assert.equal(await count(), settled, 'label reads have no background polling loop');

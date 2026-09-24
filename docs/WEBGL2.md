@@ -19,20 +19,32 @@ Open **Settings → Appearance**:
 - **Background:** use the theme or your own [wallpaper](BACKGROUND.md), with
   brightness from Normal to -5. Text and icons stay white.
 - **Screensaver:** [fade the menu and dim the background](SCREENSAVER.md) after an idle delay.
-- **Advanced:** animation, speed and rendering quality.
+- **Advanced:** animation, speed and individual rendering controls.
 
-The launcher defaults to 60 fps, 1.5× supersampling, Original mesh detail,
-Subtle edge softness and Strong FXAA. Original uses Medium particle density.
+The launcher defaults to 60 fps, 150% render resolution, High mesh detail,
+Subtle edge softness, Strong FXAA and 2,000 particles. Saved settings stay as
+they are.
+
+For an older TV, lower **Render resolution** to reduce wave rendering work.
+At 50%, a 1080p canvas draws the wave surface at 960 × 540: one quarter of
+the pixels. Text, icons and sparkles retain their normal resolution. **Frame
+rate** limits background drawing independently of menu animation. **Mesh
+detail** reduces the wave's geometry, and **Particle count** limits sparkles.
+Turning off FXAA also removes its extra texture samples.
+
+Each control works independently. Classic disables sparkles altogether;
+Animation → Off freezes the background. Lower settings reduce work, but
+can't guarantee a frame rate on every TV.
 
 | Advanced control | Behaviour |
 | --- | --- |
 | Animation | Freeze or animate the background |
 | Speed | Change simulation speed independently of the draw rate |
-| Frame rate | Target 30 or 60 draws per second |
-| Supersampling | Render the wave surface at 1×, 1.25×, 1.5× or 2× output size |
-| Mesh detail | Reduced uses 64 × 64 samples; Original uses 128 × 128 |
+| Frame rate | Target 20, 30 or 60 background draws per second |
+| Render resolution | Render the wave surface at 50%, 75%, 100%, 125%, 150% or 200% of output size |
+| Mesh detail | Low uses 32 × 32 samples; Medium 64 × 64; High 128 × 128 |
 | Edge softness | Sharp, Subtle, or Soft |
-| Particle density | Limit Original's sparkles to 1,000, 2,000 or 4,000 |
+| Particle count | Limit Original's sparkles to 500, 1,000, 2,000 or 4,000 |
 | Post-process antialiasing | Off or coverage-guided FXAA |
 | Smoothing strength | Select the post-process filter thresholds |
 
@@ -40,7 +52,7 @@ Subtle edge softness and Strong FXAA. Original uses Medium particle density.
 Back or Home returns to the menu. It temporarily shows waves when a wallpaper
 is selected.
 
-Supersampling affects the wave surface. The composite filter doesn't filter
+Render resolution affects the wave surface. The composite filter doesn't filter
 menu text or particles. Particles and glare are drawn afterwards at output
 resolution. Renderer diagnostics are available through `C5App.getState()`.
 
@@ -57,7 +69,7 @@ including February 29 using February 28's month coordinate.
 Saved settings migrate to this layout. Particle Off becomes Classic; a fixed
 monthly colour keeps its month, while automatic colours become Original. Old
 named themes and RGB colours map to the nearest choice. Low and Medium
-brightness become -5 and -3. Stored `fine` mesh settings migrate to Original;
+brightness become -5 and -3. Stored `fine` mesh settings migrate to High;
 both previous FXAA modes use the coverage-guided filter and MSAA is discarded.
 
 ## Runtime files
@@ -88,6 +100,11 @@ The background is cached until its inputs change. The PS3 monthly colour pass
 uses a small optional floating-point target; full-size targets remain 32 bits
 per pixel. See [Rendering and menu performance](PERFORMANCE.md) for formats,
 precision and memory costs.
+
+The wave image is also reused while its geometry, colour, mesh and aspect stay
+unchanged. Brightness and filtering are applied during composition, so fading a
+held background doesn't redraw the wave mesh. Replacing the render target or
+restoring the context invalidates this cache. Particle rendering is independent.
 
 ## Lifecycle and limits
 

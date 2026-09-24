@@ -99,7 +99,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       await page.waitForTimeout(30);
       await page.evaluate(()=>menuPress('ArrowLeft'));await page.waitForTimeout(450);
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#items>.rows:not(.parked)>.item')].every((n,i)=>n===inputRows[i])),true);
-      assert.equal(await page.locator('#items>.rows:not(.parked) .above-bar[aria-hidden="false"]').count(),3);
+      assert.equal(await page.locator('#items>.rows:not(.parked) .above-bar[aria-hidden="false"]').count(),2);
       assert.equal(await page.evaluate(()=>C5App.getState().item),'com.webos.app.hdmi4');
       const verticalWork=await page.evaluate(()=>{
         const bar=document.getElementById('categories'),emblem=document.getElementById('detailEmblem');

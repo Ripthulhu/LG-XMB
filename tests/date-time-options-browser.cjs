@@ -10,7 +10,7 @@ async function load(p){
  await p.evaluate(()=>{const data={};Object.defineProperty(window,'localStorage',{value:{getItem:k=>data[k]||null,setItem:(k,v)=>data[k]=String(v),removeItem:k=>delete data[k]},configurable:true});});
  await p.setContent(fs.readFileSync(path.join(base,'app/index.html'),'utf8').replace(/<script[^>]*>[\s\S]*?<\/script>/g,'').replace(/<link[^>]*>/g,''));
  for(const f of ['style.css','clock.css','item-options.css','date-time-settings.css'])await p.addStyleTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
- for(const f of ['icons.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
+ for(const f of ['icons.js','input-discovery.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',f),'utf8')});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'tests/fixtures/catalog-platform.js'),'utf8')});
  await p.evaluate(()=>{
   window.timeTest={utc:1789735378,calls:[],delayReads:false,reads:[],delayWrites:false,writes:[],deny:false};

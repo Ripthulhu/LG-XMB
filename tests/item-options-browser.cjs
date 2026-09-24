@@ -24,7 +24,7 @@ async function load(p){
  await p.addStyleTag({content:fs.readFileSync(path.join(base,'app/style.css'),'utf8')});
  await p.addStyleTag({content:fs.readFileSync(path.join(base,'app/clock.css'),'utf8')});
  await p.addStyleTag({content:fs.readFileSync(path.join(base,'app/item-options.css'),'utf8')});
- for(const name of ['icons.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
+ for(const name of ['icons.js','input-discovery.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'tests/fixtures/catalog-platform.js'),'utf8')});
  await p.evaluate(()=>{
   window.optionsHarness={calls:[],metaDelayed:false,metas:[],removes:[]};

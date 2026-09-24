@@ -119,12 +119,13 @@ const { launchOptions } = require('./support/menu-navigation.cjs');
         );
       }
       mirrored(up.single, down.single, 'Single step');
-      assert.ok(Math.abs(Math.abs(up.single.points[0]) - height * 0.084) < 0.2);
+      assert.ok(Math.abs(Math.abs(up.single.points[0]) - height * 0.075) < 0.2);
       up.held.forEach((step, i) => mirrored(step, down.held[i], 'Held step ' + i));
       mirrored(up.reversed, down.reversed, 'Direction reversal');
       for (const row of up.geometry) {
-        const expected = height * (row.offset * 0.084 - (row.offset < 0 ? 0.25 : 0));
-        assert.ok(Math.abs(row.top - expected) < 0.2, 'Keep the existing settled row layout');
+        const gap = row.offset < 0 ? -0.284 : row.offset > 0 ? 0.087 : 0;
+        const expected = height * (row.offset * 0.075 + gap);
+        assert.ok(Math.abs(row.top - expected) < 0.2, 'Rows settle around the category and selection gaps');
       }
       assert.ok(
         result.reduced.every((value) => Math.abs(value) < 0.2),

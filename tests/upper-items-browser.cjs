@@ -26,11 +26,11 @@ module.exports=async function checkUpperItems(browser,checks,errors){
               labelBottom:el.querySelector('.item-text').getBoundingClientRect().bottom};
           })};
       });
-      assert.equal(geometry.upper.length,3);
+      assert.equal(geometry.upper.length,2);
       assert.ok(geometry.selected.top>geometry.bar.bottom);
       for(const item of geometry.upper){assert.ok(item.top>=0);assert.ok(item.bottom<geometry.bar.top);assert.equal(item.labelVisible,'visible');assert.equal(item.label,item.name);
         assert.ok(item.labelTop>=0);assert.ok(item.labelBottom<geometry.bar.top);}
-      assert.ok(geometry.upper[0].top<geometry.upper[1].top&&geometry.upper[1].top<geometry.upper[2].top);
+      assert.ok(geometry.upper[0].top<geometry.upper[1].top);
       fs.mkdirSync(path.resolve(__dirname,'../qa'),{recursive:true});
       await page.screenshot({path:path.resolve(__dirname,'../qa/upper-labels-'+width+'.png')});
       // Above-bar options remain named and clickable, not decorative duplicates.

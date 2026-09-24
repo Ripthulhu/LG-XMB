@@ -9,21 +9,21 @@
     {
       "id": "org.local.openxmb.c5",
       "title": "LG-XMB",
-      "iconUri": "https://raw.githubusercontent.com/Ripthulhu/LG-XMB/v0.1.33/app/icon.png",
+      "iconUri": "https://raw.githubusercontent.com/Ripthulhu/LG-XMB/v0.1.34/app/icon.png",
       "manifest": {
         "id": "org.local.openxmb.c5",
-        "version": "0.1.33",
+        "version": "0.1.34",
         "type": "web",
         "title": "LG-XMB",
-        "appDescription": "An XMB-style home screen for LG webOS TVs. Root is required for HDMI capture and Home replacement. The bundled helper sets up on launch with elevated Homebrew Channel and Python 3.7 or newer. Replacing LG Home requires separate setup; see the installation guide in the repository.",
-        "iconUri": "https://raw.githubusercontent.com/Ripthulhu/LG-XMB/v0.1.33/app/icon.png",
+        "appDescription": "An XMB-style launcher for rooted LG webOS TVs. Runs alongside LG Home, with optional Home-button assignment. Helper setup requires elevated Homebrew Channel and Python 3.7 or newer.",
+        "iconUri": "https://raw.githubusercontent.com/Ripthulhu/LG-XMB/v0.1.34/app/icon.png",
         "sourceUrl": "https://github.com/Ripthulhu/LG-XMB",
         "rootRequired": true,
-        "ipkUrl": "https://github.com/Ripthulhu/LG-XMB/releases/download/v0.1.33/org.local.openxmb.c5_0.1.33_all.ipk",
+        "ipkUrl": "https://github.com/Ripthulhu/LG-XMB/releases/download/v0.1.34/org.local.openxmb.c5_0.1.34_all.ipk",
         "ipkHash": {
-          "sha256": "331729e1da511647a0545b52e1a876c3294c950decfb9a88ac4c31c849bcd525"
+          "sha256": "32d13b6d30469971277315ff7025ca6a0435f933c550ce137b3a7d009b13f8fe"
         },
-        "ipkSize": 459290
+        "ipkSize": 469208
       }
     }
   ]

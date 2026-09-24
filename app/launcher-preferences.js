@@ -13,7 +13,7 @@
     screensaverBrightness: 0.25,
     screensaverWaveBrightness: 0.25,
     screensaverParticleBrightness: 0.25,
-    clockStyle: 'current',
+    clockStyle: 'ps3',
     motion: 'full',
     sound: false,
     previewMode: 'cached',
@@ -155,18 +155,16 @@
     } catch (ignore) {}
     // Load quality settings separately from appearance and TV preferences.
     if (saved && typeof saved === 'object') {
-      if ([30, 60].indexOf(saved.waveFrameRate) !== -1)
+      if ([20, 30, 60].indexOf(saved.waveFrameRate) !== -1)
         preferences.waveFrameRate = saved.waveFrameRate;
-      // 500 was Low until the densities became 1,000 / 2,000 / 4,000.
-      if (saved.waveParticleCount === 500) preferences.waveParticleCount = 1000;
-      else if ([1000, 2000, 4000].indexOf(saved.waveParticleCount) !== -1)
+      if ([500, 1000, 2000, 4000].indexOf(saved.waveParticleCount) !== -1)
         preferences.waveParticleCount = saved.waveParticleCount;
       preferences.musicEnabled = saved.musicEnabled === true;
       if ([0.1, 0.25, 0.5, 0.75, 1].indexOf(saved.musicVolume) !== -1)
         preferences.musicVolume = saved.musicVolume;
-      if ([1, 1.25, 1.5, 2].indexOf(saved.waveSampling) !== -1)
+      if ([0.5, 0.75, 1, 1.25, 1.5, 2].indexOf(saved.waveSampling) !== -1)
         preferences.waveSampling = saved.waveSampling;
-      if (['standard', 'high'].indexOf(saved.waveDetail) !== -1)
+      if (['coarse', 'standard', 'high'].indexOf(saved.waveDetail) !== -1)
         preferences.waveDetail = saved.waveDetail;
       // The former Soft amount is now the middle setting.
       if (saved.waveSoftness === 0.75) preferences.waveSoftness = 1.5;

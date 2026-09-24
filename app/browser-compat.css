@@ -18,6 +18,8 @@
 .no-flex-gap .input-preview-message:not(:empty) { margin-top: 1.3vh; }
 .no-flex-gap .option > * + * { margin-left: 1vw; }
 .no-flex-gap .option span:first-child > * + * { margin-left: 1.15vw; }
+/* Colour labels are text nodes, so the sibling selector above cannot space them. */
+.no-flex-gap .option .swatch { margin-right: 1.15vw; }
 .no-flex-gap .choice-options > * + * { margin-left: 0.6vw; }
 .no-flex-gap .background-option > * + * { margin-left: 1.3vw; }
 .no-flex-gap .background-option-control > * + * { margin-left: 0.9vw; }

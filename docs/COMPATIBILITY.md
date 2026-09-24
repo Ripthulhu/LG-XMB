@@ -10,7 +10,7 @@ than the model's purchase year. LG publishes the
 
 | Installed platform | Chromium | Current validation |
 | --- | --- | --- |
-| webOS 6.x | 79 | Community report: launcher runs after a CSP workaround; performance limited, native features unverified |
+| webOS 6.x | 79 | Community report: launcher runs; performance limited, native features unverified |
 | webOS 22 | 87 | Browser baseline; no current hardware test |
 | webOS 23 | 94 | Browser target; no current hardware test |
 | webOS 24 | 108 | Browser target; no current hardware test |
@@ -24,16 +24,21 @@ TV. See [LG's resolution requirements](https://webostv.developer.lge.com/develop
 
 ## Chromium 79 fallbacks
 
-webOS 6.x uses Chromium 79. On 22 September 2026, a community user reported
-that the launcher ran after relaxing its Content Security Policy (CSP), with
-limited performance. The model and native-feature results were not supplied.
-This is a community report, not a full compatibility test.
+webOS 6.x uses Chromium 79. A community user reported the launcher running
+there, with limited performance. The model and native-feature results were
+not supplied. This is a community report, not a full compatibility test.
 
-Version 0.1.33 explicitly permits `file:` sources for packaged scripts and
-local assets. It keeps the existing restrictions on plugins, base URLs and
-form submissions. The reported workaround also permitted inline scripts and
-other URL schemes; those are not used by Home and are not enabled here.
-This narrower policy still needs confirmation on the reporting TV.
+The current source was also checked in desktop Chromium **79.0.3945.0** on
+24 September 2026. The launcher started over local HTTP and directly from
+files with its shipped CSP. WebGL 2 waves, remote-key navigation, settings,
+long-press sorting, screensaver wake, PS3 fonts and the 720p preview layout
+worked without JavaScript errors. The no-WebGL fallback remained usable.
+This checks the browser engine, not webOS services or an older TV's frame rate.
+
+The earlier report attributed success to a broad Content Security Policy
+workaround. That was not established as the cause. The app uses a restrictive
+policy again; it does not allow arbitrary inline scripts or remote script
+sources. A CSP change does not grant webOS service or filesystem permissions.
 
 Checked against Can I Use on 22 September 2026:
 
@@ -41,7 +46,8 @@ Checked against Can I Use on 22 September 2026:
   Positioned layers use explicit top/right/bottom/left instead.
 - [Flex gaps](https://caniuse.com/flexbox-gap) start in Chromium 84.
   `browser-compat.js` measures support once; `browser-compat.css` supplies margins
-  for affected rows, including reordered clock contents. Grid gaps stay native.
+  for affected rows, including reordered clock contents and colour swatches
+  followed by plain text. Grid gaps stay native.
 - [`min()`, `max()` and `clamp()`](https://caniuse.com/css-math-functions) work in
   Chromium 79, so responsive sizing remains unchanged.
 
@@ -79,11 +85,13 @@ responses rather than a TV.
 | Feature | Requirement or limit |
 | --- | --- |
 | Menu and desktop preview | Browser support for the app's JavaScript and CSS |
-| Native app launching and HDMI names | The packaged app must be allowed to call the TV services |
-| Return to last app or input | Access to `com.webos.surfacemanager/getRecentsAppList`; verified from Home on the C5 |
+| Native app launching | The packaged app must be allowed to call the TV services |
+| Installed apps and input discovery | Standalone reads through elevated Homebrew Channel; Home replacements use native access |
+| Home button assignment | Root, elevated Homebrew Channel, Python 3.7+ and native default-app API; other models need testing |
+| Return to last app or input | Access to `com.webos.surfacemanager/getRecentsAppList`; verified under the stock Home identity on the C5; standalone permission is not guaranteed |
 | Cached HDMI pictures | Rooted Homebrew environment, Python and compatible capture behaviour |
 | Live HDMI preview | A working TV media pipeline; starting it can change HDR mode |
-| Home replacement | Root access and the matching stock Home layout; follow [Home setup](HOME-TAKEOVER.md) |
+| Home replacement | Optional; only tested on the LG C5, webOS 25 / 10.3.1. See [Home setup](HOME-TAKEOVER.md) |
 | App deletion and clock changes | Native service permission under the app's actual identity |
 | User audio | Readable local files and a working audio path |
 
@@ -107,10 +115,16 @@ does not grant the private app-list, input-label, capture, clock-write, removal,
 recent-app or audio-routing methods. Test those from the installed app under
 its actual identity; a successful root-shell call is not equivalent.
 
-The helper doesn't assign Home or manage background services. Home replacement
-is a separate root setup, not part of installing the IPK. Its stock Home paths
-and app type must match the target TV. Changing service permissions to force
-private APIs to work is not part of installation.
+Normal helper startup does not assign Home or manage background services.
+The separate **Remote → Home button** action uses the native default-app API,
+checks the result and preserves the Power On Screen settings. It does not
+modify startup hooks or mount files over LG Home. The control stays unavailable
+if a Home replacement is active or the TV cannot support the request.
+
+Standalone use is the normal installation path. Home replacement is a separate
+root setup tested only on the C5. Its stock Home paths and app type must match
+the target TV. Changing service permissions to force private APIs to work is
+not part of installation.
 
 ## Read-only diagnostic
 

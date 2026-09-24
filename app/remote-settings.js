@@ -1,8 +1,15 @@
-/* Back button setting view. SPDX-License-Identifier: GPL-3.0-or-later */
+/* Home and Back button settings. SPDX-License-Identifier: GPL-3.0-or-later */
 (function () {
   'use strict';
-  var errorMessage = '',
-    options = null;
+  var options = null,
+    generation = 0,
+    pendingRead = null,
+    home = null,
+    busy = false,
+    homeSection,
+    homeStatus,
+    retry,
+    error;
   function content() {
     return document.getElementById('modalContent');
   }
@@ -36,24 +43,111 @@
     content().appendChild(section);
     return section;
   }
-  function updateBackSelection(section) {
-    var selectedKey = 'Back button:' + options.getBack();
+  function selection(section, label, value) {
     [].forEach.call(section.querySelectorAll('[data-remote-choice]'), function (button) {
-      var selected = button.getAttribute('data-remote-choice') === selectedKey;
-      if (button.getAttribute('aria-pressed') !== String(selected)) {
-        button.setAttribute('aria-pressed', String(selected));
-        button.querySelector('.option-check').textContent = selected ? '✓' : '';
-      }
+      var selected = button.getAttribute('data-remote-choice') === label + ':' + value;
+      button.setAttribute('aria-pressed', String(selected));
+      button.querySelector('.option-check').textContent = selected ? '✓' : '';
     });
   }
+  function showError(message) {
+    error.textContent = message || '';
+    error.hidden = !message;
+  }
+  function showHome(message, canRetry) {
+    selection(homeSection, 'Home button', home && home.mode);
+    [].forEach.call(homeSection.querySelectorAll('button'), function (button) {
+      button.disabled = !home || !home.available;
+      // Keep focus on the chosen button while its write is being checked.
+      button.setAttribute('aria-disabled', String(button.disabled || busy));
+    });
+    homeStatus.textContent = message || '';
+    homeStatus.hidden = !message;
+    if (!canRetry && document.activeElement === retry) {
+      var target = content().querySelector('button:not(:disabled)[aria-pressed="true"]');
+      if (target) target.focus({ preventScroll: true });
+    }
+    retry.hidden = !canRetry;
+    retry.disabled = busy;
+  }
+  function readHome() {
+    if (busy) return;
+    var current = generation;
+    busy = true;
+    showHome('Checking Home button…', false);
+    Promise.resolve()
+      .then(function () {
+        if (current !== generation) return;
+        pendingRead = options.getHome();
+        return pendingRead;
+      })
+      .then(function (result) {
+        if (current !== generation) return;
+        pendingRead = null;
+        busy = false;
+        home = result;
+        showHome(
+          result.message || (result.mode === 'other' ? 'Another app is assigned to Home.' : ''),
+          !result.available && result.canRetry !== false
+        );
+      })
+      .catch(function (failure) {
+        if (current !== generation) return;
+        pendingRead = null;
+        busy = false;
+        home = null;
+        showHome(failure.message || 'Could not read the Home button setting.', true);
+      });
+  }
+  function setHome(value) {
+    if (busy || !home || !home.available || home.mode === value) return;
+    var current = generation;
+    busy = true;
+    showError('');
+    showHome('Saving Home button…', false);
+    Promise.resolve()
+      .then(function () {
+        if (current !== generation) return;
+        return options.setHome(value);
+      })
+      .then(function (result) {
+        if (current !== generation) return;
+        busy = false;
+        home = result;
+        showHome(result.message || '', !result.available && result.canRetry !== false);
+      })
+      .catch(function (failure) {
+        if (current !== generation) return;
+        busy = false;
+        // A failed reply can follow a successful write. Read again before another change.
+        home = null;
+        showHome(failure.message || 'Could not confirm the Home button setting.', true);
+      });
+  }
   function render() {
-    var root = content(),
-      scroll = root.scrollTop;
+    var root = content();
     root.textContent = '';
-    var error = element('p', 'background-error', errorMessage);
+    error = element('p', 'background-error');
     error.setAttribute('role', 'alert');
-    error.hidden = !errorMessage;
+    error.hidden = true;
     root.appendChild(error);
+    homeSection = group(
+      'Home button',
+      [
+        ['stock', 'LG Home'],
+        ['xmb', 'LG-XMB']
+      ],
+      null,
+      setHome
+    );
+    homeStatus = element('p', 'modal-intro');
+    homeStatus.setAttribute('role', 'status');
+    homeSection.appendChild(homeStatus);
+    retry = element('button', 'option', 'Retry');
+    retry.type = 'button';
+    retry.setAttribute('data-remote-retry', '');
+    retry.addEventListener('click', readHome);
+    root.appendChild(retry);
     var back = group(
       'Back button',
       [
@@ -64,32 +158,43 @@
       options.getBack(),
       function (value) {
         if (options.getBack() === value) return;
-        errorMessage = '';
+        showError('');
         try {
           options.setBack(value);
-        } catch (e) {
-          errorMessage = e.message || 'Could not save the Back button setting.';
+        } catch (failure) {
+          showError(failure.message || 'Could not save the Back button setting.');
         }
-        error.textContent = errorMessage;
-        error.hidden = !errorMessage;
-        // Keep the buttons in place so saving does not interrupt pointer or remote focus.
-        updateBackSelection(back);
+        selection(back, 'Back button', options.getBack());
       }
     );
-    var target = root.querySelector('[aria-pressed="true"]') || root.querySelector('button');
+    showHome('Checking Home button…', false);
+    var target = back.querySelector('[aria-pressed="true"]') || back.querySelector('button');
     if (target) target.focus({ preventScroll: true });
-    root.scrollTop = scroll;
+    root.scrollTop = 0;
+  }
+  function close() {
+    generation++;
+    if (pendingRead && typeof pendingRead.cancel === 'function') pendingRead.cancel();
+    pendingRead = null;
+    options = null;
+    busy = false;
+    home = null;
   }
   window.C5RemoteSettings = {
     open: function (callbacks) {
-      errorMessage = '';
+      close();
       options = callbacks;
       render();
+      readHome();
     },
-    // Shared settings lifecycle hook; this synchronous panel has nothing to cancel.
-    close: function () {},
+    close: close,
     getState: function () {
-      return { back: options ? options.getBack() : null };
+      return {
+        back: options ? options.getBack() : null,
+        home: home && home.mode,
+        homeAvailable: !!(home && home.available),
+        homeBusy: busy
+      };
     }
   };
 })();

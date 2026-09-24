@@ -66,25 +66,29 @@
         'Frame rate',
         [
           [60, '60 fps'],
-          [30, '30 fps']
+          [30, '30 fps'],
+          [20, '20 fps']
         ],
         'waveFrameRate'
       );
       qualityChoice(
-        'Supersampling',
+        'Render resolution',
         [
-          [1, 'Off'],
-          [1.25, '1.25×'],
-          [1.5, '1.5×'],
-          [2, '2×']
+          [0.5, '50%'],
+          [0.75, '75%'],
+          [1, '100%'],
+          [1.25, '125%'],
+          [1.5, '150%'],
+          [2, '200%']
         ],
         'waveSampling'
       );
       qualityChoice(
         'Mesh detail',
         [
-          ['standard', 'Reduced'],
-          ['high', 'Original']
+          ['coarse', 'Low'],
+          ['standard', 'Medium'],
+          ['high', 'High']
         ],
         'waveDetail'
       );
@@ -99,11 +103,12 @@
       );
       // The emitter has a 4,096-slot pool; density limits the live population.
       qualityChoice(
-        'Particle density',
+        'Particle count',
         [
-          [1000, 'Low'],
-          [2000, 'Medium'],
-          [4000, 'High']
+          [500, '500'],
+          [1000, '1,000'],
+          [2000, '2,000'],
+          [4000, '4,000']
         ],
         'waveParticleCount'
       );
@@ -191,7 +196,9 @@
           preferences.background = 'wallpaper';
           applyPreferences();
           save();
-          ui.selectChoice(source, 'wallpaper');
+          // The panel may have been reopened while the image was loading.
+          var currentSource = content.querySelector('.background-source');
+          if (currentSource) ui.selectChoice(currentSource, 'wallpaper');
         });
       }
       [

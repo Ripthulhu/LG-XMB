@@ -12,8 +12,8 @@ runs on the TV. Keep the folder readable (`0755`) and files readable (`0644`).
 Open Home after copying them. If Home was already running, close and reopen it.
 On a rooted TV, helper setup creates `media-fonts` links in the installed app
 and matching Home replacement. Fonts stay in internal storage across updates;
-setup does not copy, change or delete them. Existing personal-build fonts remain
-a fallback. No fonts are included in normal IPKs.
+setup does not copy, change or delete them. Missing or unreadable fonts use the system font. The old app-local
+`user-fonts` directory is no longer read. No fonts are included in normal IPKs.
 
 ## Preparing your own copies
 
@@ -33,17 +33,12 @@ python -m pip install fonttools
 python tools/import-ps3-fonts.py "/path/to/dev_flash/data/font"
 ```
 
-Use `python3` where appropriate. `npm run preview` uses the prepared files as
-soon as they are present. For a personal IPK:
+Use `python3` where appropriate. Copy the prepared files from `app/user-fonts/`
+to `/media/internal/lg-xmb/Fonts/`. The importer output is only a staging folder;
+Home never loads fonts from that old app-local path.
 
-```sh
-npm run package -- --personal-fonts
-```
-
-The font files are not included in Git or normal builds. Keep personal builds
-separate from releases; the firmware fonts are not part of this project's
-licence. A normal `npm run package` still excludes them, even when they are
-present locally.
+Font files are not included in Git or normal builds. The firmware fonts are not
+part of this project's licence.
 
 `app/fonts.css` owns the font faces and fallback order. Buttons and both clock
 styles inherit the same family. The files load once, with no per-frame work;

@@ -17,12 +17,14 @@ function setup(overrides = {}) {
   const window = {
     location: { protocol: 'file:', search: '' },
     navigator: { userAgent: 'Mozilla/5.0 (Web0S; Linux/SmartTV) Chrome/120' },
-    PalmSystem: { identifier: 'org.local.openxmb.c5 1234' },
+    PalmSystem: { identifier: 'com.webos.app.home 1234' },
     PalmServiceBridge,
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id; },
     clearTimeout(id) { timers.delete(id); },
     ...overrides
   };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../app/input-discovery.js'), 'utf8'), { window });
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../app/tv-discovery.js'), 'utf8'), { window, Promise });
   vm.runInNewContext(source, { window, Promise });
   function respond(index, value) { calls[index].bridge.onservicecallback(typeof value === 'string' ? value : JSON.stringify(value)); }
   return { tv: window.C5TV, calls, bridges, timers, window, respond };
@@ -83,11 +85,11 @@ test('launch checks installation first and sends only the selected ID', async ()
   assert.equal(h.timers.size, 0);
 });
 
-test('denied enumeration preserves explicit failure for UI curated fallback', async () => {
+test('denied enumeration reports failure without a guessed catalog', async () => {
   const h = setup();
   const result = h.tv.listApps();
   h.respond(0, { returnValue: false, errorCode: -1, errorText: 'Denied method call' });
-  await assert.rejects(result, e => e.code === 'SERVICE_ERROR' && e.serviceCode === -1 && /Denied/.test(e.message));
+  await assert.rejects(result, e => e.code === 'SERVICE_ERROR' && e.serviceCode === -1);
   assert.equal(h.calls.length, 1);
 });
 
@@ -145,8 +147,11 @@ test('invalid IDs and inputs cause no native requests', async () => {
   assert.equal(h.calls.length, 0);
 });
 
-test('The HDMI helper uses ordinary app launch with no settings', async () => {
+test('A discovered input uses ordinary app launch with no settings', async () => {
   const h = setup();
+  const inventory = h.tv.listInputs();
+  h.respond(0, {returnValue:true,devices:[{appId:'com.webos.app.hdmi4',id:'HDMI_4',port:4}]});
+  await inventory;
   for (const [operation, expected] of [
     [() => h.tv.openInput('HDMI_4'), 'com.webos.app.hdmi4']
   ]) {
@@ -157,8 +162,8 @@ test('The HDMI helper uses ordinary app launch with no settings', async () => {
     h.respond(start + 1, { returnValue: true });
     assert.equal((await result).id, expected);
   }
-  assert.ok(h.calls.every(call => /\/(getAppLoadStatus|launch)$/.test(call.uri)));
-  assert.equal(Object.keys(h.tv).sort().join(','), 'connectMusicAudio,getInputPreviewStatus,isTV,launch,listApps,listInputLabels,openInput,platformBack,returnToPrevious');
+  assert.ok(h.calls.slice(1).every(call => /\/(getAppLoadStatus|launch)$/.test(call.uri)));
+  assert.equal(Object.keys(h.tv).sort().join(','), 'connectMusicAudio,getInputPreviewStatus,isTV,launch,listApps,listInputs,openInput,platformBack,returnToPrevious');
 });
 
 test('Back uses native recent order, skips Home and checks the last app or input before launching', async () => {
@@ -327,7 +332,7 @@ test('LG Back uses only the platform exit API on TV, remains preview-only on des
 });
 
 test('music audio is connected to the main sink only under the Home identity', async () => {
-  const dev = setup();
+  const dev = setup({PalmSystem:{identifier:'org.local.openxmb.c5 1234'}});
   assert.equal((await dev.tv.connectMusicAudio()).reason, 'not-needed');
   assert.equal(dev.calls.length, 0);
 

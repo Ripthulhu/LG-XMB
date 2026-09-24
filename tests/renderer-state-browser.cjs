@@ -63,11 +63,11 @@ async function main() {
       for (let i = 0; i < 20; i++) testWave.draw();
       return { uniforms, calls: { ...calls }, configurations, frame: frameState() };
     });
-    assert.equal(measured.uniforms, 32, 'stable frame uploads only dynamic values, including idle gains');
-    assert.equal(measured.calls.uniform4fv, 4 * 21, 'two wave basis uploads and two particle projections per frame');
+    assert.equal(measured.uniforms, 22, 'retained wave frames upload only compositor and particle values, including idle gains');
+    assert.equal(measured.calls.uniform4fv, 2 * 21, 'only two particle projections per retained frame');
     assert.equal(measured.configurations, 0, 'drawing does not normalize unchanged quality settings');
     assert.deepEqual(measured.frame, original);
-    checks.push('Repeated draws preserve pixels with 32 uniform uploads per frame and no quality normalization');
+    checks.push('Repeated draws preserve pixels with 22 uniform uploads per frame and no quality normalization');
 
     const changed = await page.evaluate(() => {
       testWave.setPaused(true);
@@ -177,10 +177,59 @@ async function main() {
     const restored = await page.evaluate(() => frameState());
     assert.deepEqual(restored, original, 'new programs receive their immutable material again');
     checks.push('Context restoration rebuilds materials and reproduces the same frame');
+
+    const retainedWave = await page.evaluate(() => {
+      const renderer = testWave.renderer, gl = testWave.gl;
+      let waveCommands = 0;
+      const drawElements = gl.drawElements.bind(gl);
+      gl.drawElements = function () {waveCommands++; return drawElements(...arguments);};
+      for (let frame = 1; frame <= 72; frame++) {
+        testWave.idleBrightness.background = 1 - frame / 90;
+        testWave.idleBrightness.wave = 1 - frame / 144;
+        testWave.draw();
+      }
+      const fadeWaveCommands = waveCommands, faded = frameState();
+      renderer.waveTarget = null;
+      const freshFade = frameState();
+      testWave.idleBrightness = {background: 1, wave: 1, particles: 1};
+      const comparisons = [];
+      for (const [name, invalidate, change] of [
+        ['retained', false, () => {}],
+        ['display brightness', false, () => testWave.brightness = 0.6],
+        ['wave filters', false, () => renderer.configure({softness: 3, postprocess: 'wave'})],
+        ['wave colour', true, () => testWave.wave[1] += 0.1],
+        ['animated geometry', true, () => testWave.simulation.advance(1 / 60, true)],
+        ['mesh detail', true, () => renderer.configure({detail: 'standard'})],
+        ['target sampling', true, () => renderer.configure({sampling: 1.25})],
+        ['output aspect', true, () => testWave.canvas.width = 480]
+      ]) {
+        change();
+        const before = waveCommands, first = frameState(), afterFirst = waveCommands;
+        const repeated = frameState(), afterRepeated = waveCommands;
+        renderer.waveTarget = null;
+        const fresh = frameState();
+        comparisons.push({name, invalidate, first, repeated, fresh,
+          initialCommands: afterFirst - before, repeatedCommands: afterRepeated - afterFirst,
+          forcedCommands: waveCommands - afterRepeated});
+      }
+      return {fadeWaveCommands, faded, freshFade, comparisons};
+    });
+    assert.equal(retainedWave.fadeWaveCommands, 0, '72 held fade frames need no wave geometry draws');
+    assert.deepEqual(retainedWave.faded, retainedWave.freshFade);
+    for (const result of retainedWave.comparisons) {
+      assert.equal(result.initialCommands, Number(result.invalidate), result.name);
+      assert.equal(result.repeatedCommands, 0, result.name);
+      assert.equal(result.forcedCommands, 1, result.name);
+      assert.deepEqual(result.first, result.fresh, result.name + ' matches a freshly rendered wave');
+      assert.deepEqual(result.repeated, result.fresh, result.name + ' retains identical pixels');
+      assert.equal(result.first.error, 0, result.name);
+    }
+    checks.push('72 held fade frames skip all wave geometry draws; retained pixels match fresh rendering across colour, geometry, mesh, sampling and aspect changes');
     assert.deepEqual(errors, []);
     await page.evaluate(() => testWave.destroy());
     console.log(JSON.stringify({ passed: checks.length, checks, browser: await browser.version(),
-      steadyFrameUniformUploads: measured.uniforms, testedOnTV: false }, null, 2));
+      steadyFrameUniformUploads: measured.uniforms, heldFadeWaveDraws: retainedWave.fadeWaveCommands,
+      testedOnTV: false }, null, 2));
   } finally { await browser.close(); }
 }
 

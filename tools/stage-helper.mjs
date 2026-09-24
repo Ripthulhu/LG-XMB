@@ -12,8 +12,8 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export function validateHelperSources(sources) {
   if (!sources || typeof sources !== 'object' || Array.isArray(sources) ||
-      !['thumbnail_cache.py', 'stop_thumbnail_helper.py'].every(name => Object.hasOwn(sources, name)))
-    throw new Error('Helper inventory must include the capture and recovery entry points.');
+      !['thumbnail_cache.py', 'stop_thumbnail_helper.py', 'home_button.py'].every(name => Object.hasOwn(sources, name)))
+    throw new Error('Helper inventory must include the capture, recovery and Home button entry points.');
   for (const [name, relative] of Object.entries(sources)) {
     if (!/^[a-z][a-z0-9_]*\.py$/.test(name) || typeof relative !== 'string' ||
         !/^tv-helper\/(?:[a-z][a-z0-9_-]*\/)*[a-z][a-z0-9_]*\.py$/.test(relative))

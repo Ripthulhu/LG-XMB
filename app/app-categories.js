@@ -3,7 +3,10 @@
   'use strict';
   var CATEGORY_STORAGE_KEY = 'lg-xmb-app-categories-v1',
     HIDDEN_STORAGE_KEY = 'lg-xmb-hidden-apps-v1';
-  // Settings and HDMI actions stay fixed; only app shortcuts are assignable.
+  var inputs =
+    root.LGXMBInputs ||
+    (typeof module === 'object' && module.exports ? require('./input-discovery.js') : null);
+  // Settings and input actions stay fixed; only app shortcuts are assignable.
   var DESTINATIONS = ['photo', 'music', 'video', 'tv', 'apps', 'browser', 'network'];
   function isValidAppId(id) {
     return (
@@ -193,7 +196,14 @@
       metadata = false,
       removedChanged = false;
     apps.forEach(function (app) {
-      if (!app || !isValidAppId(app.id) || isLauncher(app.id) || next.has(app.id)) return;
+      if (
+        !app ||
+        !isValidAppId(app.id) ||
+        isLauncher(app.id) ||
+        next.has(app.id) ||
+        (inputs && inputs.identity(app.id))
+      )
+        return;
       var item = this.inventory.get(app.id),
         name = sanitizeTitle(app.title, app.id);
       if (!item)
@@ -226,6 +236,46 @@
     }, this);
     if (removedChanged) this.persistRemoved();
     this.inventory = next;
+    return this.rebuild(selections) || metadata;
+  };
+  // Replace physical inputs from a complete EIM snapshot, retaining row objects
+  // and selection. Keeping this in the model prevents app refreshes from
+  // resurrecting sockets that do not exist on this TV.
+  AppCategories.prototype.reconcileInputs = function (snapshot, selections) {
+    if (!inputs || !Array.isArray(snapshot) || snapshot.length > 128)
+      throw new Error('Invalid input list.');
+    var ci = this.categories.findIndex(function (category) {
+      return category.id === 'tv';
+    });
+    if (ci < 0) return false;
+    var before = this.base[ci],
+      byId = new Map(),
+      seen = new Set(),
+      metadata = false;
+    before.forEach(function (item) {
+      if (item.action === 'input') byId.set(item.id, item);
+    });
+    var rows = snapshot
+      .map(function (input) {
+        var next = inputs.item(input);
+        if (!next || seen.has(next.id)) return null;
+        seen.add(next.id);
+        var row = byId.get(next.id);
+        if (!row) return next;
+        Object.keys(next).forEach(function (key) {
+          if (row[key] !== next[key]) {
+            row[key] = next[key];
+            metadata = true;
+          }
+        });
+        return row;
+      })
+      .filter(Boolean);
+    this.base[ci] = before
+      .filter(function (item) {
+        return item.action !== 'input';
+      })
+      .concat(rows);
     return this.rebuild(selections) || metadata;
   };
   // Rebuild category membership from curated rows, installed apps and user
@@ -288,13 +338,15 @@
         });
       lists[ci].push(item);
     }
-    // Curated shortcuts retain their category-specific labels and actions.
+    // Catalog entries provide placement and artwork, never proof an app exists.
+    // Native inventory must confirm each shortcut before it is shown.
     this.base.forEach(function (items, ci) {
       items.forEach(function (item) {
         if (item.action) {
           appendRow(ci, item);
           return;
         }
+        if (!this.inventory.has(item.id)) return;
         if (!byId.has(item.id)) byId.set(item.id, item);
         seen.add(item.id);
         if (this.hidden[item.id] || this.order.removed.has(item.id) || this.assignments[item.id])

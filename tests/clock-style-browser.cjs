@@ -168,11 +168,17 @@ async function checkClock(browser, url) {
     });
     await page.goto(url);
     await ready();
+    assert.equal((await state()).preferences.clockStyle, 'ps3');
+    await expectPS3Layout();
+    checks.push('New settings default to the PS3 clock');
+    await openPanel();
+    await choice('Current').click();
+    await closePanels();
     await expectCurrent();
     assert.equal(await page.locator('#time').textContent(), '09:45');
     await screenshot('clock-current-1080.png');
     checks.push(
-      'Current remains the default plain clock, with the original time and date formatting'
+      'Current remains available with its original time and date formatting'
     );
 
     await openPanel();
@@ -259,9 +265,10 @@ async function checkClock(browser, url) {
     });
     await page.reload();
     await ready();
-    await expectCurrent();
+    assert.equal((await state()).preferences.clockStyle, 'ps3');
+    await expectPS3Layout();
     checks.push(
-      'Both styles survive reload; an unsupported stored style safely returns to Current'
+      'Both styles survive reload; an unsupported stored style safely returns to PS3'
     );
 
     await openPanel();

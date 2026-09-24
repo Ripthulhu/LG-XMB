@@ -3,11 +3,40 @@
 // updates row offsets in place. No TV service calls or animation-frame layout reads.
 (function (root) {
   'use strict';
-  var ROW_STEP = 8.4,
-    BAR_GAP = 25;
   function LauncherView(options) {
     var categories = options.categories,
       selections = options.selections;
+    var layout;
+    function readLayout() {
+      // CSS owns the layout. Cache viewport percentages here; never measure
+      // styles or element bounds while navigating or animating particles.
+      var style = getComputedStyle(document.documentElement);
+      function value(name) {
+        return parseFloat(style.getPropertyValue(name));
+      }
+      layout = {
+        anchor: value('--anchor'),
+        categoryCenter: value('--xmb-category-center'),
+        selectedCenter: value('--xmb-selected-center'),
+        rowHeight: value('--xmb-row-height'),
+        rowStep: value('--xmb-row-step'),
+        upperGap: value('--xmb-upper-gap'),
+        lowerGap: value('--xmb-lower-gap')
+      };
+      layout.above = Math.max(
+        0,
+        Math.floor(
+          (layout.selectedCenter - layout.upperGap - layout.rowHeight / 2) / layout.rowStep
+        )
+      );
+      layout.below = Math.max(
+        0,
+        Math.floor(
+          (100 - layout.selectedCenter - layout.lowerGap - layout.rowHeight / 2) / layout.rowStep
+        )
+      );
+    }
+    readLayout();
     var $ = function (id) {
       return document.getElementById(id);
     };
@@ -75,7 +104,6 @@
         if (!wrap) {
           wrap = document.createElement('div');
           wrap.className = 'rows';
-          wrap.style.setProperty('--item-bar-gap', -BAR_GAP + 'vh');
           wrap.setAttribute('role', 'none');
           wrap.setAttribute('data-category', cat.id);
           list.appendChild(wrap);
@@ -193,19 +221,33 @@
       categories.forEach(function (cat, i) {
         out.push({
           id: 'c' + i,
-          x: (31 + (i - selectedCategory) * LGXMBCategoryTransition.DISTANCE) / 50 - 1,
-          y: 1 - 32.6 / 50
+          x: (layout.anchor + (i - selectedCategory) * LGXMBCategoryTransition.DISTANCE) / 50 - 1,
+          y: 1 - layout.categoryCenter / 50
         });
       });
-      for (var i = Math.max(0, index - 3); i <= Math.min(rows - 1, index + 3); i++) {
+      for (
+        var i = Math.max(0, index - layout.above);
+        i <= Math.min(rows - 1, index + layout.below);
+        i++
+      ) {
         var offset = i - index;
         out.push({
           id: 'r' + selectedCategory + ':' + i,
-          x: 31 / 50 - 1,
-          y: 1 - (52 + offset * ROW_STEP - (offset < 0 ? BAR_GAP : 0) + 3.25) / 50
+          x: layout.anchor / 50 - 1,
+          y: 1 - rowCenter(offset) / 50
         });
       }
       return out;
+    }
+    function rowCenter(offset) {
+      return (
+        layout.selectedCenter +
+        offset * layout.rowStep +
+        (offset < 0 ? -layout.upperGap : offset > 0 ? layout.lowerGap : 0)
+      );
+    }
+    function rowVisible(offset) {
+      return offset >= -layout.above && offset <= layout.below;
     }
     function renderRows(ci) {
       var index = selections[ci];
@@ -214,16 +256,18 @@
           previous = itemOffsets.get(button);
         if (previous === offset) return;
         var first = previous === undefined,
-          visible = offset >= -3 && offset <= 3;
-        // The category-bar gap is a layout offset, not part of row motion.
-        // Both directions then move one row instead of Up crossing the gap.
-        button.style.setProperty('--item-y', offset * ROW_STEP + 'vh');
+          visible = rowVisible(offset);
+        // Space around the selection and category bar is an instant layout
+        // offset. Only equal row steps animate, preserving Up/Down timing.
+        button.style.setProperty('--item-y', offset * layout.rowStep + 'vh');
         if (first || previous < 0 !== offset < 0) button.classList.toggle('above-bar', offset < 0);
+        if (first || previous > 0 !== offset > 0)
+          button.classList.toggle('below-selection', offset > 0);
         if (first || (previous === 0) !== (offset === 0)) {
           button.classList.toggle('selected', offset === 0);
           button.setAttribute('aria-selected', offset === 0 ? 'true' : 'false');
         }
-        if (first || visible !== (previous >= -3 && previous <= 3)) {
+        if (first || visible !== rowVisible(previous)) {
           button.style.visibility = visible ? 'visible' : 'hidden';
           button.setAttribute('aria-hidden', visible ? 'false' : 'true');
         }
@@ -231,6 +275,14 @@
         if (button.style.getPropertyValue('--item-alpha') !== itemAlpha)
           button.style.setProperty('--item-alpha', itemAlpha);
         itemOffsets.set(button, offset);
+      });
+    }
+
+    function refreshLayout() {
+      readLayout();
+      itemOffsets = new WeakMap();
+      itemLists.forEach(function (_, ci) {
+        renderRows(ci);
       });
     }
 
@@ -249,6 +301,7 @@
       renderRows: renderRows,
       detail: detail,
       menuObjects: menuObjects,
+      refreshLayout: refreshLayout,
       updateItemLabel: updateItemLabel
     };
   }

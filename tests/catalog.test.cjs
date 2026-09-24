@@ -66,14 +66,12 @@ test('categories are populated, unique and use distinct existing icons', () => {
   }
   assert.equal(icons.size, 8);
 });
-test('TV starts with Live TV and retains all four physical inputs', () => {
+test('catalog contains placement metadata but no assumed physical inputs', () => {
   const tv = load().C5Catalog.find((c) => c.id === 'tv');
-  assert.equal(tv.items[0].id, 'com.webos.app.livetv');
-  assert.equal(tv.items[1].id, 'com.webos.app.lgchannels');
-  assert.deepEqual(
-    plain(tv.items.filter((i) => i.action === 'input').map((i) => i.id)),
-    [1, 2, 3, 4].map((n) => 'com.webos.app.hdmi' + n)
-  );
+  assert.deepEqual(plain(tv.items.map((i) => i.id)), [
+    'com.webos.app.livetv', 'com.webos.app.lgchannels'
+  ]);
+  assert.equal(load().C5Catalog.some((c) => c.items.some((i) => i.action === 'input')), false);
 });
 test('existing local settings and native TV settings remain accessible', () => {
   const s = load().C5Catalog[0];

@@ -16,12 +16,12 @@ async function load(p,data={}){
  },data);
  let html=fs.readFileSync(path.join(base,'app/index.html'),'utf8').replace(/<script src="[^"]+"><\/script>/g,'').replace(/<link[^>]+rel="stylesheet"[^>]*>/g,'');await p.setContent(html);
  for(const name of ['style.css','clock.css','item-options.css','date-time-settings.css'])await p.addStyleTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
- for(const name of ['icons.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
+ for(const name of ['icons.js','input-discovery.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'tests/fixtures/catalog-platform.js'),'utf8')});
  await p.evaluate(()=>{
   window.h={apps:[{id:'org.test.one',title:'Alpha Player'},{id:'org.test.two',title:'Beta Tools'},{id:'cdp-30',title:'Plex'}],reads:[],removes:[],meta:[],delay:false,fail:false};
-  C5TV.listInputLabels=()=>Promise.resolve({preview:false,inputs:[{id:'com.webos.app.hdmi2',port:2,label:'Game console'}]});
-  C5TV.listApps=()=>{let resolve,reject;const p=new Promise((a,b)=>{resolve=a;reject=b;});const r={resolve,reject,cancelled:false};h.reads.push(r);p.cancel=()=>{r.cancelled=true;reject(Error('Cancelled'));};if(!h.delay){if(h.fail)reject(Error('Permission denied'));else resolve({preview:false,apps:JSON.parse(JSON.stringify(h.apps))});}return p;};
+  C5TV.listInputs=()=>Promise.resolve({preview:false,inputs:[{id:'com.webos.app.hdmi2',port:2,label:'Game console'}]});
+  C5TV.listApps=()=>{let resolve,reject;const p=new Promise((a,b)=>{resolve=a;reject=b;});const r={resolve,reject,cancelled:false};h.reads.push(r);p.cancel=()=>{r.cancelled=true;reject(Error('Cancelled'));};if(!h.delay){if(h.fail)reject(Error('Permission denied'));else resolve({preview:false,apps:[...catalogHarness.builtins,...JSON.parse(JSON.stringify(h.apps))]});}return p;};
   window.PalmSystem={identifier:'com.webos.app.home'};
   window.PalmServiceBridge=function(){this.cancel=()=>{};this.call=(uri,json)=>{
    const data=JSON.parse(json),r={uri,data,reply:this.onservicecallback};
@@ -126,7 +126,7 @@ async function multiChecks(ctx,width){
  try{
   await load(p);assert.deepEqual(await places(p,'cdp-30'),['apps']);checks.push(width+': Plex discovered in Apps, no curated duplicate');
   await go(p,'apps','org.test.one');const launches=await p.evaluate(()=>catalogHarness.launches.length);
-  await p.keyboard.down('Enter');await p.waitForTimeout(680);assert.equal((await state(p)).itemOptions.open,true);assert.equal((await state(p)).itemOptions.opening,false);await p.keyboard.up('Enter');assert.equal(await p.evaluate(()=>catalogHarness.launches.length),launches);
+  await p.keyboard.down('Enter');await p.waitForFunction(()=>C5App.getState().itemOptions.open);assert.equal((await state(p)).itemOptions.opening,false);await p.keyboard.up('Enter');assert.equal(await p.evaluate(()=>catalogHarness.launches.length),launches);
   const style=await p.locator('.item-options-panel').evaluate(e=>{const s=getComputedStyle(e);return {duration:s.transitionDuration,animation:s.animationName,transform:s.transform,will:s.willChange,bg:s.backgroundColor};});
   assert.deepEqual(style,{duration:'0s',animation:'none',transform:'none',will:'auto',bg:'rgba(0, 0, 0, 0)'});assert.equal(await p.evaluate(()=>document.activeElement.dataset.action),'start');assert.equal(await p.locator('.item-options-panel').evaluate(e=>e.getAnimations().length),0);checks.push(width+': long hold opens immediately with no slide, layers hint, or accidental launch');
   await p.screenshot({path:path.join(out,'options-'+width+'.png')});

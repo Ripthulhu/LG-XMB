@@ -5,8 +5,7 @@
    consistently across browser platforms, without moving individual controls. */
 @font-face {
   font-family: 'XMB Rodin';
-  src: url('media-fonts/SCE-PS3-RD-L-LATIN2.TTF') format('truetype'),
-    url('user-fonts/SCE-PS3-RD-L-LATIN2.TTF') format('truetype');
+  src: url('media-fonts/SCE-PS3-RD-L-LATIN2.TTF') format('truetype');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
@@ -16,8 +15,7 @@
 }
 @font-face {
   font-family: 'XMB Rodin';
-  src: url('media-fonts/SCE-PS3-RD-R-LATIN2.TTF') format('truetype'),
-    url('user-fonts/SCE-PS3-RD-R-LATIN2.TTF') format('truetype');
+  src: url('media-fonts/SCE-PS3-RD-R-LATIN2.TTF') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -27,8 +25,7 @@
 }
 @font-face {
   font-family: 'XMB Rodin';
-  src: url('media-fonts/SCE-PS3-RD-B-LATIN2.TTF') format('truetype'),
-    url('user-fonts/SCE-PS3-RD-B-LATIN2.TTF') format('truetype');
+  src: url('media-fonts/SCE-PS3-RD-B-LATIN2.TTF') format('truetype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;

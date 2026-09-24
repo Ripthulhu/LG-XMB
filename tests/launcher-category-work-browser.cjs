@@ -13,6 +13,7 @@ const {launchOptions} = require('./support/menu-navigation.cjs');
       const page = await browser.newPage();
       try {
         await page.setContent('<div id="categories"></div><div id="items"></div>');
+        await page.addStyleTag({path: path.resolve(__dirname, '../app/style.css')});
         await page.addScriptTag({content: 'window.C5Icon = () => "<svg></svg>";'});
         for (const name of ['category-transition.js', 'launcher-view.js'])
           await page.addScriptTag({path: path.resolve(__dirname, '../app', name)});

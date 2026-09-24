@@ -26,14 +26,15 @@
       return allowed.indexOf(o[name]) >= 0 ? o[name] : p[name];
     }
     return {
-      sampling: select('sampling', [1, 1.25, 1.5, 2]),
-      detail: o.detail === 'fine' ? 'high' : select('detail', ['low', 'standard', 'high']),
+      sampling: select('sampling', [0.5, 0.75, 1, 1.25, 1.5, 2]),
+      detail:
+        o.detail === 'fine' ? 'high' : select('detail', ['coarse', 'low', 'standard', 'high']),
       softness: o.softness === 0.75 ? 1.5 : select('softness', [0, 1.5, 3]),
       postprocess: o.postprocess === 'fxaa' ? 'wave' : select('postprocess', ['off', 'wave']),
       strength: select('strength', ['gentle', 'normal', 'strong']),
       particles: typeof o.particles === 'boolean' ? o.particles : p.particles,
       particleCount: select('particleCount', [500, 1000, 2000, 4000]),
-      frameRate: select('frameRate', [30, 60])
+      frameRate: select('frameRate', [20, 30, 60])
     };
   }
   function same(a, b) {
@@ -428,7 +429,12 @@
     return result;
   };
   Renderer.prototype.updateGrid = function () {
-    var n = this.settings.detail === 'low' || this.settings.detail === 'standard' ? 64 : 128;
+    var n =
+      this.settings.detail === 'coarse'
+        ? 32
+        : this.settings.detail === 'low' || this.settings.detail === 'standard'
+          ? 64
+          : 128;
     if (this.grid === n) return;
     var gl = this.gl,
       indices = new Uint16Array((n - 1) * (n - 1) * 6 + (n - 1) * 12),
@@ -512,7 +518,13 @@
       key = w + 'x' + h + '@' + s.sampling;
     if (key === this.allocationKey) return;
     this.samplingFallback = null;
-    var scales = [s.sampling, 1],
+    // Retry with smaller targets only; a reduced resolution must never fall
+    // back to a larger allocation after the device refuses it.
+    var scales = [s.sampling].concat(
+        [1, 0.75, 0.5].filter(function (scale) {
+          return scale < s.sampling;
+        })
+      ),
       last = '',
       candidate = null;
     for (var i = 0; i < scales.length && !candidate; i++) {
@@ -823,22 +835,43 @@
     this.outputHeight = h;
     var gl = this.gl,
       t = this.target,
-      p = this.simulation.particles;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, t.framebuffer);
-    gl.viewport(0, 0, t.width, t.height);
+      p = this.simulation.particles,
+      revision = this.simulation.wave.revision,
+      aspect = w / h;
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
     gl.disable(gl.SCISSOR_TEST);
     gl.disable(gl.STENCIL_TEST);
     gl.colorMask(true, true, true, true);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.enable(gl.BLEND);
-    gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
-    gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
-    // Keep the original wave signal for filtering. Independent idle gains are
-    // applied after tone mapping, before the existing appearance brightness.
-    this.wavePass(w / h, wave, 1);
+    // The offscreen wave signal survives held/reduced-motion frames. Brightness
+    // fades and filter changes only affect the compositor, so reuse that signal
+    // until its geometry, colour, projection or target actually changes.
+    if (
+      this.waveTarget !== t ||
+      this.waveRevision !== revision ||
+      this.waveGrid !== this.grid ||
+      this.waveAspect !== aspect ||
+      this.waveRed !== wave[0] ||
+      this.waveGreen !== wave[1] ||
+      this.waveBlue !== wave[2]
+    ) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.framebuffer);
+      gl.viewport(0, 0, t.width, t.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.enable(gl.BLEND);
+      gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+      gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+      // Retain the original signal for filtering and post-tone-map idle gains.
+      this.wavePass(aspect, wave, 1);
+      this.waveTarget = t;
+      this.waveRevision = revision;
+      this.waveGrid = this.grid;
+      this.waveAspect = aspect;
+      this.waveRed = wave[0];
+      this.waveGreen = wave[1];
+      this.waveBlue = wave[2];
+    }
     this.lastCount = 0;
 
     gl.disable(gl.BLEND);
@@ -973,6 +1006,7 @@
       });
     }
     this.target = null;
+    this.waveTarget = null;
     this.backdrop = null;
     this.monthlyTarget = null;
     this.monthlyTexture = null;
@@ -1316,6 +1350,7 @@
   C5Wave.prototype.draw = function () {
     if (!this.allowed()) return;
     if (this.mode === 'static') {
+      this.refreshClock();
       this.paintStatic();
       this.scheduleClock();
       return;

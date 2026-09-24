@@ -204,7 +204,7 @@ test('compositor hints are confined to temporary screensaver fades', () => {
   }
 });
 
-test('opacity is confined to non-text markers and explicit screensaver layers', () => {
+test('opacity is confined to non-text markers, the category-label fade and explicit screensaver layers', () => {
   const allowed = new Set([
     '.detail-emblem',
     '.input-preview-symbol',
@@ -218,11 +218,15 @@ test('opacity is confined to non-text markers and explicit screensaver layers', 
     const text = fs.readFileSync(filename, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
     for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       const selector = rule[1].trim(),
-        body = rule[2];
-      if (/\btransition\s*:[^;]*\bopacity\b/i.test(body))
-        assert.ok(screensaverLayers(filename, selector, 'transition'), filename + ': ' + selector);
+        body = rule[2],
+        categoryLabel = path.basename(filename) === 'style.css' &&
+          ['.category .dim .category-label', '.category.active .dim .category-label'].includes(selector);
+      if (/\btransition\s*:[^;]*\bopacity\b/i.test(body)) {
+        assert.ok(categoryLabel || screensaverLayers(filename, selector, 'transition'), filename + ': ' + selector);
+        if (categoryLabel) assert.match(body, /\btransition\s*:\s*opacity 120ms ease-out\s*;/);
+      }
       if (/(?:^|;)\s*opacity\s*:/i.test(body))
-        assert.ok(allowed.has(selector) || screensaverLayers(filename, selector, 'active') ||
+        assert.ok(allowed.has(selector) || categoryLabel || screensaverLayers(filename, selector, 'active') ||
           (path.basename(filename) === 'screensaver.css' &&
             ['#screensaverDim', '.screensaver-active.wallpaper-active #screensaverDim'].includes(selector)),
           filename + ': text opacity is not allowed on ' + selector);

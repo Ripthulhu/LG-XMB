@@ -24,7 +24,15 @@
       'M5 10h2a.6.6 0 0 1 .6.6v.8a.6.6 0 0 0 .6.6h3.2a.6.6 0 0 0 .6-.6v-.8a.6.6 0 0 1 .6-.6H15v3h20v-3h2.4a.6.6 0 0 1 .6.6v.8a.6.6 0 0 0 .6.6h3.2a.6.6 0 0 0 .6-.6v-.8a.6.6 0 0 1 .6-.6h2a.6.6 0 0 1 .6.6v26.8a.6.6 0 0 1-.6.6h-2a.6.6 0 0 1-.6-.6v-.8a.6.6 0 0 0-.6-.6h-3.2a.6.6 0 0 0-.6.6v.8a.6.6 0 0 1-.6.6H35v-4H15v4h-2.4a.6.6 0 0 1-.6-.6v-.8a.6.6 0 0 0-.6-.6H8.2a.6.6 0 0 0-.6.6v.8a.6.6 0 0 1-.6.6H5a.6.6 0 0 1-.6-.6V10.6a.6.6 0 0 1 .6-.6z' +
       'M15 16v15h20V16z' +
       'M7.5 15v4h4.5v-4zm0 7v4h4.5v-4zm0 7v4h4.5v-4zm30-14v4H42v-4zm0 7v4H42v-4zm0 7v4H42v-4z" transform="translate(-1 0)"/>',
-    live: '<path d="m15 3 9 8 9-8 2 2-7 7c5 0 10 1 14 2 3 6 3 18 0 25-10 4-26 4-36 0-3-7-3-19 0-25 4-1 9-2 14-2l-7-7zm-5 15c-2 4-2 13 0 18 7 2 16 2 23 0 2-5 2-14 0-18-7-2-16-2-23 0zm28 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-1 9v4h2v-4z"/>',
+    live:
+      // Frame, outer arc, inner arc and dot share one fill. Matching winding
+      // joins the arc to the frame without painting translucent colour twice;
+      // only the screen opening winds the other way to cut a hole.
+      '<path transform="translate(3 0)" fill-rule="nonzero" d="M-2 14h32a3 3 0 0 1 3 3v23a3 3 0 0 1-3 3H-2a3 3 0 0 1-3-3V17a3 3 0 0 1 3-3z' +
+      'M1 20.5v16a.5.5 0 0 0 .5.5h25a.5.5 0 0 0 .5-.5v-16a.5.5 0 0 0-.5-.5h-25a.5.5 0 0 0-.5.5z' +
+      'M45 23.6a18.6 18.6 0 0 1-18.6-18.6h3.2a15.4 15.4 0 0 0 15.4 15.4z' +
+      'M45 15.6A10.6 10.6 0 0 1 34.4 5h3.2a7.4 7.4 0 0 0 7.4 7.4z' +
+      'M45 1.4a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 1 1 0-4.8z"/>',
     apps:
       '<path d="' +
       'M12 11c3-1 5 1 8 3h9c3-2 5-4 8-3 4 1 6 6 8 17 1 7 0 10-3 11-4 2-6-1-8-4l-5-7H16l-5 7c-2 3-5 6-9 3-2-2-2-6-1-11 2-10 4-14 7-16 1 0 3-1 4 0z" transform="translate(3 0) scale(.91 1)"/>',
@@ -206,6 +214,9 @@
     var key = Object.prototype.hasOwnProperty.call(paths, name) ? name : 'application';
     return (
       '<svg' +
+      // The TV's signal extends slightly beyond its slot so the screen can
+      // match neighbouring icons in size and meet the outer arc halfway.
+      (key === 'live' ? ' overflow="visible"' : '') +
       (Object.prototype.hasOwnProperty.call(settingsIcons, key) ? ' class="settings-symbol"' : '') +
       ' viewBox="0 0 48 48" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" aria-hidden="true" focusable="false">' +
       paths[key] +

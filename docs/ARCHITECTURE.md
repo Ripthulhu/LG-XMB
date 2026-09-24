@@ -15,9 +15,11 @@ page structure. Read the controller only when a change crosses feature boundarie
 | Launcher | `app/app.js` | Create features; coordinate selection, launch, focus and page lifecycle |
 | Launcher view | `app/launcher-view.js` | Cache category, item and detail DOM; position menu rows |
 | Preferences | `app/launcher-preferences.js` | Defaults, themes, saved-value migration, persistence and quality options |
-| Menu content | `app/catalog.js`, `app/icons.js` | Default categories and shortcuts; reusable SVG icons |
+| Menu content | `app/catalog.js`, `app/icons.js` | Default categories, app placement metadata and reusable SVG icons; inventory confirms which shortcuts exist |
+| Desktop preview | `app/demo-data.js` | Example app/input snapshots, used only outside the TV |
 | App organisation | `app/app-categories.js`, `app/menu-order.js` | Category assignments, hidden apps, sorting and successful-launch history |
-| App discovery | `app/app-refresh.js` | Schedule inventory reads and defer reconciliation while the user interacts |
+| App discovery | `app/app-refresh.js`, `app/tv-discovery.js` | Schedule inventory reads, select the native or elevated read transport and defer reconciliation during interaction |
+| Physical inputs | `app/input-discovery.js`, `app/app-categories.js` | Validate reported input identities and reconcile actual sockets without resetting selection |
 | Item options | `app/item-options.js`, `app/item-options.css` | Long-press panel, hide/restore, category selection and uninstall confirmation |
 | Input handling | `app/hold-gesture.js`, `app/directional-repeat.js`, `app/wheel-navigation.js`, `app/menu-focus.js`, `app/category-transition.js` | Hold state, key repeat pacing, wheel distance, focus/scroll and horizontal transitions |
 | Shared settings controls | `app/settings-ui.js` | Option rows, choice groups and generic panel navigation |
@@ -26,7 +28,8 @@ page structure. Read the controller only when a change crosses feature boundarie
 | Clock display | `app/clock-view.js`, `app/clock.css` | Current and PS3 clock layouts, date formatting and analogue hands |
 | Fonts | `app/fonts.css` | Optional local Rodin faces and system font fallback; see [Fonts](FONTS.md) |
 | Screensaver | `app/screensaver.js`, `app/screensaver-view.js`, `app/screensaver.css` | Idle deadline, layer brightness targets, wake gestures, UI and wallpaper fades |
-| Other settings panels | `app/remote-settings.js`, `app/date-time-settings.js` | Feature-specific controls and keyboard navigation |
+| Remote | `app/remote-settings.js`, `app/home-button.js`, `tv-helper/home_button.py` | Home assignment with verified native reads/writes; local Back preference |
+| Other settings panels | `app/date-time-settings.js` | System date/time controls |
 | TV APIs | `app/tv-bridge.js`, `app/app-manager.js`, `app/system-time.js` | Bounded native requests for launch/input/audio, app information/removal and clock settings |
 | HDMI pictures | `app/thumbnail.js`, `app/input-preview.js` | Cached images and optional live video; separate lifecycles |
 | Audio | `app/background-music.js`, `app/menu-sounds.js` | Playback, availability, suspension and recovery |
@@ -83,14 +86,26 @@ do not compensate for a small body by shrinking the shared wrench.
 
 ### Layout
 
-Edit `app/style.css` for page layout and `app/launcher-view.js` for row offsets
-and visibility. Horizontal category spacing uses
-`LGXMBCategoryTransition.DISTANCE` in `app/category-transition.js`.
+The layout values at the top of `app/style.css` set the icon column (`--anchor`),
+category and selection centres, row height, spacing and icon-to-label gap.
+Keep the `--xmb-*` vertical values in `vh` and the anchor in percent.
+`app/launcher-view.js` reads them on startup and resize, then uses the cached
+values for row offsets, visibility and particle positions. A layout adjustment
+therefore does not need a second set of coordinates in JavaScript.
 
-The view's `menuObjects()` supplies numeric icon positions to the particle
-simulation. If menu geometry changes, update those positions too; they avoid
-measuring DOM layout on every frame. Check both 720p and 1080p layouts, plus
-rapid navigation and parked categories, before changing the row cache.
+Horizontal category spacing uses `LGXMBCategoryTransition.DISTANCE` in
+`app/category-transition.js`. Gaps around the category bar and selected row
+switch immediately; only the equal row steps animate, so Up and Down retain
+the same motion. Navigation does not measure element bounds or computed styles.
+
+Run `tests/xmb-layout-browser.cjs`, `tests/vertical-navigation-browser.cjs` and
+`tests/launcher-category-work-browser.cjs` after changing geometry. These cover
+720p, 1080p and 4:3 placement, resizing, particle coordinates, matching Up/Down
+motion and retained category rows.
+
+Only the selected category shows its name. Its existing label fades through
+opacity over 120 ms; icon changes still use the retained faces. CSS owns this
+timing, and reduced motion disables the fade.
 
 ### Settings
 
@@ -105,10 +120,35 @@ document-level key listener for each panel. Back closes or returns to the parent
 panel. Opening a panel must set a predictable initial focus, and later status
 replies must not move it.
 
+Directional navigation uses one filtered list of controls per key event. Hidden
+and disabled choices must stay out of both row traversal and target selection.
+When an asynchronous request finishes, update the current panel rather than a
+control captured before the panel was reopened.
+
 `app/appearance-settings.js` builds Appearance and its submenus. Audio and helper
 status handling remain in the launcher, with playback in the audio modules.
 Keep new feature-specific rendering in a module and let the launcher provide
 its dependencies.
+
+### Home assignment and standalone discovery
+
+`app/home-button.js` owns Home-button requests. `tv-helper/home_button.py`
+reads the native assignment and changes only that assignment after checking
+that the settings snapshot is still current. The bootstrap verifies the bundle
+before dispatching the command. This path does not run capture setup or alter
+Home-replacement mounts. A failed or uncertain write requires a fresh read;
+it must never be retried automatically.
+
+Remote renders once per opening. Asynchronous reads and writes update existing
+controls without rebuilding the panel or moving focus. Closing it invalidates
+pending replies. Back remains usable when Home assignment is unavailable.
+
+`app/tv-discovery.js` owns app and input inventory reads. The standalone app
+uses fixed read-only Homebrew commands directly. A Home replacement uses the
+native services under the Home identity. Each request makes one call through
+the matching transport; neither path retries through the other. Both share
+response validation, with catalog normalisation in `app/tv-bridge.js`.
+Capture setup is not a dependency.
 
 ### Helper lifecycle and status
 
@@ -161,6 +201,11 @@ from saved preferences. Original and Classic control particles; colour is either
 the native calendar-driven background or a fixed month at daytime. Keep these
 decisions in preferences rather than adding competing switches to the renderer.
 
+Rendering controls also live in `launcher-preferences.js`. Keep their allowed
+values consistent with the renderer's allocation and frame pacing. Resolution,
+mesh detail, particle count and frame rate are separate costs. Changing one
+must preserve the other controls and existing saved choices.
+
 The launcher pauses WebGL while a wallpaper is visible. Brightness dims the
 rendered background or image, leaving the menu unchanged. The wallpaper module
 preloads replacements, invalidates cancelled requests and reports failures to
@@ -174,10 +219,16 @@ from the saved background brightness. The launcher enables it only while Home
 is active, stops live previews while asleep and resets it when returning from
 another app. Cursor movement and lifecycle events must not rebuild the menu.
 
-The clock view uses the launcher's existing ten-second clock refresh. It only
-updates changed text and hand positions; it has no animation loop or TV service
-calls. Keep display style separate from the Date & time editor, which changes
-the TV's system clock.
+The clock refreshes every ten seconds while Home is visible and immediately
+when it returns. Hiding Home stops the clock, app-inventory polling and pending
+detail updates. The clock view only updates changed text and hand positions;
+it has no animation loop or TV service calls. Keep display style separate from
+the Date & time editor, which changes the TV's system clock.
+
+`tests/page-lifecycle-browser.cjs` checks hidden startup, duplicate wake events
+and pending detail cancellation with the actual launcher. The settings focus
+and wallpaper completion checks live in `tests/settings-focus-browser.cjs` and
+`tests/appearance-async-browser.cjs`.
 
 `app/ps3-native-shaders.js` is generated. Edit `shaders/`, then run
 `python3 tools/bundle-ps3-shaders.py` and its `--check` mode. Commit both the

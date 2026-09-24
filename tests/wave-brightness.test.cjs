@@ -109,7 +109,7 @@ test('one display gain dims the composed background and both sparkle passes', ()
     const instance = Object.create(context.Renderer.prototype);
     Object.assign(instance, {
       ready: true, gl, changed: false, settings: {particles: true, particleCount: 1000},
-      simulation: {particles: {count: 0, revision: 0, render: new Float32Array()}},
+      simulation: {wave: {revision: 0}, particles: {count: 0, revision: 0, render: new Float32Array()}},
       filterTunings: {}, uniforms: {composite: {uBrightness: 'display-gain'}},
       target: {}, backdrop: {}, drawCount: 0, uploadedBytes: 0,
       updateGrid() {}, resize() {}, prepareAmbient() {}, backdropPass() {},

@@ -1,4 +1,5 @@
 {
   "thumbnail_cache.py": "tv-helper/thumbnail_cache.py",
-  "stop_thumbnail_helper.py": "tv-helper/recovery/stop_thumbnail_helper.py"
+  "stop_thumbnail_helper.py": "tv-helper/recovery/stop_thumbnail_helper.py",
+  "home_button.py": "tv-helper/home_button.py"
 }

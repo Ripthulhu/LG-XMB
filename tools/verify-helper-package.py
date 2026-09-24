@@ -16,7 +16,7 @@ SOURCES = json.loads((ROOT / 'tv-helper/bundle-sources.json').read_text(encoding
 
 
 def verify(filename):
-    if not {'thumbnail_cache.py', 'stop_thumbnail_helper.py'}.issubset(SOURCES):
+    if not {'thumbnail_cache.py', 'stop_thumbnail_helper.py', 'home_button.py'}.issubset(SOURCES):
         raise ValueError('Helper inventory is missing a required entry point')
     members = read_ipk(Path(filename).read_bytes())
     with tarfile.open(fileobj=io.BytesIO(members['data.tar.gz']), mode='r:gz') as archive:

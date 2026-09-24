@@ -126,6 +126,33 @@ module.exports = async function checkInputPreview(browser, checks, errors) {
     assert.equal(await page.evaluate(() => inputTest.created), 0);
     checks.push('One click on either the cached picture or an HDMI row opens fullscreen; failed launch returns to Cached without creating video');
 
+    const beforeSelectedTap = await page.evaluate(() => inputTest.launches.length);
+    await page.getByRole('option', {name: 'HDMI 2', exact: true}).click();
+    assert.equal((await state()).busy, true);
+    assert.equal(await page.evaluate(() => inputTest.launches.length), beforeSelectedTap + 1,
+      'the pointer tap and its synthetic click launch the selected row only once');
+    await finishLaunch(true);
+    const selectedBox = await page.getByRole('option', {name: 'HDMI 2', exact: true}).boundingBox();
+    const pointerX = selectedBox.x + selectedBox.width / 2,
+      pointerY = selectedBox.y + selectedBox.height / 2;
+    await page.mouse.move(pointerX, pointerY);
+    await page.mouse.down();
+    await page.mouse.move(pointerX + 30, pointerY, {steps: 2});
+    await page.mouse.up();
+    assert.equal((await state()).busy, false);
+    assert.equal(await page.evaluate(() => inputTest.launches.length), beforeSelectedTap + 1,
+      'moving more than 12 pixels cancels both the tap and synthetic click');
+    await page.mouse.move(pointerX, pointerY);
+    await page.mouse.down();
+    await page.waitForFunction(() => C5App.getState().itemOptions.open);
+    await page.mouse.up();
+    assert.equal((await state()).busy, false);
+    assert.equal(await page.evaluate(() => inputTest.launches.length), beforeSelectedTap + 1,
+      'a long pointer hold opens options without launching on release');
+    await page.keyboard.press('Escape');
+    assert.equal((await state()).itemOptions.open, false);
+    checks.push('Selected and unselected row taps launch exactly once; dragging cancels activation and a long pointer hold only opens options');
+
     await setMode('live');
     checks.push('Settings Input previews offers Cached and Live, and saves the selected mode locally');
     const createdBeforeNavigation = await page.evaluate(() => inputTest.created);

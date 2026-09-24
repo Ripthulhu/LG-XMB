@@ -33,6 +33,7 @@ SETUP_WAIT_SECONDS = 30  # Below the frontend RPC deadline; never wait indefinit
 PYTHON = "/usr/bin/python3"
 CAPTURE_MODULE = "thumbnail_cache.py"
 RECOVERY_MODULE = "stop_thumbnail_helper.py"
+HOME_BUTTON_MODULE = "home_button.py"
 BUNDLE_SHA256 = "@BUNDLE_SHA256@"  # Replaced by the packager, not read from helper/.
 LEGACY_HELPER_OWNER = (1001, 1001)  # CI runner IDs shipped in the early 0.1.12 IPKs.
 
@@ -88,7 +89,7 @@ def restore_owner_only_write(fd, info):
     return repaired
 
 
-def read_file(directory, name, limit=131072, optional=False, app_file=False):
+def read_file(directory, name, limit=131072, optional=False, app_file=False, repair_permissions=True):
     try:
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                      dir_fd=directory)
@@ -98,8 +99,10 @@ def read_file(directory, name, limit=131072, optional=False, app_file=False):
         raise SetupError("bundle_incomplete") from None
     try:
         info = os.fstat(fd)
-        if not app_file:
+        if not app_file and repair_permissions:
             info = restore_owner_only_write(fd, info)
+        if not app_file and not repair_permissions:
+            require(not info.st_mode & 0o022, "helper_permissions_required")
         regular_file(info, app_file)
         raw = bytearray()
         while len(raw) <= limit:
@@ -160,8 +163,8 @@ def load_module(name, raw, path):
     return module
 
 
-def read_bundle(app, directory):
-    raw = read_file(directory, "bundle.json", 4096)
+def read_bundle(app, directory, repair_permissions=True):
+    raw = read_file(directory, "bundle.json", 4096, repair_permissions=repair_permissions)
     require(hashlib.sha256(raw).hexdigest() == BUNDLE_SHA256, "helper_bundle_mismatch")
     manifest = json.loads(raw)
     require(isinstance(manifest, dict) and manifest.get("schema") == 1,
@@ -169,16 +172,17 @@ def read_bundle(app, directory):
     hashes = manifest.get("files")
     # The build pin authenticates the complete inventory, including any future
     # modules. Entry points remain explicit; paths can only be flat Python names.
-    require(isinstance(hashes, dict) and {CAPTURE_MODULE, RECOVERY_MODULE}.issubset(hashes)
+    require(isinstance(hashes, dict) and {CAPTURE_MODULE, RECOVERY_MODULE, HOME_BUTTON_MODULE}.issubset(hashes)
             and all(re.fullmatch(r"[a-z][a-z0-9_]*\.py", name) for name in hashes),
             "invalid_helper_bundle")
     require(all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h)
                 for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
             "invalid_helper_bundle")
-    appinfo = read_file(app, "appinfo.json", 65536, app_file=True)
+    appinfo = read_file(app, "appinfo.json", 65536, app_file=repair_permissions,
+                        repair_permissions=repair_permissions)
     require(hashlib.sha256(appinfo).hexdigest() == manifest["appinfoSha256"],
             "untrusted_app_manifest")
-    sources = {name: read_file(directory, name) for name in hashes}
+    sources = {name: read_file(directory, name, repair_permissions=repair_permissions) for name in hashes}
     require(all(hashlib.sha256(sources[name]).hexdigest() == hashes[name]
                 for name in hashes), "helper_bundle_mismatch")
     return manifest, raw, appinfo, sources
@@ -231,9 +235,12 @@ def repair_helper_directory(app, directory, original, bundle):
                    fromGid=original.st_gid, fromMode=oct(stat.S_IMODE(original.st_mode)))
 
 
-def load_bundle():
+def verified_bundle(allow_repair=True):
+    """Read and authenticate every source without running helper entry points."""
     app = open_directory(APP_DIR, app_path=True)
     try:
+        if not allow_repair:
+            require(stat.S_IMODE(os.fstat(app).st_mode) == 0o755, "helper_permissions_required")
         directory = os.open("helper", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
                             dir_fd=app)
         try:
@@ -245,14 +252,22 @@ def load_bundle():
                 fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise SetupError("bundle_lock_busy") from None
-            bundle = read_bundle(app, directory)
-            if meta.st_uid != 0 or stat.S_IMODE(meta.st_mode) != 0o755:
+            if not allow_repair:
+                require(meta.st_uid == 0 and stat.S_IMODE(meta.st_mode) == 0o755,
+                        "helper_permissions_required")
+            bundle = read_bundle(app, directory, repair_permissions=allow_repair)
+            if allow_repair and (meta.st_uid != 0 or stat.S_IMODE(meta.st_mode) != 0o755):
                 repair_helper_directory(app, directory, meta, bundle)
             manifest, raw, appinfo, sources = bundle
         finally:
             os.close(directory)
     finally:
         os.close(app)
+    return manifest, raw, appinfo, sources
+
+
+def load_bundle():
+    manifest, raw, appinfo, sources = verified_bundle()
     capture = load_module("lg_xmb_capture", sources[CAPTURE_MODULE], APP_DIR + "/helper/" + CAPTURE_MODULE)
     require(capture.PIN_APPINFO_SHA256 == manifest["appinfoSha256"], "helper_bundle_mismatch")
     capture.checked_app()
@@ -747,7 +762,29 @@ def start():
         os.close(base)
 
 
+def home_button(args):
+    """Run a bounded user-requested mapping operation, never worker setup."""
+    require(os.geteuid() == 0, "root_required")
+    require(sys.version_info >= (3, 7), "python_too_old")
+    require(args == ["get"] or (len(args) == 3 and args[0] == "set"
+            and args[1] in ("stock", "xmb") and re.fullmatch("[0-9a-f]{64}", args[2])),
+            "invalid_command")
+    manifest, raw, appinfo, sources = verified_bundle(allow_repair=False)
+    module = load_module("lg_xmb_home_button", sources[HOME_BUTTON_MODULE],
+                         APP_DIR + "/helper/" + HOME_BUTTON_MODULE)
+    return module.command(args)
+
+
 def main():
+    if sys.argv[1:2] == ["home-button"]:
+        try:
+            result = home_button(sys.argv[2:])
+        except SetupError as error:
+            result = {"returnValue": False, "errorCode": str(error)}
+        except Exception:
+            result = {"returnValue": False, "errorCode": "home_button_unavailable"}
+        print(json.dumps(result), flush=True)
+        return 0 if result.get("returnValue") else 2
     if sys.argv[1:] not in ([], ["ensure"]):
         print(json.dumps({"returnValue": False, "errorCode": "invalid_command"}))
         return 2

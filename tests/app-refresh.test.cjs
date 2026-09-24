@@ -21,7 +21,7 @@ test('synchronous read and apply errors cannot break the Home controller',async(
 test('listApps propagates cancellation and does not accept a truncated >1000-entry list',async()=>{
  const requests=[],timers=new Map();const root={location:{protocol:'file:',search:''},navigator:{userAgent:'webOS SmartTV'},PalmSystem:{identifier:'com.webos.app.home'},setTimeout(fn){timers.set(timers.size+1,fn);return timers.size;},clearTimeout(i){timers.delete(i);}};
  root.PalmServiceBridge=function(){this.cancel=()=>{this.cancelled=true;};this.call=(uri,payload)=>requests.push({uri,payload:JSON.parse(payload),bridge:this});};
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../app/tv-bridge.js'),'utf8'),{window:root,console});
+ for(const name of ['tv-discovery.js','tv-bridge.js']) vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../app',name),'utf8'),{window:root,console});
  let p=root.C5TV.listApps();assert.equal(typeof p.cancel,'function');p.cancel();await assert.rejects(p,/cancelled/);assert.equal(requests[0].bridge.cancelled,true);
- p=root.C5TV.listApps();requests[1].bridge.onservicecallback(JSON.stringify({returnValue:true,apps:Array(1001).fill({id:'x',visible:true})}));await assert.rejects(p,/application list/);
+ p=root.C5TV.listApps();requests[1].bridge.onservicecallback(JSON.stringify({returnValue:true,apps:Array(1001).fill({id:'x',visible:true})}));await assert.rejects(p,error=>error.code==='INVALID_RESPONSE');
 });

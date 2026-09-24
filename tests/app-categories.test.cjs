@@ -49,7 +49,7 @@ function fixture(store = storage()) {
   const sel = cats.map(() => 0),
     order = new Order(cats, store),
     model = new Categories(cats, order, store);
-  model.rebuild(sel);
+  model.reconcile([a, { id: 'native.browser', title: 'Browser' }], sel);
   return {
     cats,
     sel,
@@ -185,7 +185,7 @@ test('hidden list remains restorable before discovery, ignores malformed entries
     })
   );
   assert.deepEqual(f.model.hiddenApps(), [
-    { id: 'native.media', title: 'Media' },
+    { id: 'native.media', title: 'Media Player' },
     { id: 'org.test.app', title: 'Saved app' }
   ]);
   f.model.restore('org.test.app', f.sel);
@@ -333,10 +333,10 @@ test('persisted deletion is cleared by a fresh startup inventory showing a reins
   g.model.reconcile(apps, g.sel);
   assert.deepEqual(g.where(apps[0].id), ['apps']);
 });
-test('native anchors are not removed by incomplete third-party visibility metadata', () => {
+test('complete app snapshots remove absent native shortcuts without removing physical inputs', () => {
   const f = fixture();
   f.model.reconcile([], f.sel);
-  assert.deepEqual(f.where('native.media'), ['photo', 'music']);
+  assert.deepEqual(f.where('native.media'), []);
   assert.deepEqual(f.where('com.webos.app.hdmi1'), ['tv']);
 });
 test('invalid snapshots throw before removing existing entries', () => {
@@ -367,7 +367,7 @@ test('title data remains literal text, not markup or a category heuristic', () =
 });
 test('sorting preferences still apply after move and snapshot update', () => {
   const f = fixture();
-  f.model.reconcile(apps, f.sel);
+  f.model.reconcile([...apps, {id:'native.media',title:'Media Player'}], f.sel);
   f.order.set(f.cat('music'), 'za', 'native.media');
   f.model.assign(f.cat('apps').items[1], 'music', f.sel);
   assert.deepEqual(
@@ -551,7 +551,7 @@ test('default locations are independent of overrides and restore all native shor
 });
 test('sorting and remembered selections remain independent between shared categories', () => {
   const f = fixture();
-  f.model.reconcile(apps, f.sel);
+  f.model.reconcile([...apps, {id:'native.media',title:'Media Player'}], f.sel);
   f.model.assign(f.cat('apps').items[0], ['music', 'video'], f.sel);
   f.model.assign(f.cat('apps').items[0], ['music', 'video'], f.sel);
   f.order.set(f.cat('music'), 'za');
@@ -603,7 +603,7 @@ test('native defaults outside assignable destinations are reported and restored 
   const f = fixture(),
     native = { id: 'com.palm.app.settings', title: 'TV Settings' };
   f.model.base[0].push(native);
-  f.model.rebuild(f.sel);
+  f.model.reconcile([native], f.sel);
   assert.deepEqual(f.model.defaultLocations(native.id), ['settings']);
   f.model.assign(native, ['apps'], f.sel);
   assert.deepEqual(f.where(native.id), ['apps']);
@@ -613,4 +613,18 @@ test('native defaults outside assignable destinations are reported and restored 
     f.sel
   );
   assert.deepEqual(f.where(native.id), ['settings']);
+});
+
+test('catalog metadata never populates shortcuts before discovery or after absence', () => {
+  const f = fixture();
+  const model = new Categories(f.cats, f.order, f.store);
+  model.rebuild(f.sel);
+  assert.deepEqual(f.where('native.media'), []);
+  model.reconcile([{id:'native.media',title:'Media Player'}], f.sel);
+  assert.deepEqual(f.where('native.media'), ['photo','music']);
+  model.assign(f.cat('photo').items[0], 'video', f.sel);
+  model.reconcile([], f.sel);
+  assert.deepEqual(f.where('native.media'), []);
+  model.reconcile([{id:'native.media',title:'Media Player'}], f.sel);
+  assert.deepEqual(f.where('native.media'), ['video']);
 });

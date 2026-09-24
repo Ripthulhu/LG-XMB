@@ -1,4 +1,4 @@
-/* OpenXMB C5: limited local webOS application/media-status bridge. No network or root helpers.
+/* OpenXMB C5: local webOS application/media-status bridge.
  * Native transport verified against LG webOSTV.js 1.2.13 (PalmServiceBridge).
  * https://webostv.developer.lge.com/develop/references/application-manager
  * listApps and inputStatus are firmware APIs, not guaranteed third-party APIs.
@@ -9,22 +9,15 @@
   var SERVICE = 'luna://com.webos.applicationManager/';
   var TIMEOUT_MS = 5000;
   var METHODS = Object.freeze({
-    listApps: SERVICE + 'listApps',
     getAppLoadStatus: SERVICE + 'getAppLoadStatus',
     launch: SERVICE + 'launch',
     recentApps: 'luna://com.webos.surfacemanager/getRecentsAppList',
     previewStatus: 'luna://com.webos.service.videooutput/getStatus',
-    inputStatus: 'luna://com.webos.service.eim/getAllInputStatus',
     mediaPipelines: 'luna://com.webos.media/getActivePipelines',
     audioStatus: 'luna://com.webos.service.audio/UMI/getStatus',
     audioConnect: 'luna://com.webos.service.audio/UMI/connect'
   });
-  var INPUTS = Object.freeze({
-    HDMI_1: 'com.webos.app.hdmi1',
-    HDMI_2: 'com.webos.app.hdmi2',
-    HDMI_3: 'com.webos.app.hdmi3',
-    HDMI_4: 'com.webos.app.hdmi4'
-  });
+  var availableInputs = Object.create(null);
   var active = Object.create(null);
   var nextRequest = 0;
 
@@ -119,7 +112,16 @@
             // The media server answers this one with a bare array.
             if (method === 'mediaPipelines' && Array.isArray(response))
               response = { returnValue: true, pipelines: response };
-            if (!response || typeof response !== 'object' || Array.isArray(response))
+            if (
+              !response ||
+              typeof response !== 'object' ||
+              Array.isArray(response) ||
+              typeof response.returnValue !== 'boolean' ||
+              (response.returnValue === true &&
+                response.errorCode !== undefined &&
+                response.errorCode !== 0 &&
+                response.errorCode !== '0')
+            )
               throw new Error('shape');
           } catch (ignored) {
             finish(error('INVALID_RESPONSE', 'The TV returned an unreadable response.'));
@@ -213,8 +215,10 @@
       result.apps = [];
       return Promise.resolve(result);
     }
-    var read = request('listApps', {});
+    var read = root.LGXMBDiscovery.listApps();
+    var cancelled = false;
     var result = read.then(function (response) {
+      if (cancelled) throw error('CANCELLED', 'The application list request was cancelled.');
       if (!Array.isArray(response.apps) || response.apps.length > 1000)
         throw error('INVALID_RESPONSE', 'The TV did not return an application list.');
       var seen = Object.create(null);
@@ -232,58 +236,37 @@
       return { ok: true, preview: false, apps: apps };
     });
     result.cancel = function () {
+      cancelled = true;
       read.cancel();
     };
     return result;
   }
 
-  function listInputLabels() {
+  function listInputs() {
     if (!isTV()) return Promise.resolve({ ok: true, preview: true, inputs: [] });
-    var read = request('inputStatus', {});
+    var read = root.LGXMBDiscovery.listInputs(),
+      cancelled = false;
     var result = read.then(function (response) {
-      if (!Array.isArray(response.devices) || response.devices.length > 128) {
+      if (cancelled) throw error('CANCELLED', 'The input list request was cancelled.');
+      var inputs;
+      try {
+        inputs = root.LGXMBInputs.normalize(response.devices);
+      } catch (invalid) {
         throw error('INVALID_RESPONSE', 'The TV did not return a valid input list.');
       }
-      var seen = Object.create(null),
-        duplicates = Object.create(null),
-        inputs = [];
-      response.devices.forEach(function (device) {
-        if (!device || typeof device !== 'object' || Array.isArray(device)) return;
-        var match =
-          typeof device.appId === 'string' && /^com\.webos\.app\.hdmi([1-4])$/.exec(device.appId);
-        if (!match) return;
-        // EIM also exposes virtual sources. Never use a label to choose a target,
-        // or pick the first of multiple records claiming the same HDMI app.
-        if (seen[device.appId]) {
-          duplicates[device.appId] = true;
-          return;
-        }
-        seen[device.appId] = true;
-        var port = Number(match[1]);
-        if (
-          (device.id !== undefined && device.id !== 'HDMI_' + port) ||
-          (device.port !== undefined && device.port !== port) ||
-          (device.label != null && typeof device.label !== 'string')
-        )
-          return;
-        var label = (device.label || '')
-          .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        label = Array.from(label).slice(0, 120).join('');
-        // A disconnected port is still usable. Names, not connection state or
-        // subList metadata, are all this read exports. No native icon paths.
-        inputs.push({ id: device.appId, port: port, label: label || 'HDMI ' + port });
+      var next = Object.create(null);
+      inputs.forEach(function (input) {
+        var source = root.LGXMBInputs.identity(input.id);
+        next[input.id] = input.id;
+        root.LGXMBInputs.sourceIds(source).forEach(function (id) {
+          next[id] = input.id;
+        });
       });
-      return {
-        ok: true,
-        preview: false,
-        inputs: inputs.filter(function (input) {
-          return !duplicates[input.id];
-        })
-      };
+      availableInputs = next;
+      return { ok: true, preview: false, inputs: inputs };
     });
     result.cancel = function () {
+      cancelled = true;
       read.cancel();
     };
     return result;
@@ -350,11 +333,14 @@
   }
 
   function openInput(id) {
-    var target =
-      typeof id === 'string' && Object.prototype.hasOwnProperty.call(INPUTS, id) ? INPUTS[id] : id;
-    if (typeof target !== 'string' || !/^com\.webos\.app\.hdmi[1-4]$/.test(target)) {
-      return Promise.reject(error('INVALID_INPUT', 'Choose HDMI 1, 2, 3 or 4.'));
+    var target = typeof id === 'string' && availableInputs[id];
+    // The desktop preview has no physical inventory. TV launches only use a
+    // target from the last complete input snapshot, never a guessed socket.
+    if (!isTV() && typeof id === 'string') {
+      target = /^HDMI_([1-9][0-9]?)$/.test(id) ? 'com.webos.app.hdmi' + id.slice(5) : id;
+      if (!root.LGXMBInputs.identity(target)) target = null;
     }
+    if (!target) return Promise.reject(error('INVALID_INPUT', 'This input is not available.'));
     return launch(target);
   }
 
@@ -448,7 +434,7 @@
   root.C5TV = Object.freeze({
     isTV: isTV,
     listApps: listApps,
-    listInputLabels: listInputLabels,
+    listInputs: listInputs,
     launch: launch,
     openInput: openInput,
     getInputPreviewStatus: getInputPreviewStatus,

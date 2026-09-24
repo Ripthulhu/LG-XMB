@@ -20,10 +20,12 @@ works too.
 
 The interface targets **webOS 22–26**. Hardware testing has been on the
 **LG C5 running webOS 10.3.1**. Native features still need testing on other TVs.
+A community user has also reported the launcher running on webOS 6; that does not validate all TV features.
 See [Compatibility](docs/COMPATIBILITY.md) for the platform details and known limits.
 
-Replacing LG Home requires root. Cached HDMI pictures also need Homebrew
-Channel with an elevated service and Python 3.7 or newer on the TV. Animated
+Run it alongside stock LG Home. **Settings → Remote** can assign the Home
+button to LG-XMB on supported rooted TVs. This needs an elevated Homebrew
+Channel service and Python 3.7 or newer, as do cached HDMI pictures. Animated
 backgrounds need WebGL 2; otherwise the menu uses a static background.
 
 ## Install
@@ -33,23 +35,28 @@ or build one below.
 
 1. Follow [Installation](docs/INSTALLATION.md) to transfer the IPK and install it over SSH.
 2. Open **Home** from the TV's apps. Test navigation, app launching and HDMI.
-3. Follow [Replacing LG Home](docs/HOME-TAKEOVER.md) to make it the Home screen and keep it after a reboot.
+3. Open **Settings → Remote → Home button** and choose **LG-XMB** if you want
+   the Home button to open it. Choose **LG Home** to restore the stock assignment.
 
-Installing the IPK adds a standalone launcher. Replacing LG Home is a separate
-manual setup using a copy of that installed app. The guide covers the startup
-hook and restoring stock Home. Keep SSH access working throughout setup.
+Installing the IPK leaves stock LG Home in place. The standalone launcher uses
+elevated Homebrew Channel to read installed apps and physical inputs.
+Home-button assignment does not change the TV's Power On Screen setting.
 
-When updating, follow the [Home update steps](docs/HOME-TAKEOVER.md#updating-the-payload).
-Installing a new IPK doesn't update the Home replacement copy.
+[Replacing LG Home](docs/HOME-TAKEOVER.md) is an optional advanced setup tested
+only on the LG C5 with webOS 25. Existing replacement users must follow its
+[update steps](docs/HOME-TAKEOVER.md#updating-the-payload); an IPK update does not
+update the replacement copy.
 
 ## Customise
 
 Open **Settings → Appearance**. Original includes sparkles; Classic leaves them
 out. **Colour → Original** follows the season and time of day. The other colours
 stay fixed. **Background** selects a [wallpaper and brightness](docs/BACKGROUND.md).
-**Advanced** contains [animation and rendering options](docs/WEBGL2.md#settings).
+**Advanced** contains [frame-rate, resolution and rendering controls](docs/WEBGL2.md#settings)
+for adjusting the background load.
 **Screensaver** sets the idle delay and [background dimming](docs/SCREENSAVER.md).
-**Clock** keeps the current display or switches to a PS3-style date/time bar.
+**Clock** defaults to the PS3-style date/time bar. The plain clock is still available;
+updates preserve your saved choice.
 
 Hold OK on an app to change its category, sorting or visibility.
 [Item options](docs/ITEM-OPTIONS.md) covers those controls and restoring hidden apps.

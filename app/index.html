@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data:; media-src 'self' file: ext:; connect-src 'self' file:; object-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' ext:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <title>Home</title>
     <link rel="stylesheet" href="style.css" />
@@ -23,7 +23,7 @@
     <div id="screensaverDim" aria-hidden="true"></div>
     <div class="screen" id="screen">
       <header>
-        <div class="clock" data-style="current">
+        <div class="clock" data-style="ps3">
           <time id="time"></time><span id="date"></span>
           <svg class="clock-face" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
             <circle cx="16" cy="16" r="13" />
@@ -84,11 +84,14 @@
     <script src="user-fonts.js"></script>
     <script src="icons.js"></script>
     <script src="catalog.js"></script>
+    <script src="tv-discovery.js"></script>
+    <script src="input-discovery.js"></script>
     <script src="tv-bridge.js"></script>
     <script src="helper.js"></script>
     <script src="menu-focus.js"></script>
     <script src="directional-repeat.js"></script>
     <script src="wheel-navigation.js"></script>
+    <script src="home-button.js"></script>
     <script src="remote-settings.js"></script>
     <script src="wave-colors.js"></script>
     <script src="wave-color-settings.js"></script>
@@ -121,6 +124,7 @@
     <script src="screensaver-view.js"></script>
     <script src="launcher-view.js"></script>
     <script src="clock-view.js"></script>
+    <script src="demo-data.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

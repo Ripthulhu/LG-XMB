@@ -1,5 +1,9 @@
 # Replacing LG Home
 
+This is optional. For normal use, keep stock Home installed and assign the
+Home button in [Remote settings](INSTALLATION.md#remote-settings-and-standalone-use).
+The standalone launcher can discover apps without this replacement.
+
 A bind mount makes LG-XMB run as `com.webos.app.home`. On the development C5,
 this covers both the Home button and the return path after closing an app.
 Installing the developer IPK alone doesn't do this.

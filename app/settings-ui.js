@@ -85,7 +85,7 @@
       // the full panel, including any actions that just became visible.
       if (!horizontal || !group)
         controls = Array.from(panel.querySelectorAll('button')).filter(function (b) {
-          return !b.closest('[hidden]');
+          return !b.disabled && !b.closest('[hidden]');
         });
       if (event.key === 'Tab') {
         target =
@@ -96,15 +96,25 @@
       } else {
         var delta = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
         if (horizontal && group) {
-          var choices = Array.from(group.querySelectorAll('button'));
+          var choices = Array.from(group.querySelectorAll('button')).filter(function (b) {
+            return !b.disabled && !b.closest('[hidden]');
+          });
           target = choices[(choices.indexOf(current) + delta + choices.length) % choices.length];
         } else {
           // Each horizontal choice group is one row; standalone actions retain
           // their DOM order, including actions before and after those groups.
-          var rows = [];
-          controls.forEach(function (b) {
+          var rows = [],
+            rowStarts = [],
+            previousRow;
+          controls.forEach(function (b, index) {
             var row = b.closest('.choice-group') || b;
-            if (rows.indexOf(row) < 0) rows.push(row);
+            // A group's buttons are consecutive in DOM order. Retain their
+            // positions in this same eligibility scan for target selection.
+            if (row !== previousRow) {
+              rows.push(row);
+              rowStarts.push(index);
+              previousRow = row;
+            }
           });
           var at = rows.indexOf(group || current),
             next = Math.max(0, Math.min(rows.length - 1, at + delta));
@@ -112,12 +122,15 @@
             event.preventDefault();
             return;
           }
-          var row = rows[next];
-          target =
-            row &&
-            (row.matches('button')
-              ? row
-              : row.querySelector('[aria-pressed="true"]') || row.querySelector('button'));
+          var first = rowStarts[next],
+            end = next + 1 < rowStarts.length ? rowStarts[next + 1] : controls.length;
+          target = controls[first];
+          for (var i = first; i < end; i++) {
+            if (controls[i].getAttribute('aria-pressed') === 'true') {
+              target = controls[i];
+              break;
+            }
+          }
         }
       }
       event.preventDefault();

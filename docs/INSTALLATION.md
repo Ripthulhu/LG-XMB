@@ -1,8 +1,10 @@
 # Installation and removal
 
 Installing the IPK adds a launcher named **Home**. It doesn't replace LG Home or
-change the Home button. Root-only Home replacement is a separate procedure in
-[HOME-TAKEOVER.md](HOME-TAKEOVER.md).
+change the Home button. You can assign that button in **Settings → Remote**
+after checking the app works. Stock LG Home stays installed.
+[Replacing LG Home](HOME-TAKEOVER.md) is a separate, optional procedure tested
+only on the LG C5 with webOS 25.
 
 ## Install over SSH
 
@@ -19,7 +21,7 @@ On macOS, use `shasum -a 256 -c SHA256SUMS`. On Windows, use
 Copy the IPK to `/tmp/lg-xmb.ipk` on the TV. For example, from your computer:
 
 ```sh
-scp org.local.openxmb.c5_0.1.33_all.ipk YOUR_TV_CONNECTION:/tmp/lg-xmb.ipk
+scp org.local.openxmb.c5_0.1.34_all.ipk YOUR_TV_CONNECTION:/tmp/lg-xmb.ipk
 ```
 
 Use the filename of your chosen release and your existing SSH alias or
@@ -47,7 +49,7 @@ luna-send -n 1 luna://com.webos.applicationManager/launch \
   '{"id":"org.local.openxmb.c5"}'
 ```
 
-Check navigation, launch an app and return from HDMI before replacing LG Home.
+Check navigation, launch an app and return from HDMI before assigning the Home button.
 If installation fails, keep the error output. Don't unpack the IPK over the app
 directory or use `opkg` to bypass the TV's app registration.
 
@@ -60,6 +62,41 @@ it the root-only features below.
 These native install commands have been used on the C5 with webOS 10.3.1. Read
 [Compatibility](COMPATIBILITY.md) before testing another model.
 
+## Remote settings and standalone use
+
+Open **Settings → Remote**. Under **Home button**, choose **LG-XMB** to open
+this launcher or **LG Home** to restore the stock assignment. Reading the
+setting does not change it. The saved check mark changes after the TV confirms
+the assignment. If it cannot be confirmed, use **Retry** to read it again.
+
+Home-button assignment requires root, an elevated Homebrew Channel service,
+Python 3.7 or newer and the TV's native default-app API. The API was used on
+the C5; this implementation still needs hardware testing on other models.
+It leaves the Power On Screen setting alone and does not start Home at boot.
+Unsupported or refused requests leave the control unavailable.
+
+If you already replaced LG Home with a bind mount, first follow
+[Restore LG Home](HOME-TAKEOVER.md#restore-lg-home). Choosing LG Home while a
+replacement is mounted would still open that replacement, so Remote refuses
+this change until stock Home is restored. It does not remove the mount for you.
+
+**Back button** changes Back inside this launcher. **Return to last app or
+input** uses the TV's recent-app list when no panel is open. That private API
+may be denied to a standalone app on some firmware. **Stay in Home** and
+**Show exit prompt** remain separate choices. Back closes an open panel first.
+Updating preserves your saved Back setting; new settings use Return by default.
+
+The standalone launcher reads apps and physical inputs through Homebrew
+Channel's elevated service. This does not need Python, capture setup or Home
+replacement. A Home replacement uses LG Home's native inventory access.
+It does not change service permissions. A root SSH connection alone does not
+grant the running app access; Homebrew Channel must also be elevated.
+
+The TV category uses the TV's reported physical inputs instead of assuming
+four HDMI sockets. Disconnected sockets remain listed. AV and component
+inputs appear when the firmware reports a recognised input app. Failed reads
+keep the last valid list. Analog inputs can be opened, but do not have previews.
+
 ## Helper setup
 
 On a rooted TV with Homebrew Channel and Python 3.7 or newer, Home prepares the
@@ -70,15 +107,14 @@ Check **Root status** in Homebrew Channel's settings. Its service must be
 elevated; a working root SSH connection alone isn't enough. If it reports
 `unelevated`, see [Homebrew Channel's recovery notes](https://repo.webosbrew.org/apps/org.webosbrew.safeupdate/).
 
-The helper creates cached HDMI pictures and prepares links to optional user
-audio. It doesn't assign Home, stop LG services or manage background apps.
-The **Back button** setting only changes Back inside this launcher.
-With no panel open, **Return to last app or input** uses the TV's recent-app
-list. Back still closes an open panel or leaves the full-screen waves first.
-Existing Back settings are kept when updating; new installs use Return by default.
+Normal helper startup creates cached HDMI pictures and prepares links to
+optional user media. It does not assign Home, stop LG services or manage
+background apps. Home-button changes use a separate verified command only
+when you select an assignment in Remote settings.
 
-A non-root installation can use the menu and permitted native APIs. The capture
-helper and Home replacement require root.
+A non-root installation can use the menu and permitted native APIs. App and input
+discovery, Home-button assignment, the capture helper and Home replacement
+require root.
 
 Cached pictures appear after an eligible HDMI input has been viewed. An input
 name appearing in the menu doesn't mean a picture has been captured.
@@ -91,10 +127,13 @@ For a standalone launcher, install the new IPK over the existing app and open
 **Home**. Its package ID,
 `org.local.openxmb.c5`, stays unchanged for in-place upgrades.
 
-Setup verifies the installed bundle, stops a recognised worker from an older
-bundle and starts or reuses the matching worker. Unknown hooks, foreign links
-and untrusted files are left alone. Don't delete persistent state to get past
-a failed check.
+The IPK updates the helper files too; there is no separate helper to copy over
+SSH. Opening Home verifies the new bundle and restarts the capture worker if
+the bundle changed. An unchanged worker is reused. Your music, sounds,
+wallpaper and fonts remain in `/media/internal/lg-xmb/`.
+
+Unknown hooks, foreign links and untrusted files are left alone. Don't delete
+persistent state to get past a failed check.
 
 A copied Home-replacement payload is **not** updated by installing an IPK.
 Update it separately from the same build, following
@@ -136,6 +175,9 @@ ownership or hash checks, and don't recursively change permissions on shared TV
 directories. Sound-link problems are covered in [HOME-SOUND-REPAIR.md](HOME-SOUND-REPAIR.md).
 
 ## Remove
+
+If you assigned the Home button to LG-XMB, first select **Settings → Remote →
+Home button → LG Home** and confirm the Home button opens stock Home.
 
 For a Home replacement, disable its boot hook and restore the stock Home mount
 **before** removing the developer app. Follow the recovery steps in

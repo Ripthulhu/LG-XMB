@@ -3,6 +3,7 @@
   'use strict';
   function AppRefresh(options) {
     this.options = options;
+    this.document = options.document || root.document;
     this.active = false;
     this.destroyed = false;
     this.timer = null;
@@ -35,6 +36,12 @@
   };
   AppRefresh.prototype.pump = function () {
     if (!this.active || this.destroyed) return;
+    // Startup and native responses can precede the owner's visibility event.
+    // Hidden pages must not poll canApply while waiting for that event.
+    if (this.document && this.document.hidden) {
+      this.pause();
+      return;
+    }
     // No reconciliation while a key is held, a launch is pending, a dialog is
     // open, or rows are moving. A result can wait without changing selection.
     if (!this.options.canApply()) {
@@ -101,7 +108,7 @@
     if (!this.request) this.schedule(0);
   };
   AppRefresh.prototype.resume = function () {
-    if (this.destroyed) return;
+    if (this.destroyed || (this.document && this.document.hidden)) return;
     this.active = true;
     this.refresh();
   };

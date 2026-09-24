@@ -99,6 +99,7 @@ const menu = require('./support/menu-navigation.cjs');
     assert.equal((await state()).modal, null);
     assert.equal(await requests(), 1, 'Back closes settings without returning to another app');
     await page.keyboard.press('Enter');
+    await page.locator('#openAppearanceAdvanced').click();
     await page.locator('#showWavesOnly').click();
     assert.equal((await state()).waveOnly, true);
     await page.keyboard.press('Escape');

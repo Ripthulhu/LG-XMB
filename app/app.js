@@ -35,7 +35,8 @@
   var $ = function (id) {
     return document.getElementById(id);
   };
-  var clockView = new LGXMBClockView(document.querySelector('.clock'));
+  var clockView = new LGXMBClockView(document.querySelector('.clock')),
+    clockTimer = null;
   var wave = new C5Wave($('wave'), { quality: '1080p', adaptive: false }),
     livePreviewActive = false;
   var wallpaper = new LGXMBWallpaper($('wallpaper'), {
@@ -97,7 +98,9 @@
   }
   document.querySelector('.input-preview-symbol').innerHTML = C5Icon('hdmi');
   document.querySelector('.thumbnail-symbol').innerHTML = C5Icon('hdmi');
-  var inputLabelRead = null;
+  var inputRead = null,
+    pendingInputs = null,
+    inputApplyTimer = null;
   var menuOrder = new LGXMBMenuOrder(categories, {
       getItem: function (k) {
         return localStorage.getItem(k);
@@ -358,6 +361,8 @@
     return categories[selectedCategory].items[selections[selectedCategory]];
   }
   function currentPort() {
+    // Preview transport supports HDMI 1-4. Other discovered inputs can still
+    // be launched; this bound does not determine which sockets the TV has.
     var item = currentItem(),
       match = item.action === 'input' && /^com\.webos\.app\.hdmi([1-4])$/.exec(item.id);
     return match ? Number(match[1]) : null;
@@ -569,7 +574,7 @@
       'appearance-advanced': 'Advanced',
       sound: 'Sound',
       previews: 'Input previews',
-      remote: 'Back button'
+      remote: 'Remote'
     }[type];
     $('modalIntro').textContent = {
       datetime: '',
@@ -619,6 +624,12 @@
       helperStatusPanel();
     } else if (type === 'remote') {
       C5RemoteSettings.open({
+        getHome: function () {
+          return LGXMBHomeButton.get();
+        },
+        setHome: function (mode) {
+          return LGXMBHomeButton.set(mode);
+        },
         getBack: function () {
           return preferences.backBehavior;
         },
@@ -1231,7 +1242,12 @@
       itemOptions.prepare(currentItem(), categories[selectedCategory]);
       hold.down(
         'pointer',
-        function () {},
+        function () {
+          // Selection moves the row before release. Complete the tap here,
+          // then consume the browser click so it cannot launch a second item.
+          suppressHoldClick = true;
+          activate();
+        },
         function () {
           suppressHoldClick = true;
           openItemOptions();
@@ -1360,6 +1376,14 @@
       style.setProperty('--menu-gradient', gradient);
     }
   }
+  function resumeClock() {
+    updateClock();
+    if (clockTimer === null) clockTimer = setInterval(updateClock, 10000);
+  }
+  function pauseClock() {
+    if (clockTimer !== null) clearInterval(clockTimer);
+    clockTimer = null;
+  }
   function restoreFocus() {
     if (itemOptions.opened) {
       if (!itemOptions.panel.contains(document.activeElement)) itemOptions.focus();
@@ -1375,58 +1399,67 @@
       }
     } else if (document.activeElement !== $('items')) $('items').focus();
   }
-  async function refreshInputLabels() {
-    if (!pageActive || document.hidden || inputLabelRead) return;
-    var read;
-    try {
-      read = C5TV.listInputLabels();
-      inputLabelRead = read;
-      var result = await read;
-      if (inputLabelRead !== read || !pageActive || document.hidden || result.preview) return;
-      var inputCategory = categories.find(function (category) {
-        return category.id === 'tv';
+  function applyInputs() {
+    clearTimeout(inputApplyTimer);
+    inputApplyTimer = null;
+    if (!pendingInputs || !pageActive || document.hidden) return;
+    // Physical membership can change. Keep dialogs and held-key navigation
+    // stable, then reconcile when the launcher is idle.
+    if (
+      modalOpen ||
+      busy ||
+      hold.state ||
+      (lastDirection && performance.now() - lastDirection < 500)
+    ) {
+      inputApplyTimer = setTimeout(applyInputs, 500);
+      return;
+    }
+    var snapshot = pendingInputs;
+    pendingInputs = null;
+    var selected = currentItem().id;
+    if (!appCategories.reconcileInputs(snapshot, selections)) return;
+    categoryTransition.cancel();
+    buildItems();
+    categories.forEach(function (category, ci) {
+      if (category.id !== 'tv') return;
+      category.items.forEach(function (item, index) {
+        if (item.action === 'input') launcherView.updateItemLabel(ci, index, item);
       });
-      if (!inputCategory) return;
-      var visible = categories[selectedCategory] === inputCategory,
-        changed = false;
-      inputCategory.items.forEach(function (item, index) {
-        if (item.action !== 'input') return;
-        var input = result.inputs.find(function (entry) {
-          return entry.id === item.id;
-        });
-        if (!input) return;
-        var type = input.label === 'HDMI ' + input.port ? 'INPUT' : 'HDMI ' + input.port;
-        if (item.title === input.label && item.type === type) return;
-        item.title = input.label;
-        item.type = type;
-        changed = true;
-        // Update text in place: keep row nodes, selection, focus and port bindings.
-        if (visible) {
-          launcherView.updateItemLabel(selectedCategory, index, item);
-        }
-      });
-      if (changed && menuOrder.modes[inputCategory.id] !== 'default') {
-        var ci = categories.indexOf(inputCategory),
-          id = inputCategory.items[selections[ci]] && inputCategory.items[selections[ci]].id;
-        selections[ci] = menuOrder.apply(inputCategory, id);
-        buildItems();
-        renderRows(selectedCategory);
-        $('items').setAttribute('aria-activedescendant', 'item-' + selections[selectedCategory]);
-      }
-      if (visible && changed) {
-        // Metadata must not restart media after a successful launch but before hide.
-        renderDetailText();
-        if (!modalOpen) announceSelection();
-      }
-    } catch (error) {
-      // Optional firmware API: keep defaults or the last successful names.
-    } finally {
-      if (inputLabelRead === read) inputLabelRead = null;
+    });
+    renderRows(selectedCategory);
+    $('items').setAttribute('aria-activedescendant', 'item-' + selections[selectedCategory]);
+    if (currentItem().id !== selected) render();
+    else {
+      // Renaming a selected input must not restart its live video or image.
+      renderDetailText();
+      announceSelection();
+      wave.setMenuObjects(launcherView.menuObjects());
     }
   }
-  function cancelInputLabels() {
-    var read = inputLabelRead;
-    inputLabelRead = null;
+  async function refreshInputs() {
+    if (!pageActive || document.hidden || inputRead) return;
+    var read;
+    try {
+      read = C5TV.listInputs();
+      inputRead = read;
+      var result = await read;
+      if (inputRead !== read || !pageActive || document.hidden || result.preview) return;
+      if (!Array.isArray(result.inputs) || result.inputs.length > 128) return;
+      pendingInputs = result.inputs;
+      applyInputs();
+    } catch (error) {
+      // An unavailable service retains the last successful inventory, never
+      // guesses four HDMI ports or treats a failed read as an empty list.
+    } finally {
+      if (inputRead === read) inputRead = null;
+    }
+  }
+  function cancelInputs() {
+    var read = inputRead;
+    inputRead = null;
+    pendingInputs = null;
+    clearTimeout(inputApplyTimer);
+    inputApplyTimer = null;
     if (read && typeof read.cancel === 'function') {
       try {
         read.cancel();
@@ -1458,18 +1491,22 @@
     )
       thumbnail.refresh();
     lastReturnAt = now;
-    updateClock();
+    resumeClock();
     restoreFocus();
-    if (!wasActive || refreshStill) refreshInputLabels();
+    if (!wasActive || refreshStill) refreshInputs();
     if (C5TV.isTV()) appRefresh.resume();
     helperLifecycle('resume');
   }
   function suspendPage() {
+    pauseClock();
+    clearTimeout(detailTimer);
+    detailTimer = 0;
     helperLifecycle('suspend');
     cancelNavigation();
     appRefresh.pause();
-    if (modalType === 'datetime') {
-      dateTimeSettings.close();
+    if (modalType === 'datetime' || modalType === 'remote') {
+      if (modalType === 'remote') C5RemoteSettings.close();
+      else dateTimeSettings.close();
       modalOpen = false;
       modalType = '';
       $('modalBackdrop').hidden = true;
@@ -1485,7 +1522,7 @@
     syncScreensaver();
     sounds.setActive(false);
     music.setContext(false, false);
-    cancelInputLabels();
+    cancelInputs();
     invalidateLaunch();
     clearToast();
     clearTimeout(announceTimer);
@@ -1509,7 +1546,10 @@
   // handlesRelaunch stays false: webOS brings the app forward automatically.
   // A Home press while already visible still needs to leave any open dialog.
   document.addEventListener('webOSRelaunch', handleRelaunch, true);
-  appCategories.rebuild(selections);
+  if (!C5TV.isTV() && window.LGXMBDemo) {
+    appCategories.reconcile(LGXMBDemo.apps(), selections);
+    appCategories.reconcileInputs(LGXMBDemo.inputs(), selections);
+  } else appCategories.rebuild(selections);
   categories.forEach(function (c, ci) {
     selections[ci] = menuOrder.apply(c, c.items[selections[ci]] && c.items[selections[ci]].id);
   });
@@ -1518,11 +1558,11 @@
   applyPreferences();
   render();
   sounds.prepare();
-  updateClock();
-  var clockTimer = setInterval(updateClock, 10000);
+  if (pageActive) resumeClock();
+  else updateClock();
   $('items').focus();
-  if (C5TV.isTV()) appRefresh.resume();
-  refreshInputLabels();
+  if (C5TV.isTV() && pageActive) appRefresh.resume();
+  refreshInputs();
   startHelper();
   helperLifecycle('resume');
   document.addEventListener('visibilitychange', function () {
@@ -1534,13 +1574,15 @@
     cancelNavigation();
     cancelHold();
     categoryTransition.cancel();
+    launcherView.refreshLayout();
+    wave.setMenuObjects(launcherView.menuObjects());
   });
   window.addEventListener('pagehide', suspendPage);
   window.addEventListener('pageshow', function () {
     restorePage(false);
   });
   window.addEventListener('beforeunload', function () {
-    clearInterval(clockTimer);
+    pauseClock();
     suspendPage();
     helperLifecycle('destroy');
     appRefresh.destroy();

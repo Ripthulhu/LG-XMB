@@ -16,7 +16,7 @@ const probe=`window.soundProbe={played:[],stopped:0};
 const realStart=AudioBufferSourceNode.prototype.start,realStop=AudioBufferSourceNode.prototype.stop;
 AudioBufferSourceNode.prototype.start=function(...args){soundProbe.played.push(this.buffer.duration);return realStart.apply(this,args);};
 AudioBufferSourceNode.prototype.stop=function(...args){soundProbe.stopped++;return realStop.apply(this,args);};`;
-const scripts=['icons.js','catalog.js','category-transition.js','fixture.js','probe.js','menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','clock-view.js','app.js'];
+const scripts=['icons.js','input-discovery.js','catalog.js','category-transition.js','fixture.js','probe.js','menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','clock-view.js','app.js'];
 const html=fs.readFileSync(path.join(root,'app/index.html'),'utf8').replace(/  <script src="[^"]+"><\/script>\n/g,'').replace('</body>',scripts.map(s=>'<script src="'+s+'"></script>').join('\n')+'\n</body>');
 const server=http.createServer((req,res)=>{
  const name=decodeURIComponent(req.url.split('?')[0]).slice(1);

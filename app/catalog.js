@@ -1,8 +1,7 @@
-/* Curated TV shortcuts in XMB order. SPDX-License-Identifier: GPL-3.0-or-later */
+/* Default app placement and artwork; availability comes from discovery. SPDX-License-Identifier: GPL-3.0-or-later */
 (function (root) {
   'use strict';
 
-  /* Curated TV shortcuts in XMB order. SPDX-License-Identifier: GPL-3.0-or-later */
   // Media Player is shared intentionally: no undocumented photo/music/video
   // launch parameters. Other discovered apps remain in Apps.
   var categories = [
@@ -37,10 +36,10 @@
         },
         {
           id: 'remote',
-          title: 'Back button',
+          title: 'Remote',
           icon: 'remotesettings',
           type: 'SETTING',
-          description: 'Choose what Back does on the home screen.',
+          description: 'Choose what the Home and Back buttons do.',
           action: 'remote'
         },
         {
@@ -134,38 +133,6 @@
           icon: 'channels',
           type: 'TV',
           description: 'Open LG Channels.'
-        },
-        {
-          id: 'com.webos.app.hdmi1',
-          title: 'HDMI 1',
-          icon: 'hdmi',
-          type: 'INPUT',
-          description: 'Switch to HDMI 1.',
-          action: 'input'
-        },
-        {
-          id: 'com.webos.app.hdmi2',
-          title: 'HDMI 2',
-          icon: 'hdmi',
-          type: 'INPUT',
-          description: 'Switch to HDMI 2.',
-          action: 'input'
-        },
-        {
-          id: 'com.webos.app.hdmi3',
-          title: 'HDMI 3',
-          icon: 'hdmi',
-          type: 'INPUT',
-          description: 'Switch to HDMI 3.',
-          action: 'input'
-        },
-        {
-          id: 'com.webos.app.hdmi4',
-          title: 'HDMI 4',
-          icon: 'hdmi',
-          type: 'INPUT',
-          description: 'Switch to HDMI 4.',
-          action: 'input'
         }
       ]
     },

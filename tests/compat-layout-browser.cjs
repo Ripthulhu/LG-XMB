@@ -52,7 +52,7 @@ async function checkStaticFallback(browser, app, width) {
 async function checkLegacyGeometry(page, width, height) {
   await page.evaluate(() => {
     document.getElementById('modalBackdrop').hidden = false;
-    document.getElementById('modalContent').innerHTML = '<div class="choice-options"><button class="option"><span>A</span><span>Yes</span></button><button class="option"><span>B</span><span>No</span></button></div>';
+    document.getElementById('modalContent').innerHTML = '<div class="choice-options"><button class="option"><span><i class="swatch"></i>A</span><span>Yes</span></button><button class="option"><span>B</span><span>No</span></button></div>';
     document.getElementById('time').textContent = '12:34';
     document.getElementById('date').textContent = '22/9';
   });
@@ -62,6 +62,12 @@ async function checkLegacyGeometry(page, width, height) {
   const choices = await page.locator('.choice-options > button').all();
   const a = await choices[0].boundingBox(), b = await choices[1].boundingBox();
   assert.ok(Math.abs(b.x - a.x - a.width - width * 0.006) < 1, 'Choice spacing');
+  const swatchGap = await page.locator('.swatch').evaluate(swatch => {
+    const text = document.createRange();
+    text.selectNodeContents(swatch.nextSibling);
+    return text.getBoundingClientRect().left - swatch.getBoundingClientRect().right;
+  });
+  assert.ok(Math.abs(swatchGap - width * 0.0115) < 1, 'Colour swatch spacing before a text node');
   for (const style of ['current', 'ps3']) {
     await page.locator('.clock').evaluate((el, style) => el.dataset.style = style, style);
     const time = await page.locator('#time').boundingBox(), date = await page.locator('#date').boundingBox();

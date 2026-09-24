@@ -306,6 +306,36 @@ class SetupFixture(unittest.TestCase):
         self.assertFalse(os.path.lexists(self.app / 'user-music.mp3'))
         self.assertFalse((self.base / 'installed.json').exists())
 
+    def test_home_button_bundle_read_never_repairs_or_starts_setup(self):
+        cases = [(self.app, 0o777), (self.bundle, 0o777),
+                 (self.app / 'appinfo.json', 0o666),
+                 (self.bundle / 'bundle.json', 0o666),
+                 (self.bundle / 'home_button.py', 0o666)]
+        for target, mode in cases:
+            original = stat.S_IMODE(target.stat().st_mode)
+            target.chmod(mode)
+            try:
+                with self.subTest(path=str(target)), \
+                     patch.object(startup, 'repair_helper_directory') as repair, \
+                     patch.object(startup, 'restore_owner_only_write') as chmod, \
+                     patch.object(startup, 'record_startup') as log, \
+                     patch.object(startup, 'load_module') as module:
+                    with self.assertRaisesRegex(startup.SetupError, 'helper_permissions_required'):
+                        startup.home_button(['get'])
+                    self.assertEqual(stat.S_IMODE(target.stat().st_mode), mode)
+                    repair.assert_not_called()
+                    chmod.assert_not_called()
+                    log.assert_not_called()
+                    module.assert_not_called()
+            finally:
+                target.chmod(original)
+        self.owners[self.bundle] = startup.LEGACY_HELPER_OWNER
+        with patch.object(startup, 'repair_helper_directory') as repair:
+            with self.assertRaisesRegex(startup.SetupError, 'helper_permissions_required'):
+                startup.home_button(['get'])
+            repair.assert_not_called()
+            self.assertEqual(self.chowns, [])
+
     def test_additional_pinned_module_is_verified_before_any_module_load(self):
         module = self.bundle / 'audio_paths.py'
         module.write_bytes(b'# optional module fixture\n')

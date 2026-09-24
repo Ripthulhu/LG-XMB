@@ -148,12 +148,13 @@ test('preference types and volume choices are bounded; no root, network URL or W
   const src=fs.readFileSync('app/background-music.js','utf8');
   assert.doesNotMatch(src,/https?:|PalmServiceBridge|luna:\/\/|decodeAudioData|createMediaElementSource/);
 });
-test('local audio is allowed by CSP without allowing remote media or connection requests',()=>{
+test('CSP allows local audio without broad script or network permissions',()=>{
   const src=fs.readFileSync('app/index.html','utf8');
-  assert.match(src,/media-src 'self' file: ext:;/);
-  // Explicit local-file access for older webOS; still nothing remote.
-  assert.match(src,/connect-src 'self' file:;/);
-  assert.doesNotMatch(src.match(/Content-Security-Policy[^>]*/)[0],/https?:|\*/);
+  const policy=src.match(/http-equiv="Content-Security-Policy"\s+content="([^"]+)"/)[1];
+  assert.match(policy, /script-src 'self';/);
+  assert.match(policy, /media-src 'self' ext:;/);
+  assert.match(policy, /connect-src 'self';/);
+  assert.doesNotMatch(policy, /https?:|file:|gap:|blob:|\*/);
   assert.ok(src.indexOf('background-music.js')<src.indexOf('src="app.js"'));
 });
 
