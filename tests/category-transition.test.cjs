@@ -210,9 +210,7 @@ test('opacity is confined to non-text markers, the category-label fade and expli
     '.input-preview-symbol',
     '.thumbnail-symbol',
     '.option:before',
-    '.option:focus:before',
-    '.background-option:before',
-    '.background-option:focus:before'
+    '.option:focus:before'
   ]);
   for (const filename of stylesheets(path.join(__dirname, '../app'))) {
     const text = fs.readFileSync(filename, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');

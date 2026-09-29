@@ -34,20 +34,6 @@
     [90, [131, 86, 32], [18, 20, 17]],
     [118.25, [157, 59, 44], [0, 0, 3]]
   ];
-  var MONTHS = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December'
-  ];
   function bounded(value, min, max, fallback) {
     return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
       ? value
@@ -195,30 +181,6 @@
       ')'
     );
   }
-  var SHADER = [
-    'uniform bool uColorEnabled; uniform vec3 uColorStart; uniform vec3 uColorEnd;',
-    'uniform vec2 uColorDir; uniform vec2 uColorRange;',
-    'vec3 presetBackground(vec2 uv) {',
-    '  float t=dot(vec2(uv.x,1.0-uv.y),uColorDir);',
-    '  float u=clamp((t-uColorRange.x)/max(uColorRange.y,0.000001),0.0,1.0);',
-    '  return mix(uColorStart,uColorEnd,u*u*(3.0-2.0*u));',
-    '}'
-  ].join('\n');
-  function locations(gl, program) {
-    var u = {};
-    ['uColorEnabled', 'uColorStart', 'uColorEnd', 'uColorDir', 'uColorRange'].forEach(function (n) {
-      u[n] = gl.getUniformLocation(program, n);
-    });
-    return u;
-  }
-  function upload(gl, u, palette) {
-    gl.uniform1i(u.uColorEnabled, palette ? 1 : 0);
-    if (!palette) return;
-    gl.uniform3fv(u.uColorStart, palette.start);
-    gl.uniform3fv(u.uColorEnd, palette.end);
-    gl.uniform2f(u.uColorDir, palette.dir[0], palette.dir[1]);
-    gl.uniform2f(u.uColorRange, palette.range[0], palette.range[1]);
-  }
   function sample(palette, x, y) {
     var t = Math.max(
       0,
@@ -233,10 +195,6 @@
     normalize: normalize,
     resolve: resolve,
     menuGradient: menuGradient,
-    months: Object.freeze(MONTHS),
-    shader: SHADER,
-    locations: locations,
-    upload: upload,
     sample: sample
   });
 })(window);

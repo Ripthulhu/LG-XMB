@@ -101,25 +101,11 @@
   var inputRead = null,
     pendingInputs = null,
     inputApplyTimer = null;
-  var menuOrder = new LGXMBMenuOrder(categories, {
-      getItem: function (k) {
-        return localStorage.getItem(k);
-      },
-      setItem: function (k, v) {
-        localStorage.setItem(k, v);
-      }
-    }),
+  var menuOrder = new LGXMBMenuOrder(categories, preferenceStorage),
     hold = new LGXMBHoldGesture(),
     pointerHold = null,
     suppressHoldClick = false;
-  var appCategories = new LGXMBAppCategories(categories, menuOrder, {
-    getItem: function (k) {
-      return localStorage.getItem(k);
-    },
-    setItem: function (k, v) {
-      localStorage.setItem(k, v);
-    }
-  });
+  var appCategories = new LGXMBAppCategories(categories, menuOrder, preferenceStorage);
   var appRefresh = new LGXMBAppRefresh({
     read: function () {
       return C5TV.listApps();
@@ -575,19 +561,6 @@
       sound: 'Sound',
       previews: 'Input previews',
       remote: 'Remote'
-    }[type];
-    $('modalIntro').textContent = {
-      datetime: '',
-      appearance: '',
-      theme: '',
-      colour: '',
-      background: '',
-      clock: '',
-      screensaver: '',
-      'appearance-advanced': '',
-      sound: '',
-      previews: '',
-      remote: ''
     }[type];
     if (type === 'theme') {
       appearanceSettings.openTheme();
@@ -1420,12 +1393,6 @@
     if (!appCategories.reconcileInputs(snapshot, selections)) return;
     categoryTransition.cancel();
     buildItems();
-    categories.forEach(function (category, ci) {
-      if (category.id !== 'tv') return;
-      category.items.forEach(function (item, index) {
-        if (item.action === 'input') launcherView.updateItemLabel(ci, index, item);
-      });
-    });
     renderRows(selectedCategory);
     $('items').setAttribute('aria-activedescendant', 'item-' + selections[selectedCategory]);
     if (currentItem().id !== selected) render();

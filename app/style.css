@@ -619,131 +619,6 @@ header {
 .choice-options .option-check {
   font-size: 0.8em;
 }
-.about-copy {
-  font-size: clamp(15px, 1.03vw, 23px);
-  line-height: 1.85;
-  color: rgba(var(--accent-rgb), 0.74);
-  max-width: 40vw;
-}
-.about-copy p {
-  margin: 0 0 2.4vh;
-}
-.about-copy strong {
-  color: var(--text);
-  font-weight: 400;
-}
-.background-group + .background-group {
-  margin-top: 3vh;
-}
-.background-heading {
-  font-size: clamp(15px, 1.05vw, 24px);
-  font-weight: 400;
-  letter-spacing: 0.06em;
-  color: rgba(var(--accent-rgb), 0.62);
-  margin: 1vh 1.3vw 1.3vh;
-}
-.background-option {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.3vw;
-  width: 100%;
-  padding: 1.3vh 1.3vw;
-  margin: 0.55vh 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  text-align: left;
-  scroll-margin: 2vh;
-}
-.background-option:before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 18%;
-  height: 64%;
-  width: 2px;
-  background: var(--accent);
-  opacity: 0;
-}
-.background-option:hover,
-.background-option:focus {
-  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.08), transparent);
-  outline: none;
-}
-.background-option:focus:before {
-  opacity: 1;
-}
-.background-option[aria-disabled='true'] {
-  cursor: default;
-}
-.background-option-copy {
-  display: block;
-  max-width: 31vw;
-}
-.background-option-title {
-  display: block;
-  font-size: clamp(19px, 1.45vw, 32px);
-  line-height: 1.25;
-  color: rgba(var(--accent-rgb), 0.86);
-}
-.background-option:focus .background-option-title {
-  color: var(--text);
-}
-.background-option-description {
-  display: block;
-  color: rgba(var(--accent-rgb), 0.72);
-  font-size: clamp(13px, 0.86vw, 20px);
-  line-height: 1.5;
-  margin-top: 0.55vh;
-}
-.background-option-status {
-  display: block;
-  color: rgba(var(--accent-rgb), 0.85);
-  font-size: clamp(12px, 0.79vw, 19px);
-  line-height: 1.45;
-  margin-top: 0.4vh;
-}
-.background-option-control {
-  display: flex;
-  align-items: center;
-  gap: 0.9vw;
-  flex: none;
-}
-.background-option-value {
-  color: rgba(var(--accent-rgb), 0.67);
-  font-size: clamp(12px, 0.79vw, 18px);
-}
-.background-switch {
-  position: relative;
-  display: block;
-  width: 2.3vw;
-  min-width: 30px;
-  height: 1.18vw;
-  min-height: 16px;
-  border-radius: 40px;
-  border: 1px solid rgba(var(--accent-rgb), 0.42);
-  background: rgba(var(--accent-rgb), 0.08);
-}
-.background-switch:after {
-  content: '';
-  position: absolute;
-  width: calc(50% - 3px);
-  height: calc(100% - 4px);
-  left: 2px;
-  top: 2px;
-  border-radius: 50%;
-  background: rgba(var(--accent-rgb), 0.65);
-}
-.background-option[aria-checked='true'] .background-switch {
-  background: rgba(var(--accent-rgb), 0.7);
-  border-color: rgba(var(--accent-rgb), 0.7);
-}
-.background-option[aria-checked='true'] .background-switch:after {
-  left: calc(50% + 1px);
-  background: var(--background);
-}
 .background-error {
   padding: 1.2vh 1.3vw;
   border-left: 2px solid rgba(255, 255, 255, 0.7);
@@ -752,11 +627,6 @@ header {
   font-size: clamp(13px, 0.95vw, 22px);
   line-height: 1.5;
   margin: 1vh 0 1.6vh;
-}
-.background-loading {
-  color: rgba(var(--accent-rgb), 0.7);
-  font-size: clamp(16px, 1.15vw, 26px);
-  padding: 1vh 1.3vw;
 }
 #toast {
   color: var(--text);
@@ -788,9 +658,6 @@ header {
   .category {
     width: 10vw;
   }
-  .navigation-hints {
-    gap: 1vw;
-  }
   .detail h1 {
     font-size: 3vw;
   }
@@ -820,22 +687,12 @@ header {
     padding-left: 3vw;
     min-width: 0;
   }
-  .modal-intro,
-  .about-copy {
+  .modal-intro {
     max-width: none;
-  }
-  .background-option-copy {
-    max-width: 40vw;
   }
   .modal-backdrop {
     --menu-left: 34vw;
   }
-}
-.remote-note {
-  margin: 1.6vh 1.3vw 0;
-  font-size: clamp(13px, 0.88vw, 20px);
-  line-height: 1.55;
-  color: rgba(255, 255, 255, 0.65);
 }
 
 /* webOS 22 uses Chromium 87, before CSS aspect-ratio support. */
@@ -866,14 +723,6 @@ header {
   margin: 0.6em 0;
 }
 
-/* Keep the manual music path readable on both supported UI sizes. */
-.music-file-path {
-  font-family: monospace;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  user-select: text;
-}
-
 /* One persistent horizontal transform, with the same timing as up/down.
    The vertical list never gets a temporary transform or opacity layer. */
 #categories {
@@ -885,58 +734,6 @@ header {
 #categories.categories-instant .category-icon,
 #categories.categories-instant .category-label {
   transition: none !important;
-}
-/* Colour controls use the existing dark settings panel, independent of day palettes. */
-.color-group {
-  margin: 0 0 2.6vh;
-  padding: 0 1vw;
-}
-.color-group h3,
-.color-group label {
-  font-size: clamp(16px, 1.15vw, 25px);
-  font-weight: 400;
-  margin: 0 0 1vh;
-  display: block;
-}
-.color-choices {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.3vh 0.4vw;
-}
-.color-choices[data-columns='4'] {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-.color-choices[data-columns='2'] {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.color-choices .option {
-  font-size: clamp(16px, 1.18vw, 26px);
-  padding: 1.2vh 0.6vw;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-  white-space: normal;
-}
-.color-choices .option[aria-pressed='true'] {
-  border-bottom-color: #fff;
-}
-.color-group label output {
-  float: right;
-  font-variant-numeric: tabular-nums;
-}
-.color-group input[type='range'] {
-  display: block;
-  width: 100%;
-  height: 3.8vh;
-  margin: 0;
-  accent-color: #fff;
-  cursor: pointer;
-}
-.color-group input:focus {
-  outline: 1px solid #fff;
-  outline-offset: 4px;
-}
-.color-group input {
-  scroll-margin: 2vh;
 }
 
 /* Category changes move layers, they don't repaint. Each category's rows live in

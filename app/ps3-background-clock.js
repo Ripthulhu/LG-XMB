@@ -152,11 +152,6 @@
       }
     };
   }
-  function nextMonthWeight(phase, y) {
-    const a =
-      (F(0.04444444179534912) * (phase - 15) * (phase - 15) + F(0.1)) * (y + 1 - F(0.1) * phase);
-    return 0.5 - 0.5 * Math.tanh(Math.max(-10, Math.min(10, a)));
-  }
   const api = Object.freeze({
     defaults,
     retained,
@@ -164,8 +159,7 @@
     fromLocalDate,
     coordinates,
     menuColour,
-    uniforms,
-    nextMonthWeight
+    uniforms
   });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.LGXMBPS3BackgroundClock = api;

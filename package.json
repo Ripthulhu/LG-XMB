@@ -11,7 +11,6 @@
     "package": "node tools/package.mjs",
     "verify:package": "node tools/package.mjs --verify-only",
     "test:compat": "node tests/compat-layout-browser.cjs",
-    "tools:download": "node tools/dev-tools.cjs",
     "test:music": "node tests/background-music-browser.cjs",
     "test:menu": "node tests/menu-browser.cjs",
     "test:helper": "node --test tests/helper.test.cjs tests/thumbnail.test.cjs && node tests/helper-status-browser.cjs",

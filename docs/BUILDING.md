@@ -150,12 +150,6 @@ Focused guides list tests for [item options](ITEM-OPTIONS.md),
 The native renderer's Python browser checks use separate Python dependencies
 and research fixtures; see [renderer validation](WEBGL2.md#validation).
 
-## Optional tools
-
-`npm run tools:download` downloads a pinned, checksum-verified `ares-cli-rs`
-archive into `.tools/`. It doesn't extract or run it, and the normal build
-doesn't need it. `@webos-tools/cli` remains the IPK packager.
-
 Don't commit `.build/`, `dist/`, browser recordings, credentials or TV state.
 
 ## Install and set up Home

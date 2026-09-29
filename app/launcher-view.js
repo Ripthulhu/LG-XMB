@@ -286,13 +286,6 @@
       });
     }
 
-    function updateItemLabel(category, index, item) {
-      var list = itemLists[category],
-        button = list && list.children[index];
-      if (!button) return;
-      button.querySelector('.item-text').textContent = item.title;
-      button.setAttribute('aria-label', item.title);
-    }
     return {
       buildCategories: buildCategories,
       buildItems: buildItems,
@@ -301,8 +294,7 @@
       renderRows: renderRows,
       detail: detail,
       menuObjects: menuObjects,
-      refreshLayout: refreshLayout,
-      updateItemLabel: updateItemLabel
+      refreshLayout: refreshLayout
     };
   }
   root.LGXMBLauncherView = LauncherView;

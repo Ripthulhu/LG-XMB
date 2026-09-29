@@ -6,8 +6,6 @@
 .no-flex-gap .option,
 .no-flex-gap .option span:first-child,
 .no-flex-gap .choice-options,
-.no-flex-gap .background-option,
-.no-flex-gap .background-option-control,
 .no-flex-gap .date-time-fields {
   gap: 0;
 }
@@ -21,8 +19,6 @@
 /* Colour labels are text nodes, so the sibling selector above cannot space them. */
 .no-flex-gap .option .swatch { margin-right: 1.15vw; }
 .no-flex-gap .choice-options > * + * { margin-left: 0.6vw; }
-.no-flex-gap .background-option > * + * { margin-left: 1.3vw; }
-.no-flex-gap .background-option-control > * + * { margin-left: 0.9vw; }
 .no-flex-gap .date-time-fields > * + * { margin-left: 0.65vw; }
 .no-flex-gap .date-time-fields > :nth-child(4) { margin-left: 1.65vw; }
 .no-flex-gap .screensaver-settings .choice-options .option > * + * { margin-left: 0.3vw; }

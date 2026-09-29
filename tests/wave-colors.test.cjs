@@ -7,7 +7,6 @@ test('existing themes remain the default, independently of new colour settings',
   assert.equal(api.normalize().mode,'theme');assert.equal(api.resolve(null),null);assert.equal(api.resolve({mode:'invalid'}),null);
 });
 test('all 24 monthly entries have bounded colours and a normalized directional range',()=>{
-  assert.equal(api.months.length,12);
   for(let month=1;month<=12;month++)for(const period of ['day','night']){
     const p=api.resolve({mode:'monthly',month,period});
     for(const a of [p.start,p.end,p.tint])assert.ok(a.every(v=>Number.isFinite(v)&&v>=0&&v<=1));
@@ -33,9 +32,4 @@ test('invalid RGB channels, months and intensity values cannot reach uniforms',(
 });
 test('resolved colours are independent objects and cannot mutate the preset table',()=>{
   const a=api.resolve({mode:'monthly',month:1}),b=api.resolve({mode:'monthly',month:1});a.start[0]=0;assert.equal(b.start[0],197/255);
-});
-test('changing colour uniforms requires no new GPU objects and theme mode clears the override',()=>{
-  const calls=[],gl={getUniformLocation:(_,n)=>n,uniform1i:(...v)=>calls.push(v),uniform2f:(...v)=>calls.push(v),uniform3fv:(...v)=>calls.push(v)};
-  const u=api.locations(gl,{});api.upload(gl,u,api.resolve({mode:'monthly',month:2}));api.upload(gl,u,null);
-  assert.deepEqual(calls.at(-1),['uColorEnabled',0]);assert.ok(calls.some(c=>c[0]==='uColorStart'));
 });
