@@ -153,48 +153,25 @@ Capture setup is not a dependency.
 ### Helper lifecycle and status
 
 `app/helper.js` owns native setup and capture health; `app/app.js` owns the
-Settings text and focus. Setup readiness is not proof that the capture worker
-is still running. Read `captureHealth` separately from `ready` and the last
-setup result's `captureRunning` value.
+Settings text and focus. Read `captureHealth` separately from setup `ready` and
+`captureRunning`: setup success does not prove the worker is running. See the
+[helper guide](../tv-helper/README.md#verification-and-state) for recovery and tests.
 
-The launcher calls `resume()`, `suspend()` and `destroy()` with its page
-lifecycle. Resume events are deduplicated. A previously confirmed worker gets
-10 seconds to refresh its heartbeat before one recovery attempt for a stopped,
-stale or explicitly missing status file. Uncertain setup failures require
-manual Retry; they must not become an automatic setup loop. Suspension cancels
-health reads and delayed recovery, and late responses cannot update a new session.
+Pair `resume()`, `suspend()` and `destroy()` with page lifecycle. Suspension
+cancels reads and recovery and invalidates late replies; uncertain setup needs
+manual Retry. Use `watchCapture(true)` only while Input preview Settings is open.
+`lg-xmb-helper-status` updates status; `lg-xmb-helper-recovered` refreshes assets
+once. Heartbeats must not reload media or move focus. Move focus off Retry before
+hiding it.
 
-Input preview Settings uses `watchCapture(true)` for five-second, read-only
-health checks and turns it off when the panel closes. Health changes emit
-`lg-xmb-helper-status`. Successful recovery separately emits
-`lg-xmb-helper-recovered`, which refreshes the selected cached picture and audio
-links once. Ordinary heartbeat reads must not reload media or move focus.
-When Retry disappears, move focus off that button before hiding it.
-
-Run `npm run test:helper` for the helper and thumbnail unit tests plus the
-Settings/lifecycle browser checks. These use local fixtures, not a TV. Native
-capture and recovery still need device validation.
-
-The optional Home replacement has a separate setup tool:
-`tools/refresh-home-registration.py`. After the bind mount, it refreshes SAM's
-app metadata with the media server stopped, then checks the new media lifecycle
-subscription and reconnects an existing capture service. It does not run on
-page resume or ordinary standby wake. Keep this transaction separate from the
-capture worker's recovery. See [Home replacement](HOME-TAKEOVER.md); its service
-ordering and failure paths are covered by `tests/test_home_registration.py`.
+[Home registration](HOME-TAKEOVER.md#mount-and-check) is a separate setup
+transaction, never a page-resume or standby-recovery action.
 
 ### Background and animation
 
-| Source | Edit it for |
-| --- | --- |
-| `app/launcher-preferences.js` | Original/Classic, colour choices, brightness levels, migration and quality defaults |
-| `app/wave-colors.js` | Monthly presets, colour normalisation, interpolation and menu gradients |
-| `app/ps3-background-clock.js` | Calendar and day/night calculations |
-| `app/ps3-native-core.js` | CPU wave/particle simulation |
-| `app/ps3-particle-birth.js` | Particle-birth equations |
-| `app/ps3-native-renderer.js` | WebGL resources, draw passes and the `C5Wave` interface |
-| `app/wallpaper.js` | Optional local image loading and brightness |
-| `shaders/*.vert`, `shaders/*.frag` | Shader behaviour |
+See the [renderer file map](WEBGL2.md#runtime-files) for simulation and shaders.
+`app/wave-colors.js` owns colour normalisation, interpolation and menu gradients;
+[PS3 menu colours](PS3-MENU-COLOURS.md) explains their separate palette and clock updates.
 
 `backgroundTheme()`, `waveStyle()` and `waveQuality()` derive the renderer inputs
 from saved preferences. Original and Classic control particles; colour is either
@@ -230,16 +207,10 @@ and pending detail cancellation with the actual launcher. The settings focus
 and wallpaper completion checks live in `tests/settings-focus-browser.cjs` and
 `tests/appearance-async-browser.cjs`.
 
-`app/ps3-native-shaders.js` is generated. Edit `shaders/`, then run
-`python3 tools/bundle-ps3-shaders.py` and its `--check` mode. Commit both the
-source and regenerated bundle. See [Building](BUILDING.md) for Windows commands.
-
-`app/ps3-native-data.js` and `app/ps3-background-data.js` are committed numerical
-and texture data, not UI code. Their long encoded strings are intentional.
-Do not format them by hand or replace them with a private firmware dependency.
-The optional import tool and research fixtures are not part of a normal build.
-See [WebGL 2](WEBGL2.md) and [provenance](../WAVE-PROVENANCE.md) before changing
-the recovered arithmetic or source data.
+Follow [Building](BUILDING.md#included-runtime-data) to regenerate shaders;
+commit both source and bundle. Keep the committed numerical and texture data
+intact, without hand-formatting or adding a private firmware dependency. Read
+[provenance](../WAVE-PROVENANCE.md) before changing recovered arithmetic or data.
 
 ## Behaviour to preserve
 
@@ -257,41 +228,13 @@ the recovered arithmetic or source data.
 - Avoid DOM measurement, whole-list reconstruction and storage writes on each
   animation frame. Test held directions and opening menus, not just single taps.
 
-## Sources, packages and installed copies
+## Build, test and installed copies
 
-`app/` is the editable frontend. `tv-helper/` is the editable Python worker and
-recovery code. `app/helper-startup.py` is the bootstrap; packaging stages the
-worker and fills its bundle pin. Do not edit the generated helper bundle.
+Use [Building and testing](BUILDING.md) for source/staging paths, helper pins and
+test commands. Edit sources, not generated bundles. `C5App.getState()` supplies
+browser-test diagnostics; update fixtures with explicit script lists when adding
+a runtime dependency. Browser mocks do not establish native TV behaviour.
 
-`.build/package/app` is temporary staging and `dist/` contains build outputs.
-Neither is a source directory. The packaged manifest, helper pin and version
-checks are described in [Building](BUILDING.md).
-
-On the TV, the standalone IPK and a copied Home replacement are separate
-installations. Updating one does not update the other. The optional bind mount
-and its recovery belong to [Home takeover](HOME-TAKEOVER.md), not to the normal
-build. Tests and preview must not deploy, mount or change TV files automatically.
-
-## Validate at the boundary you changed
-
-Use unit tests for data normalisation, migrations, ordering and cancellation.
-Use browser tests for focus, remote input, layout and the connection between
-modules. `C5App.getState()` exposes diagnostics for those tests.
-
-`npm test` does not include browser or Python tests. The browser commands in
-`package.json` run selected groups, not every script in `tests/`. Some older
-fixtures provide their own script list and mock services; update them when
-adding a runtime dependency to `app/index.html`. Check their preview port and
-browser options before running a standalone script.
-
-Start with [Building and testing](BUILDING.md), then the relevant feature guide.
-A browser fixture proves UI behaviour with its mocks. Native playback, HDMI,
-standby and recovery still need the affected path tested on a TV.
-
-Menu colours come from `LGXMBPS3BackgroundClock.menuColour`, using the recovered
-PS3 option-menu monthly palette and hourly grey blend. This is separate from the
-wallpaper palette: late at night the panel becomes silver even over a warm
-background. Manual colours stay fixed. `LGXMBWaveColors.menuGradient` turns the
-tint into a CSS approximation of the original transparent texture's horizontal
-falloff; no firmware image is bundled. The existing clock timer updates the CSS
-variable only when it changes. Menu DOM, focus and navigation are untouched.
+The standalone IPK and copied Home replacement are separate installations;
+updating one does not update the other. Follow [Home takeover](HOME-TAKEOVER.md)
+for the latter. Tests and preview must not deploy, mount or change TV files.

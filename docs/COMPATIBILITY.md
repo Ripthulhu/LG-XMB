@@ -1,8 +1,12 @@
 # Compatibility
 
 The interface targets **webOS 22–26**, with Chromium 87 as its browser baseline.
-The hardware-tested target is the **LG C5 (OLED42C54LA), webOS 10.3.1**.
+The hardware-tested target is the **LG C5 (OLED42C54LA), webOS 25 / 10.3.1**.
 Native features have only been tested on that TV.
+
+The **safer, recommended setup** is a normal webOS app alongside stock LG Home.
+On supported rooted TVs, **Settings → Remote → Home button** can assign Home
+to LG-XMB with elevated Homebrew Channel, Python 3.7+ and a working native API.
 
 Choose by the installed platform, which can change through TV updates, rather
 than the model's purchase year. LG publishes the
@@ -24,37 +28,24 @@ TV. See [LG's resolution requirements](https://webostv.developer.lge.com/develop
 
 ## Chromium 79 fallbacks
 
-webOS 6.x uses Chromium 79. A community user reported the launcher running
-there, with limited performance. The model and native-feature results were
-not supplied. This is a community report, not a full compatibility test.
+The webOS 6.x community report above did not identify the TV model.
 
-The current source was also checked in desktop Chromium **79.0.3945.0** on
+The launcher was checked in desktop Chromium **79.0.3945.0** on
 24 September 2026. The launcher started over local HTTP and directly from
 files with its shipped CSP. WebGL 2 waves, remote-key navigation, settings,
 long-press sorting, screensaver wake, PS3 fonts and the 720p preview layout
 worked without JavaScript errors. The no-WebGL fallback remained usable.
 This checks the browser engine, not webOS services or an older TV's frame rate.
 
-The earlier report attributed success to a broad Content Security Policy
-workaround. That was not established as the cause. The app uses a restrictive
-policy again; it does not allow arbitrary inline scripts or remote script
-sources. A CSP change does not grant webOS service or filesystem permissions.
-
-Checked against Can I Use on 22 September 2026:
-
 - [`inset`](https://caniuse.com/mdn-css_properties_inset) starts in Chromium 87.
   Positioned layers use explicit top/right/bottom/left instead.
 - [Flex gaps](https://caniuse.com/flexbox-gap) start in Chromium 84.
   `browser-compat.js` measures support once; `browser-compat.css` supplies margins
-  for affected rows, including reordered clock contents and colour swatches
-  followed by plain text. Grid gaps stay native.
+  for affected rows. Grid gaps stay native.
 - [`min()`, `max()` and `clamp()`](https://caniuse.com/css-math-functions) work in
   Chromium 79, so responsive sizing remains unchanged.
 
-The layout test forces legacy spacing and aspect-ratio paths at 720p and 1080p,
-checking previews, full-screen layers, choice rows and both clock styles.
-It does not emulate Chromium 79 or validate LG's native APIs. Optional font
-metric overrides can still render differently on older engines.
+Optional font metric overrides can still render differently on older engines.
 
 ## Browser and graphics behaviour
 
@@ -69,16 +60,12 @@ navigation and settings remain usable. Optional floating-point render targets
 fall back to ordinary colour targets, and allocation failures can lower the
 requested wave resolution. Smooth animation still depends on the TV's GPU.
 
-Run `npm run test:compat` after installing the development dependencies. It
-checks normal and forced legacy preview layout at 720p and 1080p, then loads the
-full app without WebGL and navigates into and out of Settings. It uses the same
-browser selection as the other browser tests in [BUILDING.md](BUILDING.md).
-No preview server or TV connection is needed.
+Run `npm run test:compat` with the [browser setup](BUILDING.md#browser-tests).
+It checks normal and forced legacy layouts at 720p and 1080p, plus navigation
+and Settings without WebGL. No preview server or TV connection is needed.
 
-This test runs the installed desktop browser. It is **not Chromium 87 emulation**
-and doesn't replace a webOS 22 test. The native-service unit tests exercise
-denied calls, malformed replies, timeouts and missing bridges, using synthetic
-responses rather than a TV.
+These checks use the installed desktop browser, not Chromium 79/87 emulation.
+Native-service unit tests use synthetic replies; neither replaces TV testing.
 
 ## Check each feature separately
 
@@ -121,10 +108,11 @@ checks the result and preserves the Power On Screen settings. It does not
 modify startup hooks or mount files over LG Home. The control stays unavailable
 if a Home replacement is active or the TV cannot support the request.
 
-Standalone use is the normal installation path. Home replacement is a separate
-root setup tested only on the C5. Its stock Home paths and app type must match
-the target TV. Changing service permissions to force private APIs to work is
-not part of installation.
+Home replacement is a separate root setup tested only on the C5 with
+webOS 25 / 10.3.1. Other TVs need manual investigation of stock Home paths and
+identity, native permissions, helper startup and recovery to determine whether
+replacement is possible at all. Do not assume the C5 commands are portable.
+Changing service permissions to force private APIs to work is not part of installation.
 
 ## Read-only diagnostic
 

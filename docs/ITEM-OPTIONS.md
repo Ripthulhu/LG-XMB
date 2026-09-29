@@ -61,12 +61,17 @@ The subscription uses `{id, subscribe:true}`. Status `21` is intermediate,
 subscription acknowledgement isn't confirmation that the app was removed.
 There is no filesystem deletion or root fallback.
 
-`app/menu-order.js` stores sorting in `lg-xmb-menu-order-v1` and removed shortcuts
-in `lg-xmb-deleted-apps-v1`. A storage failure doesn't prevent startup, but those
-choices then might not survive a restart.
+`app/menu-order.js` stores sorting in `lg-xmb-menu-order-v1` and reads older
+removed-shortcut entries from `lg-xmb-deleted-apps-v1` for migration. A storage
+failure doesn't prevent startup, but choices then might not survive a restart.
 
 `app/app-categories.js` stores hidden IDs and display names in
 `lg-xmb-hidden-apps-v1`. Hiding and restoring make no native install/remove calls.
+
+## Presentation
+
+`app/item-options.css` extends the shared settings-dialog styles. The panel opens
+and closes instantly, without blur. Long information scrolls beneath a fixed header.
 
 ## Tests
 
@@ -78,8 +83,9 @@ node tests/item-options-style-browser.cjs
 ```
 
 The browser tests use synthetic native replies. Check deletion permissions and
-completion on the TV under the actual installed identity. Presentation details
-are in [ITEM-OPTIONS-STYLING.md](ITEM-OPTIONS-STYLING.md).
+completion on the TV under the actual installed identity. The style test checks
+1280 × 720, 1920 × 1080 and 1024 × 768, writing traces to
+`artifacts/item-options-style/`. Browser paint counts are not TV frame-rate measurements.
 
 Recently used sorts successful opens from this launcher, newest first. Apps shared
 across categories share their last-use order. Inputs and launcher settings are

@@ -84,7 +84,8 @@ change. Keep a separate way to reach the TV when testing Home replacement.
 
 Build from the commit being released. Upload the verified IPK, `SHA256SUMS` and
 matching source. Add a short version note under `docs/releases/` with changes
-and known limitations. Old notes describe those versions, not the current app.
+and known limitations. Older notes are collected in the
+[development release history](docs/releases/HISTORY.md).
 
 This checkout has no GitHub Actions publishing workflow. Pushing a commit
 doesn't build or publish a release.

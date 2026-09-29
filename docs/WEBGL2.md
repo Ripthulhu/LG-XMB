@@ -125,15 +125,8 @@ rather than assuming a requested setting was applied.
 
 ## Editing shaders
 
-Edit the files under `shaders/`, then run:
-
-```sh
-python3 tools/bundle-ps3-shaders.py
-python3 tools/bundle-ps3-shaders.py --check
-```
-
-The generated JavaScript bundle avoids fetching shader files at runtime.
-Don't edit the generated copy directly.
+Edit `shaders/` and follow [the bundle workflow](BUILDING.md#included-runtime-data).
+The generated JavaScript bundle avoids runtime file fetches; don't edit it directly.
 
 ## Validation
 

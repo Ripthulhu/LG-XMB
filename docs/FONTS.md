@@ -33,22 +33,13 @@ python -m pip install fonttools
 python tools/import-ps3-fonts.py "/path/to/dev_flash/data/font"
 ```
 
-Use `python3` where appropriate. Copy the prepared files from `app/user-fonts/`
-to `/media/internal/lg-xmb/Fonts/`. The importer output is only a staging folder;
-Home never loads fonts from that old app-local path.
+Use `python3` where appropriate.
 
 Font files are not included in Git or normal builds. The firmware fonts are not
 part of this project's licence.
 
-`app/fonts.css` owns the font faces and fallback order. Buttons and both clock
-styles inherit the same family. The files load once, with no per-frame work;
-missing files leave the existing system font in place. Diagnostic text keeps
-its monospace font.
-
-The font faces also set their line metrics explicitly. Rodin's capitals and
-numbers are 780 units tall in a 1000-unit em; its original browser metrics
-leave them visibly high in centred controls. The shared ascent/descent split
-centres them without offsets on individual labels or changes to glyph shapes.
+[`app/fonts.css`](../app/fonts.css) owns the font faces and fallback order,
+and documents the line-metric adjustment that centres Rodin text in controls.
 
 Run `node tests/fonts-browser.cjs` to check rendering at 1080p and 720p and
 fallback with missing fonts. Without local files it only checks the fallback.

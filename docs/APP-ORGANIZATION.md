@@ -1,10 +1,6 @@
-# App categories, refresh and instant options
+# App categories and refresh
 
-Hold OK for 650 ms to open the options menu. The panel now appears and closes
-immediately, with no transform, opacity, frame staging or transition completion
-handler. The reusable DOM is hidden when closed, so it has no panel/shade bounds
-or dedicated painted layers. Settings styling, short-press-on-release, sound
-mapping and uninstall confirmation remain intact.
+Hold OK for 650 ms to open the [item options](ITEM-OPTIONS.md).
 
 ## Categories
 
@@ -17,22 +13,13 @@ pending selection; it does not move any shortcuts or write preferences.
 Apply saves the complete selection once. Back, Cancel, clicking outside the panel,
 or leaving Home discards pending changes. At least one category must be selected.
 **Default locations** stages the original locations; Apply restores them. Platform
-shortcuts use their catalog locations, while other apps default to Apps. There is
-no Plex/store-ID special case.
+shortcuts use their catalog locations, while other apps default to Apps.
 
-Assignments are saved by native app ID under `lg-xmb-app-categories-v1`, not by
-localized title or row position. Values are now arrays of category IDs. The loader
-also accepts existing single-category string values and normalizes them in memory,
-without writing storage during startup. The next successful Apply saves the
-normalized map. Invalid or empty saved values fall back to the original locations.
-The earlier single-category implementation does not understand the new arrays;
-export preferences before intentionally downgrading to that implementation.
-
-There is one shortcut per app per selected category, with a distinct row object
-and button in each. The existing per-category button cache cannot share a button
-between Music and Video. Unchanged app enumeration retains surviving row objects,
-list arrays and selections, so it does not rebuild the menu. App-title updates are
-copied into every placement without replacing the surviving row objects.
+Assignments use native app IDs and category-ID arrays in `lg-xmb-app-categories-v1`.
+The loader accepts older single-category strings; the next successful Apply saves
+their normalized form. Invalid or empty values fall back to the original locations.
+Export preferences before downgrading to the older single-category implementation,
+which cannot read these arrays. See `app/app-categories.js` for storage and placement.
 
 After applying, focus stays on that app in the current category when it is still
 selected. Otherwise it follows the app to the first selected category in menu
@@ -47,10 +34,8 @@ current locations. **Delete remains a single native uninstall:** it removes ever
 shortcut for the app, not just the current placement. Uncheck a category and Apply
 to remove only that shortcut.
 
-All saved memberships survive uninstall/reinstall and are restored when the app
-is seen again. Background refresh remains deferred while the picker is open;
-an incoming inventory reply cannot replace the pending selection. The panel keeps
-its instant open/close behavior and existing settings styling.
+Saved memberships survive uninstall/reinstall. Background refresh waits while the
+picker is open, so an inventory reply cannot replace the pending selection.
 
 ## New and removed applications
 
@@ -60,40 +45,28 @@ completed while Home was already open. Repeated return events are coalesced;
 there is one in-flight request and at least two seconds between read attempts.
 **Refresh apps** in the options menu requests an earlier check.
 
-Reconciliation waits until navigation has settled for 500 ms, no OK/pointer hold
-is pending, no modal is open, and no launch/uninstall is pending. A queued result
-does not change the target of an open options panel. New unassigned apps appear
-under Apps. Deleted discovered apps disappear from whichever category they were
-assigned to. Native platform anchors remain available even if a visibility-only
-reply omits them. Surviving selections, sorting and DOM row objects are retained;
-a semantically unchanged reply triggers no menu render or row mutations.
+Updates wait for 500 ms of settled navigation and no held OK/pointer, open modal
+or pending launch/uninstall. New unassigned apps appear under Apps; removed apps
+disappear from all assigned categories. Native platform shortcuts remain available
+if a visibility-only reply omits them. Updates preserve surviving selections and
+sort order; an unchanged inventory does not rebuild the menu.
 
-Hide/pagehide cancels native enumeration and invalidates its callbacks. Errors,
-malformed and oversized (>1000 entry) snapshots are not interpreted as an empty
-catalog. A confirmed local uninstall invalidates earlier reads and suppresses a
-stale positive entry until a full snapshot has observed absence; a later presence
-is treated as reinstall. Cancellation changes only read requests, not an uninstall
-already dispatched to the native service.
+Leaving Home cancels inventory reads, but cannot cancel a sent uninstall. Failed,
+malformed or oversized (>1000 entry) snapshots do not empty the catalog. After a
+confirmed local uninstall, stale entries stay suppressed until a full snapshot
+observes absence; a subsequent presence is treated as reinstall.
 
-The implementation reuses `C5TV.listApps()` and does not add a private subscription
-protocol or assume webOS OSE's install-change event schema is present on TV.
-LG's lifecycle documentation: https://webostv.developer.lge.com/develop/guides/app-lifecycle-management
+See `app/app-refresh.js` and LG's
+[lifecycle guide](https://webostv.developer.lge.com/develop/guides/app-lifecycle-management).
 
-## Diagnostics and scope
+## Diagnostics
 
 `C5App.getState().appRefresh` reports active/read/pending state, read/update counts,
 last successful monotonic timestamp and the last error. `appCategories` reports
 saved explicit assignments. These fields contain no app file contents.
 
-No shaders, particle simulation, wave coverage cap, assets, sound files, helper,
-Home manifest, application ID or permissions are changed. The 8-category layout
-and existing horizontal/vertical navigation animation are unchanged. No per-frame
-inventory work, new backdrop filter or extra WebGL pass was added.
-
-Tests use Chromium with simulated TV services/media and a static renderer
-fixture. They exercise the real UI/controller/CSS, not TV installation/uninstall
-or C5 frame time. First-open layout/paint still has a cost; the multi-frame sliding
-animation has been removed rather than made faster.
+Browser tests use simulated TV services/media and a static renderer. They exercise
+the UI/controller/CSS; TV installation, uninstall and frame time need device checks.
 
 Checkbox keyboard semantics follow the WAI-ARIA checkbox pattern:
 https://www.w3.org/WAI/ARIA/apg/patterns/checkbox/

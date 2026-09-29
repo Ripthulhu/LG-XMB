@@ -1,15 +1,19 @@
 # Replacing LG Home
 
-This is optional. For normal use, keep stock Home installed and assign the
-Home button in [Remote settings](INSTALLATION.md#remote-settings-and-standalone-use).
-The standalone launcher can discover apps without this replacement.
+The **safer, recommended setup** is a normal webOS app alongside stock LG Home.
+On supported rooted TVs, assign the Home button in
+[Remote settings](INSTALLATION.md#remote-settings-and-standalone-use), using
+elevated Homebrew Channel and Python 3.7+. Home replacement is optional.
 
 A bind mount makes LG-XMB run as `com.webos.app.home`. On the development C5,
 this covers both the Home button and the return path after closing an app.
 Installing the developer IPK alone doesn't do this.
 
-This is a **manual, root-only setup**, tested on the LG C5 running webOS 10.3.1.
-The webOS 22–26 browser target doesn't guarantee Home replacement on other TVs.
+This **manual, root-only setup has been tested only on the LG C5 with
+webOS 25 / 10.3.1**. On any other TV, manually investigate its stock Home paths
+and identity, native permissions, helper startup and recovery before deciding
+whether replacement is possible at all. Do not assume these commands are
+portable; the webOS 22–26 browser target does not establish that.
 Keep working SSH access and test recovery before adding a startup hook.
 Don't enable Developer Mode on a rooted TV.
 

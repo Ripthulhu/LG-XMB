@@ -25,31 +25,16 @@ stay silent. A failed load doesn't retry on every button press.
 
 ## File access
 
-The rooted helper prepares fixed `user-sounds/` links inside the developer app.
-It also prepares them in `/var/lib/lg-xmb-home` when that payload passes its
-identity and file checks. Normal startup rechecks the links even when the
-capture worker is already running.
+The rooted helper prepares fixed `user-sounds/` links in the developer app and a
+verified Home payload, preserving recordings and unknown entries. For matching
+builds, link setup and recovery, see [Home sound repair](HOME-SOUND-REPAIR.md).
 
-The Home payload and developer app need matching versions and matching
-`helper-startup.py`, `index.html` and `menu-sounds.js` bytes. Installing a new IPK
-without updating the copied Home payload leaves them mismatched.
-See [Home sound repair](HOME-SOUND-REPAIR.md).
-
-Only the nine known filenames can be linked. The helper doesn't modify your
-recordings or replace unknown entries. Links can exist before the WAV files do.
-A missing or rejected Home payload doesn't prevent developer-app sound setup
-or the capture worker from starting.
-
-The browser reads app-relative WAV files with same-origin XHR. Each encoded
-file is limited to 512 KiB. Two loads can run at once, with bounded timeouts and
-checks on decoded duration and channel count. `connect-src 'self'` permits this
-local loader; it doesn't allow an external audio service.
+Each WAV file is limited to 512 KiB. The local loader also checks decoded duration
+and channel count; see `app/menu-sounds.js` for these limits.
 
 ## Playback
 
-Effects use one Web Audio context, not a media pipeline per clip. Up to four
-voices can overlap. Cursor bursts are limited, and late loads don't replay old
-button presses. Navigation doesn't wait for playback.
+Navigation doesn't wait for playback, and late loads don't replay old button presses.
 
 Turning sounds off or leaving Home stops active effects. Returning doesn't play
 anything until another accepted action. Background music uses a separate player;

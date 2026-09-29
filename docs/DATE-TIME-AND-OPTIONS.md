@@ -42,4 +42,4 @@ node tests/date-time-options-browser.cjs
 
 Browser tests use synthetic service replies. Native write permission and the
 TV's accepted date range need testing on its actual firmware. For the shared
-options-panel layout, see [ITEM-OPTIONS-STYLING.md](ITEM-OPTIONS-STYLING.md).
+options-panel layout, see [Item options](ITEM-OPTIONS.md#presentation).

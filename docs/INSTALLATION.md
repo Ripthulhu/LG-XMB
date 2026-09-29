@@ -1,10 +1,13 @@
 # Installation and removal
 
-Installing the IPK adds a launcher named **Home**. It doesn't replace LG Home or
-change the Home button. You can assign that button in **Settings → Remote**
-after checking the app works. Stock LG Home stays installed.
+The **safer, recommended setup** is to install LG-XMB as a normal webOS app,
+keeping stock LG Home. The IPK adds a launcher named **Home** without changing
+the Home button. After testing the app, supported rooted TVs can assign that
+button in **Settings → Remote** with elevated Homebrew Channel and Python 3.7+.
+
 [Replacing LG Home](HOME-TAKEOVER.md) is a separate, optional procedure tested
-only on the LG C5 with webOS 25.
+only on the LG C5 with webOS 25 / 10.3.1. Other TVs need manual investigation
+to determine whether replacement is possible; do not assume those commands apply.
 
 ## Install over SSH
 
@@ -21,7 +24,7 @@ On macOS, use `shasum -a 256 -c SHA256SUMS`. On Windows, use
 Copy the IPK to `/tmp/lg-xmb.ipk` on the TV. For example, from your computer:
 
 ```sh
-scp org.local.openxmb.c5_0.1.34_all.ipk YOUR_TV_CONNECTION:/tmp/lg-xmb.ipk
+scp org.local.openxmb.c5_0.1.35_all.ipk YOUR_TV_CONNECTION:/tmp/lg-xmb.ipk
 ```
 
 Use the filename of your chosen release and your existing SSH alias or

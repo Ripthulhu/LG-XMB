@@ -23,10 +23,11 @@ The interface targets **webOS 22–26**. Hardware testing has been on the
 A community user has also reported the launcher running on webOS 6; that does not validate all TV features.
 See [Compatibility](docs/COMPATIBILITY.md) for the platform details and known limits.
 
-Run it alongside stock LG Home. **Settings → Remote** can assign the Home
-button to LG-XMB on supported rooted TVs. This needs an elevated Homebrew
-Channel service and Python 3.7 or newer, as do cached HDMI pictures. Animated
-backgrounds need WebGL 2; otherwise the menu uses a static background.
+The **safer, recommended setup** is a normal webOS app alongside stock LG Home.
+On supported rooted TVs, **Settings → Remote → Home button** can assign Home
+to LG-XMB. This needs an elevated Homebrew Channel service and Python 3.7 or
+newer, as do cached HDMI pictures. Animated backgrounds need WebGL 2;
+otherwise the menu uses a static background.
 
 ## Install
 
@@ -43,7 +44,8 @@ elevated Homebrew Channel to read installed apps and physical inputs.
 Home-button assignment does not change the TV's Power On Screen setting.
 
 [Replacing LG Home](docs/HOME-TAKEOVER.md) is an optional advanced setup tested
-only on the LG C5 with webOS 25. Existing replacement users must follow its
+only on the LG C5 with webOS 25 / 10.3.1. Other TVs need manual investigation
+to determine whether replacement is possible at all. Existing users must follow its
 [update steps](docs/HOME-TAKEOVER.md#updating-the-payload); an IPK update does not
 update the replacement copy.
 
