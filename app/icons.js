@@ -25,14 +25,16 @@
       'M15 16v15h20V16z' +
       'M7.5 15v4h4.5v-4zm0 7v4h4.5v-4zm0 7v4h4.5v-4zm30-14v4H42v-4zm0 7v4H42v-4zm0 7v4H42v-4z" transform="translate(-1 0)"/>',
     live:
+      // Measured from the firmware's 35n outline; keep the screen and signal
+      // proportions together when scaling to the shared category icon size.
       // Frame, outer arc, inner arc and dot share one fill. Matching winding
       // joins the arc to the frame without painting translucent colour twice;
       // only the screen opening winds the other way to cut a hole.
-      '<path transform="translate(3 0)" fill-rule="nonzero" d="M-2 14h32a3 3 0 0 1 3 3v23a3 3 0 0 1-3 3H-2a3 3 0 0 1-3-3V17a3 3 0 0 1 3-3z' +
-      'M1 20.5v16a.5.5 0 0 0 .5.5h25a.5.5 0 0 0 .5-.5v-16a.5.5 0 0 0-.5-.5h-25a.5.5 0 0 0-.5.5z' +
-      'M45 23.6a18.6 18.6 0 0 1-18.6-18.6h3.2a15.4 15.4 0 0 0 15.4 15.4z' +
-      'M45 15.6A10.6 10.6 0 0 1 34.4 5h3.2a7.4 7.4 0 0 0 7.4 7.4z' +
-      'M45 1.4a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 1 1 0-4.8z"/>',
+      '<path transform="translate(2 2) scale(.47) translate(-28.5 -16.5)" fill-rule="nonzero" d="M34.5 37.5h58.5a6 6 0 0 1 6 6v42a6 6 0 0 1-6 6H34.5a6 6 0 0 1-6-6v-42a6 6 0 0 1 6-6z' +
+      'M41 49v31.5h46V49z' +
+      'M115 53a30 30 0 0 1-30-30h6a24 24 0 0 0 24 24z' +
+      'M115 40a17 17 0 0 1-17-17h6a11 11 0 0 0 11 11z' +
+      'M115.5 16.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 1 1 0-11z"/>',
     apps:
       '<path d="' +
       'M12 11c3-1 5 1 8 3h9c3-2 5-4 8-3 4 1 6 6 8 17 1 7 0 10-3 11-4 2-6-1-8-4l-5-7H16l-5 7c-2 3-5 6-9 3-2-2-2-6-1-11 2-10 4-14 7-16 1 0 3-1 4 0z" transform="translate(3 0) scale(.91 1)"/>',
@@ -79,9 +81,8 @@
       'M16 14v-4a8 8 0 0 1 16 0v4h7l4 30H5l4-30zm4-4v4h8v-4a4 4 0 0 0-8 0zm-4 9v6h4v-6zm12 0v6h4v-6z"/>',
     home: '<path d="m2 22 22-18 22 18-3 4-4-3v20H28V29h-8v14H9V23l-4 3zm14 0h16l-8-7z"/>',
     library:
-      '<path d="' +
-      'M5 9h13l4 4h18v4H9v23H5z"/>' +
-      '<path d="' +
+      '<path fill-rule="nonzero" d="' +
+      'M5 9h13l4 4h18v4H9v23H5z' +
       'M12 20h32l-6 22H6zm3 4-4 14h24l4-14z"/>',
 
     // TV, inputs and devices.
@@ -90,9 +91,8 @@
       'M5 10c12-4 26-4 38 0 2 7 2 18 0 25-12 4-26 4-38 0-2-7-2-18 0-25zm4 3c-1 6-1 13 0 19 9 3 21 3 30 0 1-6 1-13 0-19-9-3-21-3-30 0z' +
       'M21 39h6v3h9v3H12v-3h9z"/>',
     inputs:
-      '<path d="' +
-      'M8 7h32a3 3 0 0 1 3 3v25a3 3 0 0 1-3 3H27v3h8v3H13v-3h8v-3H8v-4h31V11H12v8H8z"/>' +
-      '<path d="' +
+      '<path fill-rule="nonzero" d="' +
+      'M8 7h32a3 3 0 0 1 3 3v25a3 3 0 0 1-3 3H27v3h8v3H13v-3h8v-3H8v-4h31V11H12v8H8z' +
       'M3 24h17v-6l11 9-11 9v-7H3z"/>',
     hdmi:
       '<path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" d="' +
@@ -137,19 +137,21 @@
   // Settings icons share one badge. Its path is kept in the reference's
   // coordinates; only this helper normalises it into the 48 x 48 icon viewBox.
   var settingsBadgePath =
-    '<path d="M211.5 84.5a127.5 127.5 0 1 0 0 255 127.5 127.5 0 0 0 0-255z' +
-    'M268 130c-21-10-44-3-61 14-17 17-19 36-13 58l-66 66q-4 4 0 8l24 25q4 4 8 0l67-67q2-3 6-1c20 10 39 3 55-12 17-16 19-40 11-60l-42 39q-15-10-27-25z"/>';
+    'M211.5 84.5a127.5 127.5 0 1 1 0 255 127.5 127.5 0 0 1 0-255z' +
+    'M268 130c-21-10-44-3-61 14-17 17-19 36-13 58l-66 66q-4 4 0 8l24 25q4 4 8 0l67-67q2-3 6-1c20 10 39 3 55-12 17-16 19-40 11-60l-42 39q-15-10-27-25z';
   var settingsBadgeLayout = { x: 11, y: 11, radius: 9 };
 
-  // Artwork and placement live together. `transform` places the body inside
-  // the viewBox; `badge` can move the wrench, but all badges share one radius.
+  // Artwork and placement live together. `transform` places a separate body;
+  // `joinedOutline` uses the badge's coordinates for a single shared fill.
+  // `badge` can move the wrench, but all badges share one radius.
   // Reuse a paths entry for a settings variant of an existing plain icon.
   var settingsIcons = {
     appearance: {
-      body:
-        '<path d="M161 225h628q6 0 6 6v314q0 6-6 6H161q-6 0-6-6V231q0-6 6-6z' +
-        'M204 270q-4 0-4 4v169q0 4 4 5c28 9 61 12 95 12 147 0 246-159 446-99q5 2 5-4v-83q0-4-4-4z"/>',
-      transform: 'translate(2 10) scale(.0561941) translate(-12 -54)',
+      // The frame shares the badge's coordinates and fill so their overlapping
+      // corner stays the same brightness when dimmed.
+      joinedOutline:
+        'M227.82 246.232h499.94q4.776 0 4.776 4.776v249.97q0 4.776-4.776 4.776H227.82q-4.776 0-4.776-4.776V251.008q0-4.776 4.776-4.776z' +
+        'M262.051 282.055q-3.184 0-3.184 3.184v134.538q0 3.184 3.184 3.98c22.29 7.165 48.561 9.553 75.628 9.553 117.024 0 195.836-126.577 355.053-78.812q3.98 1.592 3.98-3.184v-66.075q0-3.184-3.184-3.184z',
       // The landscape frame is wider and lower; its badge overlaps the corner.
       badge: { x: 9.220281, y: 17.192514 }
     },
@@ -183,21 +185,35 @@
 
   function settingsIcon(definition) {
     var badge = definition.badge || settingsBadgeLayout;
+    var badgeTransform =
+      'translate(' +
+      badge.x +
+      ' ' +
+      badge.y +
+      ') scale(' +
+      settingsBadgeLayout.radius / 127.5 +
+      ') translate(-211.5 -212)';
+    if (definition.joinedOutline) {
+      return (
+        '<path transform="' +
+        badgeTransform +
+        '" fill-rule="nonzero" d="' +
+        definition.joinedOutline +
+        settingsBadgePath +
+        '"/>'
+      );
+    }
     return (
       '<g transform="' +
       definition.transform +
       '">' +
       definition.body +
       '</g>' +
-      '<g transform="translate(' +
-      badge.x +
-      ' ' +
-      badge.y +
-      ') scale(' +
-      settingsBadgeLayout.radius / 127.5 +
-      ') translate(-211.5 -212)">' +
+      '<path transform="' +
+      badgeTransform +
+      '" d="' +
       settingsBadgePath +
-      '</g>'
+      '"/>'
     );
   }
 
@@ -214,9 +230,6 @@
     var key = Object.prototype.hasOwnProperty.call(paths, name) ? name : 'application';
     return (
       '<svg' +
-      // The TV's signal extends slightly beyond its slot so the screen can
-      // match neighbouring icons in size and meet the outer arc halfway.
-      (key === 'live' ? ' overflow="visible"' : '') +
       (Object.prototype.hasOwnProperty.call(settingsIcons, key) ? ' class="settings-symbol"' : '') +
       ' viewBox="0 0 48 48" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" aria-hidden="true" focusable="false">' +
       paths[key] +

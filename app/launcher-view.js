@@ -73,7 +73,7 @@
           face +
           '</span><span class="face lit" aria-hidden="true">' +
           face +
-          '<i class="category-dot"></i></span>';
+          '</span>';
         [].forEach.call(b.querySelectorAll('.category-label'), function (label) {
           label.textContent = cat.title;
         });

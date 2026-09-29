@@ -9,8 +9,8 @@ const base = path.resolve(__dirname, '..');
 const out = path.join(base, 'artifacts/item-options-style');
 const checks = [], errors = [], traces = [];
 async function load(page) {
-  await page.setContent('<!doctype html><html><body><div class="screen" id="screen"><header>Clock</header><nav id="categories">Menu</nav><section class="cross-content">Items</section></div><div class="modal-backdrop" id="referenceBackdrop"><section class="modal" id="referencePanel"><div class="modal-top"><button id="referenceClose">×</button></div><h2 id="referenceTitle">Date &amp; time</h2><p class="modal-intro" id="referenceCaption">Set the TV clock manually.</p><div id="modalContent"><button class="option" id="referenceAction">Apply date &amp; time</button></div></section></div></body></html>');
-  for (const name of ['style.css', 'item-options.css']) await page.addStyleTag({content:fs.readFileSync(path.join(base, 'app', name), 'utf8')});
+  await page.setContent('<!doctype html><html><body><div class="screen" id="screen"><header>Clock</header><nav id="categories">Menu</nav><section class="cross-content">Items</section></div><div class="modal-backdrop" id="referenceBackdrop"><section class="modal" id="referencePanel"><h2 id="referenceTitle">Date &amp; time</h2><p class="modal-intro" id="referenceCaption">Set the TV clock manually.</p><div id="modalContent"><button class="option" id="referenceAction">Apply date &amp; time</button></div></section></div></body></html>');
+  for (const name of ['style.css', 'item-options.css', 'browser-compat.css']) await page.addStyleTag({content:fs.readFileSync(path.join(base, 'app', name), 'utf8')});
   await page.addScriptTag({content:fs.readFileSync(path.join(base,'app/menu-focus.js'),'utf8')});
   await page.addScriptTag({content:fs.readFileSync(path.join(base, 'app/item-options.js'), 'utf8')});
   await page.evaluate(() => {
@@ -43,9 +43,9 @@ async function reference(page) {
       title:styleRead(document.getElementById('referenceTitle'),['fontSize','fontWeight','lineHeight','letterSpacing','marginBottom','color']),
       caption:styleRead(document.getElementById('referenceCaption'),['fontSize','lineHeight','color','marginBottom']),
       shade:styleRead(document.getElementById('referenceBackdrop'),['backgroundImage']),
+      divider:styleRead(document.getElementById('referenceBackdrop'),['backgroundImage','backgroundSize','borderLeftWidth','webkitMaskImage'],'::before'),
       button:styleRead(button,['fontSize','lineHeight','color','backgroundImage','paddingLeft','paddingTop','borderLeftWidth']),
-      marker:styleRead(button,['backgroundColor','width','top','height','opacity'],'::before'),
-      close:styleRead(document.getElementById('referenceClose'),['fontSize','lineHeight','color','paddingLeft'])};
+      marker:styleRead(button,['backgroundColor','width','top','height','opacity'],'::before')};
   });
 }
 async function actual(page) {
@@ -57,10 +57,38 @@ async function actual(page) {
       title:styleRead(styleOptions.title,['fontSize','fontWeight','lineHeight','letterSpacing','marginBottom','color']),
       caption:styleRead(styleOptions.caption,['fontSize','lineHeight','color','marginBottom']),
       shade:styleRead(styleOptions.element.querySelector('.item-options-shade'),['backgroundImage']),
+      divider:styleRead(styleOptions.element.querySelector('.item-options-shade'),['backgroundImage','backgroundSize','borderLeftWidth','webkitMaskImage'],'::before'),
       button:styleRead(button,['fontSize','lineHeight','color','backgroundImage','paddingLeft','paddingTop','borderLeftWidth']),
-      marker:styleRead(button,['backgroundColor','width','top','height','opacity'],'::before'),
-      close:styleRead(styleOptions.backButton,['fontSize','lineHeight','color','paddingLeft'])};
+      marker:styleRead(button,['backgroundColor','width','top','height','opacity'],'::before')};
   });
+}
+async function checkArrows(page, label) {
+  for (const fallback of [false, true]) {
+    const arrows=await page.evaluate(fallback => {
+      document.documentElement.classList.toggle('no-flex-gap',fallback);
+      return ['sort','category','hidden'].map(action => {
+        const button=styleOptions.actions.querySelector('[data-action='+action+']');
+        const box=button.getBoundingClientRect(), panel=styleOptions.panel.getBoundingClientRect();
+        const style=getComputedStyle(button), arrow=getComputedStyle(button,'::after');
+        const range=document.createRange();range.selectNodeContents(button);
+        const right=box.right-parseFloat(style.paddingRight)-parseFloat(style.borderRightWidth);
+        const arrowWidth=parseFloat(arrow.width)+parseFloat(arrow.borderLeftWidth)+parseFloat(arrow.borderRightWidth);
+        const arrowHeight=parseFloat(arrow.height)+parseFloat(arrow.borderTopWidth)+parseFloat(arrow.borderBottomWidth);
+        return {action,content:arrow.content,arrowWidth,arrowHeight,
+          transparentSides:arrow.borderTopColor==='rgba(0, 0, 0, 0)' && arrow.borderBottomColor==='rgba(0, 0, 0, 0)',
+          separated:range.getBoundingClientRect().right<right-arrowWidth,
+          fits:button.scrollWidth<=button.clientWidth && arrowHeight<=box.height &&
+            box.left>=panel.left && right<=panel.right && box.top>=0 && box.bottom<=innerHeight};
+      });
+    },fallback);
+    for (const arrow of arrows) {
+      const message=label+' '+arrow.action+(fallback?' without flex gap':'');
+      assert.equal(arrow.content,'""',message+' has no font glyph');
+      assert.ok(arrow.arrowWidth>0 && arrow.arrowHeight>0 && arrow.transparentSides,message+' paints a triangle');
+      assert.ok(arrow.separated && arrow.fits,message+' clears its label and stays inside the panel');
+    }
+  }
+  await page.evaluate(()=>document.documentElement.classList.remove('no-flex-gap'));
 }
 async function collectTrace(cdp) {
   const complete = new Promise(resolve => cdp.once('Tracing.tracingComplete', resolve));
@@ -104,7 +132,13 @@ async function collectTrace(cdp) {
           await page.waitForFunction(() => !styleOptions.opening && styleOptions.info);
           const got=await actual(page);
           for (const field of Object.keys(expected)) assert.deepEqual(got[field],expected[field],`${width} ${theme}: ${field}`);
+          assert.equal(got.panel.borderLeftWidth,'0px','Panel does not duplicate the divider');
+          assert.equal(got.divider.borderLeftWidth,'0px','Backdrop has no additional border');
+          assert.match(got.divider.backgroundImage,/linear-gradient/,'Divider remains visible without a menu tint');
+          assert.match(got.divider.backgroundSize,/^1px 100%/,'Divider stays one pixel wide');
+          await checkArrows(page,`${width} ${theme}`);
           checks.push(`${width} ${theme}: panel/heading/action/focus/divider/backdrop match settings`);
+          checks.push(`${width} ${theme}: one divider and unclipped submenu triangles, with or without flex gaps`);
           await page.locator('[data-action=sort]').click();
           assert.equal(await page.locator('[data-action=sort-default]').getAttribute('aria-pressed'),'true');
           assert.equal(await page.locator('[data-action=sort-default]').evaluate(el=>el.classList.contains('option')),true);

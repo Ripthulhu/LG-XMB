@@ -50,7 +50,7 @@
 }
 .clock[data-style='ps3'] #date,
 .clock[data-style='ps3'] #time {
-  font-size: 1.55vw;
+  font-size: 1.3vw;
   font-weight: 400;
   color: #fff;
   line-height: 1;

@@ -173,15 +173,6 @@ header {
 .category.active .category-label {
   color: white;
 }
-.category.active:after {
-  content: '';
-  display: block;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  margin: 1.7vh auto 0;
-  background: #ffffff;
-}
 .cross-content {
   position: absolute;
   top: calc(var(--xmb-selected-center) - var(--xmb-row-height) / 2);
@@ -244,7 +235,11 @@ header {
   font-weight: 400;
   letter-spacing: 0.008em;
   line-height: 1.2;
-  max-width: 21vw;
+  /* Leave room for the selected glow inside the ellipsis clip. Negative margins
+     keep the text anchored in the same place, selected or not. */
+  padding: 0.2em;
+  margin: -0.2em;
+  max-width: calc(21vw + 0.4em);
   overflow: hidden;
   text-overflow: ellipsis;
   color: rgba(255, 255, 255, var(--item-alpha, 0.24));
@@ -257,14 +252,9 @@ header {
   transform: scale(1.13);
   font-weight: 400;
 }
-.item.selected:before {
-  content: '';
-  width: 3px;
-  height: 2.9vh;
-  border-radius: 2px;
-  background: var(--accent);
-  position: absolute;
-  left: 0;
+.item.selected .item-text {
+  /* Paint once when selection changes; never animate the glow. */
+  text-shadow: 0 0 0.16em rgba(255, 255, 255, 0.6);
 }
 .detail {
   position: absolute;
@@ -468,8 +458,10 @@ header {
   z-index: -1;
   pointer-events: none;
   left: var(--menu-left);
-  background: var(--menu-gradient);
-  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  /* One fading divider, shared by settings and the long-press menu. */
+  background:
+    linear-gradient(transparent, rgba(255, 255, 255, 0.36), transparent) left / 1px 100% no-repeat,
+    var(--menu-gradient, none);
   -webkit-mask-image: linear-gradient(#000d, #000 50%, #000d);
   mask-image: linear-gradient(#000d, #000 50%, #000d);
 }
@@ -487,7 +479,6 @@ header {
   margin-right: 6vw;
   padding: 0 0 0 3vw;
   border: 0;
-  border-left: 1px solid rgba(var(--accent-rgb), 0.16);
   border-radius: 0;
   background: none;
   box-shadow: none;
@@ -666,7 +657,7 @@ header {
   }
   .item-text {
     font-size: 2.2vw;
-    max-width: 29vw;
+    max-width: calc(29vw + 0.4em);
   }
   #items {
     width: 40vw;
@@ -789,19 +780,8 @@ header {
   transition: none;
 }
 .category .lit .category-label {
-  /* Keep the dot's geometry; the anchored dim-face label handles both fades. */
+  /* The anchored dim-face label handles both fades. */
   visibility: hidden;
-}
-.category-dot {
-  display: block;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  margin: 1.7vh auto 0;
-  background: #fff;
-}
-.category.active:after {
-  content: none;
 }
 /* Waves full screen: visibility, never opacity. */
 /* Rows carry their own inline visibility, which beats the inherited one. */

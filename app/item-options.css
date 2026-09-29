@@ -96,7 +96,14 @@
 .item-options-button[data-action='sort']::after,
 .item-options-button[data-action='category']::after,
 .item-options-button[data-action='hidden']::after {
-  content: '›';
+  content: '';
+  flex: none;
+  width: 0;
+  height: 0;
+  margin-left: 0.7em;
+  border-top: 0.22em solid transparent;
+  border-bottom: 0.22em solid transparent;
+  border-left: 0.34em solid currentColor;
   color: var(--accent);
 }
 .item-options-status {

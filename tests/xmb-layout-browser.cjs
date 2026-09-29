@@ -65,7 +65,8 @@ async function geometry(page) {
         offset: i - state.selections[state.selected],
         visible: getComputedStyle(button).visibility === 'visible',
         ariaHidden: button.getAttribute('aria-hidden'), row: rect(button),
-        icon: rect(button.querySelector('.item-icon')), label: rect(button.querySelector('.item-text'))}));
+        icon: rect(button.querySelector('.item-icon')), label: rect(button.querySelector('.item-text')),
+        labelPadding: parseFloat(getComputedStyle(button.querySelector('.item-text')).paddingLeft)}));
     return {width: innerWidth, height: innerHeight, selected: state.selected, categories, rows,
       objects: state.view.menuObjects(),
       scrollWidth: document.documentElement.scrollWidth,
@@ -89,7 +90,7 @@ function checkGeometry(data, label) {
     near(row.icon.x, width * anchor / 100, label + ' row ' + row.offset + ' icon anchor');
     near(row.icon.y, height * center / 100, label + ' row ' + row.offset + ' icon center');
     near(row.row.height, height * 0.065, label + ' row height');
-    near(row.label.left, width * (anchor + 6) / 100, label + ' label start');
+    near(row.label.left + row.labelPadding, width * (anchor + 6) / 100, label + ' text start');
     for (const [part, bounds] of Object.entries({row: row.row, icon: row.icon, label: row.label})) {
       assert.ok(bounds.top >= -0.6 && bounds.bottom <= height + 0.6,
         label + ' row ' + row.offset + ' ' + part + ' stays inside the viewport');
