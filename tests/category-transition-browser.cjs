@@ -71,20 +71,24 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       if(!row.parked)near(row.x,0,'active list anchor');
     });
   }
+  async function waitForMenuMotion(page){
+    await page.waitForFunction(()=>['categories','items'].every(id=>
+      document.getElementById(id).getAnimations({subtree:true}).length===0),null,{timeout:5000});
+  }
   for(const [width,dpr] of [[1280,1],[1920,1],[1366,1.25]]){
     const page=await create(width,null,dpr);
     try{
       await menu.item(page,'tv','com.webos.app.hdmi4');
       await page.evaluate(()=>{window.inputRows=[...document.querySelectorAll('#items>.rows:not(.parked)>.item')];});
-      await page.waitForTimeout(450);
+      await waitForMenuMotion(page);
       // Category handoff must not change the faster vertical row transition.
       const vertical=await page.evaluate(()=>{
         menuPress('ArrowUp');const row=document.querySelector('#items>.rows:not(.parked)>.item');
         const animation=row.getAnimations().find(a=>a.transitionProperty==='transform');
         return animation&&{duration:animation.effect.getTiming().duration,easing:animation.effect.getTiming().easing};
       });
-      assert.equal(vertical.duration,240);await page.waitForTimeout(450);
-      await page.evaluate(()=>menuPress('ArrowDown'));await page.waitForTimeout(450);
+      assert.equal(vertical.duration,240);await waitForMenuMotion(page);
+      await page.evaluate(()=>menuPress('ArrowDown'));await waitForMenuMotion(page);
       const resting=await page.evaluate(motion);settled(resting);
       const distance=width*0.106;
       await page.evaluate(()=>menuPress('ArrowRight'));
@@ -113,7 +117,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       const clip=await page.locator('#items>.rows:not(.parked) .selected .item-icon').boundingBox();
       const before=await page.screenshot({clip});
       const transform=await page.locator('#categories').evaluate(n=>n.style.transform);
-      await page.evaluate(()=>finishMenuMotion());await page.waitForTimeout(450);
+      await page.evaluate(()=>finishMenuMotion());await waitForMenuMotion(page);
       settled(await page.evaluate(motion));
       assert.equal(await page.locator('#categories').evaluate(n=>n.style.transform),transform);
       const after=await page.screenshot({clip});
@@ -144,7 +148,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       const third=await page.evaluate(motion,0);noGroupEffects(third);
       const oldest=third.rows.find(r=>r.id==='tv');assert.equal(oldest.departing,false);near(oldest.x,width,'oldest entry remains parked');assert.equal(oldest.effects.length,0);
       await page.evaluate(()=>finishMenuMotion());await page.waitForTimeout(30);
-      await menu.category(page,'tv');await page.waitForTimeout(450);
+      await menu.category(page,'tv');await waitForMenuMotion(page);
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#items>.rows:not(.parked)>.item')].every((n,i)=>n===inputRows[i])),true);
       assert.equal(await page.locator('#items>.rows:not(.parked) .above-bar[aria-hidden="false"]').count(),2);
       assert.equal(await page.evaluate(()=>C5App.getState().item),'com.webos.app.hdmi4');
@@ -169,7 +173,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       });
       assert.ok(burst.travel<=1);assert.equal(burst.ghosts,0);assert.equal(burst.boxes,1);
       assert.equal(new Set(burst.ids).size,burst.ids.length);noGroupEffects(await page.evaluate(motion));
-      await page.waitForTimeout(450);settled(await page.evaluate(motion));
+      await waitForMenuMotion(page);settled(await page.evaluate(motion));
       // Far pointer jumps select immediately and still animate just one wrapper.
       await page.evaluate(()=>document.querySelector('[aria-label="Settings"]').click());
       assert.equal(await page.evaluate(()=>C5App.getState().category),'settings');
@@ -185,7 +189,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       await page.evaluate(()=>{window.dispatchEvent(new Event('pageshow'));menuWave.setPaused(true);menuPress('ArrowRight');window.dispatchEvent(new Event('resize'));});
       assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().filter(a=>a.transitionProperty==='transform').length),0);
       settled(await page.evaluate(motion));
-      await page.evaluate(()=>menuPress('ArrowRight'));await page.waitForTimeout(450);
+      await page.evaluate(()=>menuPress('ArrowRight'));await waitForMenuMotion(page);
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.item,.category')].every(n=>getComputedStyle(n).willChange==='auto')),true);
       assert.ok(['none','normal'].includes(await page.locator('#items>.rows:not(.parked) .selected').evaluate(n=>getComputedStyle(n,'::after').content)));
       settled(await page.evaluate(motion));await page.screenshot({path:path.join(dir,`home-rest-${width}.png`)});
@@ -205,7 +209,7 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       if(mode==='reduced'||mode==='system-reduced'){
         assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().length),0);settled(await page.evaluate(motion));
       }
-      await page.waitForTimeout(450);settled(await page.evaluate(motion));
+      await waitForMenuMotion(page);settled(await page.evaluate(motion));
       checks.push(`${mode}: immediate selection, settled off-screen lists and no JavaScript animation dependency`);
     }finally{await page.close();}
   }

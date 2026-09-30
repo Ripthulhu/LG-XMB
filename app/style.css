@@ -200,7 +200,7 @@ header {
   text-align: left;
   padding: 0;
   background: none;
-  transform: translateY(var(--item-y, 0vh));
+  transform: translateY(0vh);
   transition: transform var(--row-navigation-duration) var(--ease);
   pointer-events: auto;
   white-space: nowrap;
@@ -796,6 +796,8 @@ header {
 .category .dim .category-label {
   color: #fff;
   opacity: 0;
+  /* Keep this small fading label ready between category changes. */
+  will-change: opacity;
   transition: opacity 120ms ease-out;
 }
 .category.active .dim .category-label {

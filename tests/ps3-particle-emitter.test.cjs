@@ -16,6 +16,25 @@ function standIn() {
 const rows = selected => { const out = []; for (let i = Math.max(0, selected - 3); i <= Math.min(7, selected + 3); i++) {
   const offset = i - selected; out.push({id: 'r' + i, x: 31 / 50 - 1, y: 1 - (52 + offset * 8.4 - (offset < 0 ? 25 : 0) + 3.25) / 50}); } return out; };
 
+test('omitted birth settings reuse immutable defaults without changing births or random draws', () => {
+  function run(settings) {
+    const random = new Birth.HostRandom(0), signed = () => random.signed(), births = [], batches = [];
+    for (let i = 0; i < 128; i++) {
+      births.push(Birth.createBirth([.1, .4, -.1], [.11, .401, -.102], settings, signed));
+      batches.push(Birth.batchCandidates((x, y) => [x / 128, y / 128, 0], 128, 128, settings, signed));
+    }
+    return {births, batches, counter: random.counter};
+  }
+  const expected = run({...Birth.defaults});
+  assert.deepEqual(run(), expected);
+  assert.deepEqual(run(null), expected);
+  assert.ok(Object.isFrozen(Birth.defaults));
+  assert.notDeepEqual(run({dt: Birth.defaults.dt * 2}).births, expected.births);
+  assert.throws(() => run({dt: 0}), /Invalid birth settings/);
+  assert.throws(() => Birth.batchCandidates(() => [0, 0, 0], 128, 128,
+    {batchProbability: NaN}, () => 0), /Invalid birth settings/);
+});
+
 test('a vertical menu step blows a local wind that decays to nothing', () => {
   const particles = standIn(), interaction = new Core.Interaction(particles, Birth);
   interaction.setObjects(rows(0)); interaction.step();

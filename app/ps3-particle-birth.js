@@ -26,6 +26,7 @@
     return [F(p[0]), F(p[1]), F(p[2])];
   };
   function settings(value) {
+    if (value == null) return defaults;
     const s = Object.assign({}, defaults, value);
     if (
       !Object.values(s).every(Number.isFinite) ||

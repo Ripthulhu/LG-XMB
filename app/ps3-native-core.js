@@ -642,7 +642,8 @@
     var s = this.state,
       p = this.params,
       rng = this.rng,
-      q = this.vector;
+      q = this.vector,
+      step = f(p.angularRate * value(0x3c888888));
     rng[0] = 0x98756161;
     rng[1] = 0x21324889;
     rng[2] = 0x82181158;
@@ -695,8 +696,7 @@
       q[1] = f(f(w * oy) + f(f(oz * x) - f(ox * z)));
       q[2] = f(f(w * oz) + f(f(ox * y) - f(oy * x)));
       q[3] = -f(f(f(ox * x) + f(oy * y)) + f(oz * z));
-      var step = f(p.angularRate * value(0x3c888888)),
-        len = 0;
+      var len = 0;
       for (k = 0; k < 4; k++) {
         q[k] = f(f(0.5 * q[k]) * step + s[at + 8 + k]);
         len = f(len + f(q[k] * q[k]));

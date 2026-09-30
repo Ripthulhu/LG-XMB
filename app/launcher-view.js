@@ -261,7 +261,7 @@
           visible = rowVisible(offset);
         // Space around the selection and category bar is an instant layout
         // offset. Only equal row steps animate, preserving Up/Down timing.
-        button.style.setProperty('--item-y', offset * layout.rowStep + 'vh');
+        button.style.transform = 'translateY(' + offset * layout.rowStep + 'vh)';
         if (first || previous < 0 !== offset < 0) button.classList.toggle('above-bar', offset < 0);
         if (first || previous > 0 !== offset > 0)
           button.classList.toggle('below-selection', offset > 0);

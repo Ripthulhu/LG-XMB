@@ -137,7 +137,7 @@ test('vertical rows use 240 ms while categories keep 400 ms', () => {
       selector
     );
   }
-  assert.doesNotMatch(css, /items-arriving|categories-moving|will-change\s*:/);
+  assert.doesNotMatch(css, /items-arriving|categories-moving/);
 });
 test('transition code never touches the list or reads layout, clones rows, or schedules cleanup', () => {
   assert.doesNotMatch(
@@ -191,14 +191,16 @@ function screensaverLayers(filename, selector, phase) {
     new RegExp('^\\.screensaver-' + phase + ' (?:#screen|#modalBackdrop|\\.item-options|#toast|#screensaverDim)$').test(part.trim()));
 }
 
-test('compositor hints are confined to temporary screensaver fades', () => {
+test('compositor hints are confined to category labels and temporary screensaver fades', () => {
   const files = stylesheets(path.join(__dirname, '../app'));
   assert.ok(files.some((name) => name.endsWith('item-options.css')));
   for (const filename of files) {
     const text = fs.readFileSync(filename, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
     for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       if (!/\bwill-change\s*:/i.test(rule[2])) continue;
-      assert.ok(screensaverLayers(filename, rule[1].trim(), 'transition'), filename + ': ' + rule[1]);
+      const selector = rule[1].trim();
+      const label = path.basename(filename) === 'style.css' && selector === '.category .dim .category-label';
+      assert.ok(label || screensaverLayers(filename, selector, 'transition'), filename + ': ' + selector);
       assert.match(rule[2], /\bwill-change\s*:\s*opacity\s*;/);
     }
   }

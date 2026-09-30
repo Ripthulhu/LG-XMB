@@ -177,6 +177,16 @@ test('No-input motion, aging, tumble and random streams are byte-identical', () 
   }
 });
 
+test('Tumble rate changes apply on the next update with the same quaternion bits', () => {
+  const p = particles(false);
+  for (const rate of [0, .01, .04, .1, .4, 0]) {
+    p.params.angularRate = rate;
+    p.advance(1 / 60, false);
+  }
+  assert.deepEqual(Array.from(new Uint32Array(p.state.buffer).slice(8, 12)),
+    [990387897, 999469324, 998943934, 1065352862]);
+});
+
 test('Horizontal input rotation and perturbation are unchanged', () => {
   const a = particles(true, true), b = particles();
   for (const p of [a, b]) p.interaction.setObjects([{id: 'category', x: -0.38, y: 0.348}]);
