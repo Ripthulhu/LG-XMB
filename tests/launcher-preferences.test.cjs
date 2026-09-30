@@ -23,13 +23,17 @@ test('Back defaults to the previous app while explicit saved choices survive upd
   }
 });
 
-test('live preview pauses the background by default and preserves an explicit opt-out', () => {
-  for (const value of [undefined, null, true, false, 'false', 0]) {
+test('live preview keeps the background moving by default and preserves an explicit pause choice', () => {
+  const defaults = preferences.load({getItem: () => null}, false);
+  assert.equal(defaults.pauseBackgroundDuringLivePreview, false);
+  assert.equal(defaults.previewMode, 'cached');
+  for (const value of [undefined, null, true, false, 'true', 'false', 0, 1]) {
     const loaded = preferences.load({getItem: () => JSON.stringify({pauseBackgroundDuringLivePreview:value})}, false);
-    assert.equal(loaded.pauseBackgroundDuringLivePreview, value !== false);
+    assert.equal(loaded.pauseBackgroundDuringLivePreview, value === true);
+    assert.equal(loaded.previewMode, 'cached');
     let saved;
     preferences.save({setItem: (_, value) => {saved = value;}}, loaded);
-    assert.equal(preferences.load({getItem: () => saved}, false).pauseBackgroundDuringLivePreview, value !== false);
+    assert.equal(preferences.load({getItem: () => saved}, false).pauseBackgroundDuringLivePreview, value === true);
   }
 });
 

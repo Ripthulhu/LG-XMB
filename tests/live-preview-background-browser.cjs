@@ -42,11 +42,10 @@ const menu = require('./support/menu-navigation.cjs');
     });
     await page.goto(pathToFileURL(path.resolve(__dirname, '../app/index.html')).href);
     await page.waitForFunction(() => window.C5App && C5App.getState().waveMode === 'webgl');
-    const saved = await page.evaluate(() => localStorage.getItem('lg-xmb-preferences-v1'));
     assert.equal(
       await page.evaluate(() => C5App.getState().preferences.pauseBackgroundDuringLivePreview),
-      true,
-      'Live previews pause the background by default'
+      false,
+      'Live previews keep the background moving by default'
     );
     await menu.item(page, 'tv', 'com.webos.app.hdmi1');
     assert.equal(
@@ -71,6 +70,17 @@ const menu = require('./support/menu-navigation.cjs');
       const after = await page.evaluate(() => C5App.getState().waveDiagnostics.time);
       assert.equal(after > before, expected);
     }
+    await live(false);
+    await advancing(true);
+    checks.push('live preview keeps the background moving when no pause choice was saved');
+    await menu.item(page, 'settings', 'previews');
+    await page.keyboard.press('Enter');
+    await page
+      .getByRole('group', { name: 'Pause background during live preview', exact: true })
+      .getByRole('button', { name: 'On', exact: true })
+      .click();
+    await page.keyboard.press('Escape');
+    const saved = await page.evaluate(() => localStorage.getItem('lg-xmb-preferences-v1'));
     await live();
     await advancing(false);
     const capture = { clip: { x: 0, y: 620, width: 128, height: 80 } };
@@ -210,7 +220,7 @@ const menu = require('./support/menu-navigation.cjs');
     await live();
     await advancing(false);
     assert.deepEqual(await page.evaluate(() => C5App.getState().preferences), preferences);
-    checks.push('Off survives reload; selecting On restores the normal background hold');
+    checks.push('Off survives reload; selecting On pauses the background again');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ checks, errors, nativeHDMISimulated: true }, null, 2));
   } finally {

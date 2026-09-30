@@ -46,9 +46,9 @@ the C5. With a 4K 144 Hz VRR input, Home measured about 20 animation callbacks
 per second during live preview, compared with 60 using a cached image. Pausing
 the background restored 60 while HDMI continued playing.
 
-**Settings → Input previews → Pause background during live preview** is on by
-default. Turn it off to keep waves and sparkles moving while HDMI plays, at the
-cost of extra rendering work. The choice is saved separately from preview mode.
+**Settings → Input previews → Pause background during live preview** is off by
+default. Turn it on to reduce rendering work while HDMI plays. Cached previews
+remain the default. The pause choice is saved separately from preview mode.
 
 When enabled, the background eases to a stop over 220 ms during the preview's
 startup delay and retains its last frame while HDMI plays. After releasing a native video,
