@@ -388,12 +388,12 @@
     var self = this,
       item = this.item,
       selected = this.options.getIcon(item.id),
-      defaultIcon = this.options.getDefaultIcon(item.id);
+      defaultIcon = item.icon || 'application';
     this.caption.textContent = 'Choose an icon';
     this.actions.setAttribute('role', 'group');
     this.actions.setAttribute('aria-labelledby', 'itemOptionsCaption');
     [{ id: 'default', title: 'Default icon' }]
-      .concat(this.options.getIcons())
+      .concat(root.C5Icon.choices)
       .forEach(function (choice) {
         var b = self.button(choice.title, 'icon-' + choice.id, function () {
           try {

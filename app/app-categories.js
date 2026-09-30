@@ -125,16 +125,6 @@
   AppCategories.prototype.getIcon = function (id) {
     return this.iconOverrides[id] || 'default';
   };
-  AppCategories.prototype.defaultIcon = function (id) {
-    for (var ci = 0; ci < this.base.length; ci++) {
-      var item = this.base[ci].find(function (row) {
-        return row.id === id;
-      });
-      if (item) return item.icon;
-    }
-    var discovered = this.inventory.get(id);
-    return discovered ? discovered.icon : 'application';
-  };
   AppCategories.prototype.setIcon = function (item, key, selections) {
     if (!this.canAssign(item) || !this.hasItem(item.id))
       throw new Error('This item is no longer available.');

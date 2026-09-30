@@ -143,7 +143,9 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
   await navigate(p,'tv','com.webos.app.hdmi2');await p.keyboard.press('F2');
   assert.equal(await p.locator('[data-action=hide]').getAttribute('aria-disabled'),'true');
   await p.locator('[data-action=category]').click();await p.locator('[data-action=category-tv]').click();await p.locator('[data-action=category-video]').click();await p.locator('[data-action=category-apply]').click();
-  await navigate(p,'video','com.webos.app.hdmi2');await p.keyboard.press('F2');await p.locator('[data-action=icon]').click();await p.locator('[data-action=icon-disc]').click();
+  await navigate(p,'video','com.webos.app.hdmi2');await p.keyboard.press('F2');await p.locator('[data-action=icon]').click();
+  assert.equal(await p.locator('[data-action=icon-default] svg').evaluate(svg=>svg.outerHTML===optionsIconHTML('hdmi')),true);
+  await p.locator('[data-action=icon-disc]').click();
   assert.equal((await state(p)).thumbnail.port,2);
   assert.equal(await p.evaluate(()=>C5Catalog.find(c=>c.id==='tv').items.some(i=>i.id==='com.webos.app.hdmi2')),false);
   await p.keyboard.press('Enter');await p.waitForFunction(()=>catalogHarness.inputLaunches.length>0);
@@ -155,6 +157,7 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
    await navigate(reloaded,'video','com.webos.app.hdmi2');
    assert.equal(await reloaded.evaluate(()=>C5Catalog.find(c=>c.id==='video').items.find(i=>i.id==='com.webos.app.hdmi2').customIcon),'disc');
    await navigate(reloaded,'apps','org.test.two');await reloaded.keyboard.press('F2');await reloaded.locator('[data-action=icon]').click();
+   assert.equal(await reloaded.locator('[data-action=icon-default] svg').evaluate(svg=>svg.outerHTML===optionsIconHTML('application')),true);
    assert.equal(await reloaded.evaluate(()=>document.activeElement.dataset.action),'icon-disc');
    const selected=await reloaded.locator('[data-action=icon-disc]').boundingBox(),scroll=await reloaded.locator('.item-options-scroll').boundingBox();
    assert.ok(selected.y>=scroll.y && selected.y+selected.height<=scroll.y+scroll.height+1);

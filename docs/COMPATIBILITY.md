@@ -1,10 +1,12 @@
 # Compatibility
 
 The interface targets **webOS 22–26**, with Chromium 87 as its browser baseline.
-The hardware-tested target is the **LG C5 (OLED42C54LA), webOS 25 / 10.3.1**.
-Native hardware tests have been on that TV. The standalone Home-button listener
-has passed physical Home, arrow and wheel tests on the C5, plus restoration
-after reboot while the TV stayed on Recent Input. The C4 still needs testing.
+Our hardware-tested target is the **LG C5 (OLED42C54LA), webOS 25 / 10.3.1**.
+Community users report success on webOS 24 and 25, without a complete feature
+checklist. Our native hardware tests have been on the C5. Its standalone
+Home-button listener passed physical Home, arrow and wheel tests, plus
+restoration after reboot while the TV stayed on Recent Input. Other models
+haven't had the same full test.
 
 The **safer, recommended setup** is a normal webOS app alongside stock LG Home.
 On rooted TVs, **Settings → Remote → Home button** can route Home to LG-XMB
@@ -19,9 +21,9 @@ than the model's purchase year. LG publishes the
 | webOS 6.x | 79 | Community report: launcher runs; performance limited, native features unverified |
 | webOS 22 | 87 | Browser baseline; no current hardware test |
 | webOS 23 | 94 | Browser target; no current hardware test |
-| webOS 24 | 108 | Browser target; no current hardware test |
-| webOS 25 | 120 | C5 / webOS 10.3.1 tested, including the 0.1.31 cold-boot fixes |
-| webOS 26 | 132 | Browser target; native permissions need testing on this platform |
+| webOS 24 | 108 | Community reports success; native feature coverage incomplete |
+| webOS 25 | 120 | C5 / webOS 10.3.1 tested; community reports success on this platform too |
+| webOS 26 | 132 | Community reports Homebrew Channel issues; native features unverified |
 
 The package declares 1920 × 1080. LG specifies 1920 × 1080 graphics for UHD
 models and 1280 × 720 for Full HD models. There is currently no separate 720p

@@ -679,7 +679,6 @@ test('custom artwork survives copies, input refresh, disappearance and restart; 
     assert.equal(row.customIcon, 'disc');
     assert.equal(row.icon, 'hdmi');
   });
-  assert.equal(f.model.defaultIcon(input.id), 'hdmi');
   for (let n = 0; n < 3; n++) assert.equal(f.model.reconcileInputs(snapshot, f.sel), false);
   assert.equal(f.cat('video').items[0], copies[0]);
   const fresh = fixture(f.store);
