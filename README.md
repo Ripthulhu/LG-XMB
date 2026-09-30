@@ -2,7 +2,7 @@
 
 LG-XMB is an XMB-style home screen for LG webOS TVs, inspired by the PS3.
 
-![LG-XMB running on an LG C5](docs/images/home.png)
+![LG-XMB animations and navigation, recorded in Chromium](docs/images/home.webp)
 
 ## Features
 
