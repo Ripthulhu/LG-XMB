@@ -31,15 +31,24 @@ otherwise the menu uses a static background.
 
 ## Install
 
-Download an IPK from [Releases](https://github.com/Ripthulhu/LG-XMB/releases),
-or build one below.
+Use [Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel) on your rooted TV.
 
-1. Follow [Installation](docs/INSTALLATION.md) to transfer the IPK and install it over SSH.
-2. Open **Home** from the TV's apps. Test navigation, app launching and HDMI.
-3. Open **Settings → Remote → Home button** and choose **LG-XMB** if you want
+1. Open Homebrew Channel and go to **Settings → Add repository**.
+2. Enter this URL and confirm with **Add repository**:
+
+   ```text
+   https://raw.githubusercontent.com/Ripthulhu/LG-XMB/main/repo.json
+   ```
+
+3. Return to the app list, select **LG-XMB** and choose **Install**.
+4. Open **Home** from the TV's apps. Test navigation, app launching and HDMI.
+5. Open **Settings → Remote → Home button** and choose **LG-XMB** if you want
    the Home button to open it. Choose **LG Home** to restore the stock assignment.
 
-Installing the IPK leaves stock LG Home in place. The standalone launcher uses
+Use Homebrew Channel to update LG-XMB too. If you prefer installing an IPK yourself,
+see [Manual installation](docs/INSTALLATION.md#install-over-ssh).
+
+Installing LG-XMB leaves stock LG Home in place. The standalone launcher uses
 elevated Homebrew Channel to read installed apps and physical inputs.
 Home-button assignment does not change the TV's Power On Screen setting.
 

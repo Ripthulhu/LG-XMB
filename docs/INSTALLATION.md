@@ -9,6 +9,26 @@ button in **Settings → Remote** with elevated Homebrew Channel and Python 3.7+
 only on the LG C5 with webOS 25 / 10.3.1. Other TVs need manual investigation
 to determine whether replacement is possible; do not assume those commands apply.
 
+## Install through Homebrew Channel
+
+This is the recommended method on a rooted TV with
+[Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel) installed.
+
+1. Open Homebrew Channel and go to **Settings → Add repository**.
+2. Enter this URL and confirm with **Add repository**:
+
+   ```text
+   https://raw.githubusercontent.com/Ripthulhu/LG-XMB/main/repo.json
+   ```
+
+3. Return to the app list, select **LG-XMB** and choose **Install**.
+4. Open **Home** from the TV's apps. Check navigation, app launching and HDMI.
+5. To make the Home button open LG-XMB, choose **LG-XMB** under
+   **Settings → Remote → Home button**.
+
+The package includes the helper. See [Helper setup](#helper-setup) for its requirements.
+You can also use Homebrew Channel to install updates.
+
 ## Install over SSH
 
 Use your existing root SSH connection. These steps assume you can transfer files
@@ -126,9 +146,10 @@ name appearing in the menu doesn't mean a picture has been captured.
 
 If you use Home replacement, first follow
 [Updating the payload](HOME-TAKEOVER.md#updating-the-payload) to restore LG Home.
-For a standalone launcher, install the new IPK over the existing app and open
-**Home**. Its package ID,
-`org.local.openxmb.c5`, stays unchanged for in-place upgrades.
+For a standalone launcher, select **LG-XMB** in Homebrew Channel and choose
+**Update** when a newer version is available. Then open **Home**.
+If you installed manually, you can install the new IPK over the existing app instead.
+Its package ID, `org.local.openxmb.c5`, stays unchanged for in-place upgrades.
 
 The IPK updates the helper files too; there is no separate helper to copy over
 SSH. Opening Home verifies the new bundle and restarts the capture worker if
