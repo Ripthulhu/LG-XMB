@@ -5,11 +5,32 @@ state rather than rebuilding the whole menu.
 
 ## Category and row changes
 
-`app/category-transition.js` moves the category strip. Each category keeps its
-selected row. Inactive row groups stay parked offscreen, and only the active
-group owns the `item-N` accessibility IDs.
+Appearance → Advanced → Menu animations offers Simple and PS3. PS3 keeps the
+incoming list slide; Simple swaps lists immediately while retaining the category
+bar and vertical scrolling animations. The choice is saved, and PS3 remains the
+default. The Animation Off setting disables motion in either style.
 
-Switching categories updates only the outgoing and incoming lists. Catalog
+`app/category-transition.js` enables the category transition or settles it
+immediately on lifecycle changes. Each category keeps its selected row. Inactive
+row groups stay opaque and visible, parked at `100vw`; only the active group
+owns the `item-N` accessibility IDs.
+
+The outgoing list parks immediately. The incoming list uses one transform-only
+CSS keyframe from one category spacing on the entry side to its resting position,
+sharing the bar's 400 ms position curve. Reversing restarts the incoming animation;
+the bar still retargets continuously. This adapts the recovered stock movement
+without overlapping labels, whole-list fades or cleanup callbacks. Parked rows
+stay outside the viewport, and their click handler rejects activation. Lifecycle
+cancellation and reduced motion skip both transitions and keyframes.
+
+Direction is a local `data-entry` attribute. An inherited CSS variable and a
+descendant pointer-events selector made the browser recalculate styles across
+the rows on every switch. Removing them brought a warmed browser fixture back
+from 273 affected elements to 13. On the C5, two 60-step runs at 100 ms intervals
+improved from 44 to 51 fps; frames over 25 ms fell from 60/62 to 23/33. The
+background settings stayed unchanged, with idle performance around 53–55 fps.
+
+Switching categories updates only the outgoing and incoming rows. Catalog
 membership is reconciled when apps, ordering or categories actually change.
 The 726-row browser fixture produces the same DOM and particle targets while
 avoiding all 726 membership reads on each category switch. Incoming labels are

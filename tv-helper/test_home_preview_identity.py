@@ -95,19 +95,32 @@ class HomePreviewIdentityTests(unittest.TestCase):
                     tc.checked_home_preview()
                 path.chmod(0o644)
 
+    def test_bounded_read_accepts_limit_and_rejects_one_extra_byte(self):
+        directory = os.open(self.payload, os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, directory)
+        for size in (0, 4, 5):
+            with self.subTest(size=size):
+                raw = b'x' * size
+                (self.payload / 'bounded').write_bytes(raw)
+                if size <= 4:
+                    self.assertEqual(tc.read_preview_identity(directory, 'bounded', limit=4)[0], raw)
+                else:
+                    with self.assertRaisesRegex(tc.SafeError, 'home_preview_identity_oversized'):
+                        tc.read_preview_identity(directory, 'bounded', limit=4)
+
     def test_writable_developer_reference_changed_during_read_is_rejected(self):
         path = self.developer / "index.html"
         path.chmod(0o777)
         inode = path.stat().st_ino
-        original_read = os.read
+        fdopen = os.fdopen
         changed = False
-        def changing_read(fd, size):
+        def changing_open(fd, mode):
             nonlocal changed
             if not changed and os.fstat(fd).st_ino == inode:
                 changed = True
                 path.write_text("changed during identity read")
-            return original_read(fd, size)
-        with patch.object(tc.os, "read", side_effect=changing_read):
+            return fdopen(fd, mode)
+        with patch.object(tc.os, "fdopen", side_effect=changing_open):
             with self.assertRaisesRegex(tc.SafeError, "identity_changed"):
                 tc.checked_home_preview()
 

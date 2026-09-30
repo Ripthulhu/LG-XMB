@@ -66,7 +66,7 @@ function makeGL(options = {}) {
 }
 function renderer(options) {
   const {gl, counts} = makeGL(options), r = {gl, objects: [], programs: [], allocations: 0,
-    monthlyKey: '', backdropKey: '', uniforms: {backdrop: {uMonthly: 0}}};
+    monthlyKey: '', uniforms: {backdrop: {uMonthly: 0}}};
   for (const name of ['allocate', 'releaseTarget', 'prepareMonthlyTarget', 'destroy', 'allocateBackdrop', 'backdropPass']) r[name] = method(name);
   return {r, gl, counts};
 }

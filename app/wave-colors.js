@@ -34,16 +34,10 @@
     [90, [131, 86, 32], [18, 20, 17]],
     [118.25, [157, 59, 44], [0, 0, 3]]
   ];
-  function bounded(value, min, max, fallback) {
-    return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
-      ? value
-      : fallback;
-  }
   function normalize(value) {
     value = value && typeof value === 'object' ? value : {};
     return {
-      mode: ['theme', 'monthly', 'rgb', 'ps3'].indexOf(value.mode) >= 0 ? value.mode : 'theme',
-      themeClock: value.themeClock === true,
+      mode: ['theme', 'monthly', 'ps3'].indexOf(value.mode) >= 0 ? value.mode : 'theme',
       clock: value.clock === 'fixed' ? 'fixed' : 'auto',
       dateMode:
         ['auto', 'fixed'].indexOf(value.dateMode) >= 0
@@ -61,12 +55,7 @@
             : 'auto',
       month:
         Number.isInteger(value.month) && value.month >= 1 && value.month <= 12 ? value.month : 1,
-      period: value.period === 'night' ? 'night' : 'day',
-      red: Math.round(bounded(value.red, 0, 255, 37)),
-      green: Math.round(bounded(value.green, 0, 255, 89)),
-      blue: Math.round(bounded(value.blue, 0, 255, 179)),
-      top: bounded(value.top, 0, 0.3, 0.09),
-      bottom: bounded(value.bottom, 0.2, 1.2, 0.62)
+      period: value.period === 'night' ? 'night' : 'day'
     };
   }
   function resolve(value, date) {
@@ -80,58 +69,46 @@
         monthly: { auto: s.dateMode === 'auto', month: s.month, period: s.timeMode },
         tint: [0.92, 0.96, 1]
       };
-    var start,
-      end,
-      angle = 90,
-      tint;
-    if (s.mode === 'monthly') {
-      var clock = root.LGXMBPS3BackgroundClock,
-        live = date || new Date();
-      var coord = clock.coordinates(live, s.dateMode === 'auto', s.month, s.timeMode);
-      var index = Math.floor(coord.month) % 12,
-        next = (index + 1) % 12,
-        weight = coord.month - Math.floor(coord.month);
-      weight = weight * weight * (3 - 2 * weight);
-      var day = clock.uniforms(coord, clock.retained).values._NightDayBlend;
-      // Preset gradients share the clock, but are not the PS3 texture shader.
-      if (s.timeMode === 'day') day = 1;
-      else if (s.timeMode === 'night') day = 0;
-      function blend(a, b, t) {
-        return a + (b - a) * t;
-      }
-      function gradient(layer) {
-        var a = layer[index],
-          b = layer[next],
-          delta = ((b[0] - a[0] + 540) % 360) - 180;
-        return [
-          a[0] + delta * weight,
-          a[1].map(function (v, i) {
-            return blend(v, b[1][i], weight) / 255;
-          }),
-          a[2].map(function (v, i) {
-            return blend(v, b[2][i], weight) / 255;
-          })
-        ];
-      }
-      var night = gradient(NIGHT),
-        light = gradient(DAY);
-      angle = night[0] + (((light[0] - night[0] + 540) % 360) - 180) * day;
+    var clock = root.LGXMBPS3BackgroundClock,
+      live = date || new Date();
+    var coord = clock.coordinates(live, s.dateMode === 'auto', s.month, s.timeMode);
+    var index = Math.floor(coord.month) % 12,
+      next = (index + 1) % 12,
+      weight = coord.month - Math.floor(coord.month);
+    weight = weight * weight * (3 - 2 * weight);
+    var day = clock.uniforms(coord, clock.retained).values._NightDayBlend;
+    // Preset gradients share the clock, but are not the PS3 texture shader.
+    if (s.timeMode === 'day') day = 1;
+    else if (s.timeMode === 'night') day = 0;
+    function blend(a, b, t) {
+      return a + (b - a) * t;
+    }
+    function gradient(layer) {
+      var a = layer[index],
+        b = layer[next],
+        delta = ((b[0] - a[0] + 540) % 360) - 180;
+      return [
+        a[0] + delta * weight,
+        a[1].map(function (v, i) {
+          return blend(v, b[1][i], weight) / 255;
+        }),
+        a[2].map(function (v, i) {
+          return blend(v, b[2][i], weight) / 255;
+        })
+      ];
+    }
+    var night = gradient(NIGHT),
+      light = gradient(DAY),
+      angle = night[0] + (((light[0] - night[0] + 540) % 360) - 180) * day,
       start = night[1].map(function (v, i) {
         return blend(v, light[1][i], day);
-      });
+      }),
       end = night[2].map(function (v, i) {
         return blend(v, light[2][i], day);
-      });
+      }),
       tint = start.map(function (v, i) {
         return Math.max(v, end[i]);
       });
-    } else {
-      tint = [s.red / 255, s.green / 255, s.blue / 255];
-      start = [tint[0] * s.top, tint[1] * s.top, tint[2] * s.top * 1.2];
-      end = tint.map(function (v) {
-        return v * s.bottom;
-      });
-    }
     var rad = (angle * Math.PI) / 180,
       dir = [Math.cos(rad), Math.sin(rad)];
     var min = Math.min(0, dir[0], dir[1], dir[0] + dir[1]),
@@ -181,20 +158,9 @@
       ')'
     );
   }
-  function sample(palette, x, y) {
-    var t = Math.max(
-      0,
-      Math.min(1, (x * palette.dir[0] + y * palette.dir[1] - palette.range[0]) / palette.range[1])
-    );
-    t = t * t * (3 - 2 * t);
-    return palette.start.map(function (v, i) {
-      return v + (palette.end[i] - v) * t;
-    });
-  }
   root.LGXMBWaveColors = Object.freeze({
     normalize: normalize,
     resolve: resolve,
-    menuGradient: menuGradient,
-    sample: sample
+    menuGradient: menuGradient
   });
 })(window);

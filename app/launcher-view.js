@@ -83,8 +83,7 @@
         nav.appendChild(b);
       });
     }
-    // Retain painted category rows off-screen so switching categories can move
-    // existing layers instead of rebuilding and rasterising their text.
+    // Retain category rows so switching categories moves existing elements.
     var itemButtons = new WeakMap(),
       itemOffsets = new WeakMap(),
       itemLists = [],
@@ -124,7 +123,8 @@
                 C5Icon(item.icon) +
                 '</span><span class="item-text"></span>';
               b.addEventListener('click', function () {
-                if (!options.canActivate()) return;
+                if (b.parentNode !== itemLists[options.getCategory()] || !options.canActivate())
+                  return;
                 options.cancelHold();
                 var selectedCategory = options.getCategory();
                 var current = categories[selectedCategory].items.indexOf(item);
@@ -162,13 +162,15 @@
       });
       activeCategory = selectedCategory;
     }
-    // Membership changes go through buildItems. A category move only touches
-    // the two lists changing roles; the other retained lists stay untouched.
+    // Membership changes go through buildItems. Navigation touches only the
+    // two lists changing roles; parked rows keep their painted content.
     function activateCategory() {
       var next = options.getCategory();
       if (next === activeCategory) return;
       var previous = itemLists[activeCategory],
         current = itemLists[next];
+      // A local attribute avoids invalidating inherited styles on every row.
+      current.setAttribute('data-entry', next > activeCategory ? 'right' : 'left');
       if (previous) {
         previous.classList.add('parked');
         previous.setAttribute('aria-hidden', 'true');

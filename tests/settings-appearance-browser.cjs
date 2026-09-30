@@ -29,12 +29,23 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors,
     await page.getByRole('group', {name: group, exact: true})
       .getByRole('button', {name: label, exact: true}).click();
   }
+  async function categoryMotion() {
+    while ((await state()).modal) await page.keyboard.press('Escape');
+    await page.keyboard.press('ArrowRight');
+    return page.evaluate(() => ({
+      entry: getComputedStyle(document.querySelector('#items > .rows:not(.parked)')).animationName,
+      bar: getComputedStyle(document.getElementById('categories')).transitionDuration,
+      label: getComputedStyle(document.querySelector('.category .dim .category-label')).transitionDuration,
+      row: getComputedStyle(document.querySelector('#items > .rows:not(.parked) > .item')).transitionDuration
+    }));
+  }
   try {
     await page.goto(url);
     await page.waitForFunction(() => window.C5App && C5App.getState().waveMode === 'webgl');
     const initial = await state();
     assert.equal(initial.preferences.theme, 'original');
     assert.equal(initial.preferences.colour, 'original');
+    assert.equal(initial.preferences.menuAnimation, 'ps3');
     assert.equal(initial.waveDiagnostics.renderQuality.particles, true);
     await page.evaluate(() => {
       window.styleTransitions = [];
@@ -111,6 +122,23 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors,
     assert.equal(await page.evaluate(() => document.activeElement.id), 'showWavesOnly');
     assert.equal(await page.getByRole('group', {name: 'Particles', exact: true}).count(), 0);
     assert.equal(await page.getByRole('group', {name: 'Brightness', exact: true}).count(), 0);
+    const beforeMenu = (await state()).preferences;
+    await page.getByRole('group', {name: 'Animation', exact: true})
+      .getByRole('button', {name: 'On', exact: true}).focus();
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await page.evaluate(() => document.activeElement.closest('[role="group"]').getAttribute('aria-label')), 'Menu animations');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.choice), 'ps3');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Enter');
+    assert.deepEqual((await state()).preferences, {...beforeMenu, menuAnimation: 'simple'},
+      'Menu animation choice must not change wave or other preferences');
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await page.evaluate(() => document.activeElement.closest('[role="group"]').getAttribute('aria-label')), 'Speed');
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.choice), 'simple');
+    assert.deepEqual(await categoryMotion(), {entry: 'none', bar: '0.4s', label: '0.12s', row: '0.24s'},
+      'Simple disables entry motion without changing the bar, labels or vertical rows');
+    await panel('openAppearanceAdvanced');
     await selected('Speed', 'Fast');
     await selected('Animation', 'Off');
     assert.equal((await state()).waveDiagnostics.speed, 2.25);
@@ -184,7 +212,19 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors,
     assert.equal(restored.waveDiagnostics.reducedMotion, true);
     assert.equal(restored.waveDiagnostics.renderQuality.particles, false);
     assert.equal(restored.waveDiagnostics.paused, true);
+    assert.equal(restored.preferences.menuAnimation, 'simple');
+    assert.equal(await page.locator('body').evaluate(node => node.classList.contains('simple-menu-animations')), true);
     await panel('openAppearanceAdvanced');
+    await selected('Menu animations', 'PS3');
+    assert.equal((await state()).preferences.motion, 'reduced');
+    assert.equal((await categoryMotion()).entry, 'none', 'Global reduced motion overrides PS3 menu entries');
+    await panel('openAppearanceAdvanced');
+    await selected('Animation', 'On');
+    assert.match((await categoryMotion()).entry, /^category-entry-(right|left)$/,
+      'Returning to PS3 restores category entry motion');
+    await panel('openAppearanceAdvanced');
+    await selected('Animation', 'Off');
+    checks.push('Simple menu animation is keyboard accessible and persists; PS3 restores entries while global reduced motion still wins');
     await page.locator('#showWavesOnly').click();
     await page.waitForFunction(() => C5App.getState().waveMode === 'webgl');
     assert.equal((await state()).waveOnly, true);

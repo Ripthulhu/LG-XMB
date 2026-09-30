@@ -19,9 +19,8 @@ await page.evaluate(()=>calendarNow=new Date(2027,0,1,12).getTime());await page.
 await page.evaluate(()=>calendarWave.setTheme({colors:{mode:'monthly',dateMode:'auto',timeMode:'auto'}}));const gradient=(await snap()).palette;
 await page.evaluate(()=>calendarNow=new Date(2027,5,1,0).getTime());await page.waitForTimeout(1200);assert.notDeepEqual((await snap()).palette.start,gradient.start);
 await page.evaluate(()=>calendarWave.setTheme({colors:{mode:'monthly',dateMode:'fixed',month:4,timeMode:'night'}}));assert.equal((await snap()).timer,false);
-await page.evaluate(()=>calendarWave.setTheme({background:'#204060',wave:'#aabbcc',colors:{mode:'theme',themeClock:false}}));const plain=await snap();assert.equal(plain.timer,false);
-await page.evaluate(()=>calendarWave.setTheme({background:'#204060',wave:'#aabbcc',colors:{mode:'theme',themeClock:true}}));const dim=await snap();assert.ok(dim.wave.every((v,i)=>v<plain.wave[i]));
+await page.evaluate(()=>calendarWave.setTheme({background:'#204060',wave:'#aabbcc',colors:{mode:'theme'}}));const plain=await snap();assert.equal(plain.timer,false);
 await page.evaluate(()=>calendarNow=new Date(2027,5,1,12).getTime());await page.waitForTimeout(1200);assert.deepEqual((await snap()).wave,plain.wave);
 await page.evaluate(()=>calendarWave.destroy());assert.equal((await page.evaluate(()=>calendarWave.clockTimer)),0);
-assert.deepEqual(errors,[]);console.log(JSON.stringify({checks:['frozen waves follow date and time','no calendar draws while paused','resume catches up immediately','fixed month follows time','monthly presets follow clock','fixed presets have no timer','regular themes opt in','destroy cancels timer'],errors,testedOnTV:false},null,2));
+assert.deepEqual(errors,[]);console.log(JSON.stringify({checks:['frozen waves follow date and time','no calendar draws while paused','resume catches up immediately','fixed month follows time','monthly presets follow clock','fixed presets have no timer','regular themes have no clock timer','destroy cancels timer'],errors,testedOnTV:false},null,2));
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

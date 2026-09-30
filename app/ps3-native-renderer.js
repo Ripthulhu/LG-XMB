@@ -100,16 +100,11 @@
         root.LGXMBRecoveredParticleBirth
       );
     }
-    this.elapsed = 0;
-    this.steps = 0;
-    this.respawn = true;
   }
   Simulation.prototype.advance = function (seconds, particlesEnabled) {
     if (!seconds) return;
     this.wave.advance(seconds);
-    if (particlesEnabled !== false) this.particles.advance(seconds, this.respawn);
-    this.elapsed += seconds;
-    this.steps++;
+    if (particlesEnabled !== false) this.particles.advance(seconds, true);
   };
   function Renderer(gl, simulation, settings) {
     if (!gl || typeof gl.createVertexArray !== 'function' || typeof gl.texStorage2D !== 'function')
@@ -275,7 +270,6 @@
     this.uniforms.monthly = this.locations(this.monthlyProgram);
     this.uniforms.backdrop = this.locations(this.backdropProgram);
     this.backdrop = null;
-    this.backdropKey = '';
     this.waveVAO = this.resource('VertexArray');
     this.indexBuffer = this.resource('Buffer');
     this.fullscreenVAO = this.resource('VertexArray');
@@ -1053,10 +1047,8 @@
     this.clockTimer = 0;
     this.initialized = false;
     this.resizePending = false;
-    this.documentHidden = !!document.hidden;
     this.qualityIndex =
       this.options.quality === '540p' ? 2 : this.options.quality === '720p' ? 1 : 0;
-    this.adaptive = false;
     this.capabilities = null;
     this.compileMs = null;
     this.onRenderStatus = this.options.onRenderStatus;
@@ -1230,9 +1222,8 @@
     var s = this.colorSettings;
     return (
       !!s &&
-      (((s.mode === 'ps3' || s.mode === 'monthly') &&
-        (s.dateMode === 'auto' || s.timeMode === 'auto')) ||
-        (s.mode === 'theme' && s.themeClock))
+      (s.mode === 'ps3' || s.mode === 'monthly') &&
+      (s.dateMode === 'auto' || s.timeMode === 'auto')
     );
   };
   C5Wave.prototype.refreshClock = function () {
@@ -1241,22 +1232,12 @@
     if (this.clockSecond === second) return;
     this.clockSecond = second;
     var s = this.colorSettings,
-      date = new Date(second * 1000),
-      clock = root.LGXMBPS3BackgroundClock;
+      date = new Date(second * 1000);
     this.palette = root.LGXMBWaveColors.resolve(s, date);
     if (this.palette) this.wave = this.palette.tint.slice();
     else if (this.themeWave) {
-      var gain = 1;
-      if (s.mode === 'theme' && s.themeClock && clock) {
-        var blend = clock.uniforms(clock.fromLocalDate(date)).values._NightDayBlend;
-        gain = clock.retained.nightBrightness + (1 - clock.retained.nightBrightness) * blend;
-      }
-      this.wave = this.themeWave.map(function (v) {
-        return v * gain;
-      });
-      this.background = this.themeBackground.map(function (v) {
-        return v * gain;
-      });
+      this.wave = this.themeWave.slice();
+      this.background = this.themeBackground.slice();
     }
   };
   C5Wave.prototype.scheduleClock = function () {
@@ -1486,7 +1467,6 @@
     this.scheduleFrame();
   };
   C5Wave.prototype.visibility = function () {
-    this.documentHidden = !!document.hidden;
     if (document.hidden) this.cancel();
     else this.resume();
   };
@@ -1645,9 +1625,6 @@
     this.gl = null;
     this.simulation = null;
   };
-  // Compatibility with the launcher's public controller API, not the old renderer.
-  C5Wave.prototype._draw = C5Wave.prototype.draw;
-  root.LGXMBPS3Wave = Object.freeze({ quality: quality });
   root.LGXMBPS3Native = Object.freeze({
     Renderer: Renderer,
     Simulation: Simulation,

@@ -3,33 +3,13 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const http = require('node:http');
+const createServer = require('../tools/preview.cjs');
 const { chromium } = require('playwright');
 const menu = require('./support/menu-navigation.cjs');
 const app = path.resolve(__dirname, '../app');
 
 (async () => {
-  const server = http.createServer(async (req, res) => {
-    try {
-      const pathname = new URL(req.url, 'http://localhost').pathname;
-      const file = path.resolve(app, '.' + (pathname === '/' ? '/index.html' : pathname));
-      if (!file.startsWith(app + path.sep)) return res.writeHead(403).end();
-      const data = await fs.readFile(file);
-      const types = {
-        '.html': 'text/html',
-        '.css': 'text/css',
-        '.js': 'text/javascript',
-        '.ttf': 'font/ttf'
-      };
-      res
-        .writeHead(200, {
-          'Content-Type': types[path.extname(file).toLowerCase()] || 'application/octet-stream'
-        })
-        .end(data);
-    } catch {
-      res.writeHead(404).end();
-    }
-  });
+  const server = createServer();
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
   let browser;

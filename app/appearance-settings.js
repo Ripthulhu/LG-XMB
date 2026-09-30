@@ -10,6 +10,13 @@
       applyPreferences = options.applyPreferences,
       openModal = options.openPanel,
       setWaveOnly = options.setWaveOnly;
+    function preferenceChoice(label, choices, key) {
+      ui.choiceGroup(label, choices, preferences[key], function (value) {
+        preferences[key] = value;
+        applyPreferences();
+        save();
+      });
+    }
     function open() {
       [
         ['Theme', 'theme', 'openTheme'],
@@ -28,32 +35,30 @@
       ui.row('Show waves full screen', null, false, function () {
         setWaveOnly(true);
       }).id = 'showWavesOnly';
-      ui.choiceGroup(
+      preferenceChoice(
         'Animation',
         [
           ['full', 'On'],
           ['reduced', 'Off']
         ],
-        preferences.motion,
-        function (value) {
-          preferences.motion = value;
-          applyPreferences();
-          save();
-        }
+        'motion'
       );
-      ui.choiceGroup(
+      preferenceChoice(
+        'Menu animations',
+        [
+          ['simple', 'Simple'],
+          ['ps3', 'PS3']
+        ],
+        'menuAnimation'
+      );
+      preferenceChoice(
         'Speed',
         [
           ['slow', 'Slow'],
           ['normal', 'Normal'],
           ['fast', 'Fast']
         ],
-        preferences.waveSpeed,
-        function (value) {
-          preferences.waveSpeed = value;
-          applyPreferences();
-          save();
-        }
+        'waveSpeed'
       );
       function qualityChoice(label, choices, key) {
         ui.choiceGroup(label, choices, preferences[key], function (value) {
@@ -131,18 +136,13 @@
       );
     }
     function openClock() {
-      ui.choiceGroup(
+      preferenceChoice(
         'Clock style',
         [
           ['current', 'Current'],
           ['ps3', 'PS3']
         ],
-        preferences.clockStyle,
-        function (value) {
-          preferences.clockStyle = value;
-          applyPreferences();
-          save();
-        }
+        'clockStyle'
       );
     }
     function openTheme() {
@@ -224,7 +224,7 @@
       status.className = 'wallpaper-status';
       status.setAttribute('role', 'status');
       content.appendChild(status);
-      ui.choiceGroup(
+      preferenceChoice(
         'Brightness',
         [
           [0, 'Normal'],
@@ -234,23 +234,11 @@
           [-4, '-4'],
           [-5, '-5']
         ],
-        preferences.backgroundBrightness,
-        function (value) {
-          preferences.backgroundBrightness = value;
-          applyPreferences();
-          save();
-        }
+        'backgroundBrightness'
       );
       updateBackgroundStatus();
     }
     function openScreensaver() {
-      function preferenceChoice(label, choices, key) {
-        ui.choiceGroup(label, choices, preferences[key], function (value) {
-          preferences[key] = value;
-          applyPreferences();
-          save();
-        });
-      }
       preferenceChoice(
         'Start after',
         [

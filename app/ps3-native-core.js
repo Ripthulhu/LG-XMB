@@ -363,7 +363,6 @@
     this.signed = function () {
       return random.signed();
     };
-    this.random = random;
     this.previous = [];
     this.trail = { remaining: 112, x: 72, y: 0 }; // retained in the capture
     this.tick = 0;

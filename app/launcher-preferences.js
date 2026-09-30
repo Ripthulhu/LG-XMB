@@ -15,6 +15,7 @@
     screensaverParticleBrightness: 0.25,
     clockStyle: 'ps3',
     motion: 'full',
+    menuAnimation: 'ps3',
     sound: false,
     previewMode: 'cached',
     waveSpeed: 'normal',
@@ -111,7 +112,7 @@
       return nearestColour(rgb(legacyColours[saved.theme]));
     return 'original';
   }
-  function load(storage, reducedMotion, normalizeColors) {
+  function load(storage, reducedMotion) {
     var preferences = Object.assign({}, defaults),
       saved;
     try {
@@ -143,6 +144,8 @@
       });
       if (['current', 'ps3'].indexOf(saved.clockStyle) !== -1)
         preferences.clockStyle = saved.clockStyle;
+      if (['simple', 'ps3'].indexOf(saved.menuAnimation) !== -1)
+        preferences.menuAnimation = saved.menuAnimation;
       if (saved.motion === 'reduced' || saved.motion === 'full') preferences.motion = saved.motion;
       else if (typeof reducedMotion === 'function' ? reducedMotion() : reducedMotion)
         preferences.motion = 'reduced';

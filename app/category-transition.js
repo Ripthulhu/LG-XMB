@@ -26,8 +26,8 @@
       steps !== 0 &&
       Math.abs(steps) <= 64;
     if (this.bar) this.bar.classList.toggle('categories-instant', !allowed);
-    // Like vertical navigation, update the destination and let CSS retarget its
-    // current transform. Never move/fade the list or reset it after a timer.
+    // Selection changes immediately. CSS moves the bar and incoming list,
+    // without frame callbacks or cleanup timers.
     try {
       update();
     } catch (error) {

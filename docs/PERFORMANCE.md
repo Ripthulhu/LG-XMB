@@ -64,8 +64,13 @@ in the same frame as every key press. Preview lifecycle changes remain immediate
 
 Options prepare their reusable nodes during the OK hold, open without animation,
 and defer metadata until after opening. Closed panels are hidden rather than permanently promoted.
-Keep text opacity at 1; dim text through colour alpha without animating that
-colour. Don't add `will-change` across the interface as a blanket fix.
+Keep individual text opacity at 1; dim text through colour alpha without
+animating that colour. Category lists stay opaque and park offscreen. Only the
+incoming list moves, using a transform-only animation; the outgoing list parks
+immediately. Direction uses a local attribute rather than an inherited CSS
+variable. On the C5, two rapid-scrolling runs improved from 44 to 51 fps with
+the same background settings. Don't add `will-change` across the interface as
+a blanket fix.
 
 Held arrows share a 100 ms minimum interval in every direction, with one pending
 event. Dropping every event that arrives too soon turns an 80 ms remote cadence

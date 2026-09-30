@@ -104,14 +104,10 @@ def read_file(directory, name, limit=131072, optional=False, app_file=False, rep
         if not app_file and not repair_permissions:
             require(not info.st_mode & 0o022, "helper_permissions_required")
         regular_file(info, app_file)
-        raw = bytearray()
-        while len(raw) <= limit:
-            chunk = os.read(fd, min(8192, limit + 1 - len(raw)))
-            if not chunk:
-                break
-            raw.extend(chunk)
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            raw = stream.read(limit + 1)
         require(len(raw) <= limit, "oversized_helper_file")
-        return bytes(raw)
+        return raw
     finally:
         os.close(fd)
 
@@ -493,17 +489,13 @@ def read_sound_identity(directory, name, limit=131072, developer_reference=False
     try:
         before = os.fstat(fd)
         regular_file(before, app_file=developer_reference)
-        raw = bytearray()
-        while len(raw) <= limit:
-            block = os.read(fd, min(8192, limit + 1 - len(raw)))
-            if not block:
-                break
-            raw.extend(block)
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            raw = stream.read(limit + 1)
         require(len(raw) <= limit, "sound_payload_identity_oversized")
         named = os.stat(name, dir_fd=directory, follow_symlinks=False)
         require(sound_entry_identity(before) == sound_entry_identity(os.fstat(fd)) ==
                 sound_entry_identity(named), "sound_payload_identity_changed")
-        return bytes(raw)
+        return raw
     finally:
         os.close(fd)
 

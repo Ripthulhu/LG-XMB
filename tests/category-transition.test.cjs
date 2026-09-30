@@ -204,7 +204,7 @@ test('compositor hints are confined to temporary screensaver fades', () => {
   }
 });
 
-test('opacity is confined to non-text markers, the category-label fade and explicit screensaver layers', () => {
+test('opacity is confined to markers, category labels and explicit screensaver layers', () => {
   const allowed = new Set([
     '.detail-emblem',
     '.input-preview-symbol',

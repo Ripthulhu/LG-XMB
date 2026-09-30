@@ -32,7 +32,12 @@ const {launchOptions} = require('./support/menu-navigation.cjs');
           view.buildCategories(); view.buildItems(); view.render();
           const snapshots = [], work = [];
           function snapshot() {
-            snapshots.push({html: document.body.innerHTML, objects: view.menuObjects()});
+            // Entry direction is animation state, not catalog content.
+            const copy = document.body.cloneNode(true);
+            copy.querySelectorAll('.rows').forEach(rows => {
+              rows.removeAttribute('data-entry');
+            });
+            snapshots.push({html: copy.innerHTML, objects: view.menuObjects()});
           }
           function switchTo(index) {
             reads.fill(0);

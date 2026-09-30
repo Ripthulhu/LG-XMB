@@ -3,27 +3,13 @@
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
-const http = require('node:http');
+const createServer = require('../tools/preview.cjs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const menu = require('./support/menu-navigation.cjs');
-const app = path.resolve(__dirname, '../app');
 
 (async () => {
-  const server = http.createServer(async (request, response) => {
-    try {
-      const pathname = new URL(request.url, 'http://localhost').pathname;
-      const file = path.resolve(app, '.' + (pathname === '/' ? '/index.html' : pathname));
-      if (!file.startsWith(app + path.sep)) return response.writeHead(403).end();
-      const mime = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' };
-      response.writeHead(200, {
-        'Content-Type': mime[path.extname(file)] || 'application/octet-stream'
-      });
-      response.end(await fs.readFile(file));
-    } catch {
-      response.end();
-    }
-  });
+  const server = createServer();
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   let browser;
   try {

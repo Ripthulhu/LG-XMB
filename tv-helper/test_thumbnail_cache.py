@@ -469,53 +469,28 @@ class LunaTests(unittest.TestCase):
                 tc.Luna("luna-send")("video", {})
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ModuleNameTests(unittest.TestCase):
     """Names moved in from another module compile fine and fail at runtime."""
 
     def test_every_function_only_uses_names_this_module_has(self):
-        import ast
         import builtins
         import pathlib
-
-        def bindings(node):
-            found = {a.arg for n in ast.iter_child_nodes(node)
-                     if isinstance(n, ast.arguments) for a in n.args + n.kwonlyargs}
-            for child in ast.walk(node):
-                if isinstance(child, (ast.FunctionDef, ast.ClassDef)):
-                    found.add(child.name)
-                elif isinstance(child, ast.Assign):
-                    found |= {t.id for target in child.targets
-                              for t in ast.walk(target) if isinstance(t, ast.Name)}
-                elif isinstance(child, (ast.AugAssign, ast.For, ast.comprehension)):
-                    found |= {t.id for t in ast.walk(child.target) if isinstance(t, ast.Name)}
-                elif isinstance(child, ast.ExceptHandler) and child.name:
-                    found.add(child.name)
-                elif isinstance(child, (ast.Import, ast.ImportFrom)):
-                    found |= {a.asname or a.name.split(".")[0] for a in child.names}
-                elif isinstance(child, ast.withitem) and isinstance(child.optional_vars, ast.Name):
-                    found.add(child.optional_vars.id)
-            return found
+        import symtable
 
         source = pathlib.Path(tc.__file__).read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        module = bindings(tree) | set(dir(builtins))
-        missing = {}
+        known = set(vars(tc)) | set(dir(builtins))
 
-        def check(node, inherited):
-            scope = inherited | bindings(node)
-            used = {n.id for n in ast.walk(node)
-                    if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
-            unknown = sorted(used - scope)
-            if unknown:
-                missing[node.name] = unknown
-            for child in ast.walk(node):
-                if isinstance(child, ast.FunctionDef) and child is not node:
-                    check(child, scope)
+        def missing(table):
+            names = {symbol.get_name() for symbol in table.get_symbols()
+                     if symbol.is_referenced() and symbol.is_global() and symbol.get_name() not in known}
+            for child in table.get_children():
+                names.update(missing(child))
+            return names
 
-        for top in [n for n in tree.body if isinstance(n, ast.FunctionDef)]:
-            check(top, module)
-        self.assertEqual(missing, {})
+        self.assertEqual(missing(symtable.symtable(source, tc.__file__, "exec")), set())
+        nested = "def f(value):\n def inner():\n  return len(value) + undefined_for_test\n return inner\n"
+        self.assertEqual(missing(symtable.symtable(nested, "fixture", "exec")), {"undefined_for_test"})
+
+
+if __name__ == "__main__":
+    unittest.main()

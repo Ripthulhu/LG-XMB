@@ -19,16 +19,13 @@ test('all 24 monthly entries have bounded colours and a normalized directional r
 test('upstream January and November presets keep their exact colour values and orientation',()=>{
   assert.deepEqual(plain(api.resolve({mode:'monthly',month:1,period:'day'}).start),[197/255,197/255,197/255]);
   const p=api.resolve({mode:'monthly',month:11,period:'night'});
-  assert.deepEqual(plain(api.sample(p,0,0)),[131/255,86/255,32/255]);
-  const end=api.sample(p,1,1);assert.ok(end.every((v,i)=>Math.abs(v-[18,20,17][i]/255)<1e-12));
+  assert.deepEqual(plain(p.start),[131/255,86/255,32/255]);
+  assert.deepEqual(plain(p.end),[18/255,20/255,17/255]);
+  assert.ok(Math.abs(p.dir[0])<1e-12);assert.equal(p.dir[1],1);
 });
-test('Original RGB uses the reference top/bottom multipliers, including the blue factor',()=>{
-  const p=api.resolve({mode:'rgb'});assert.deepEqual(plain(p.start),[37/255*.09,89/255*.09,179/255*.09*1.2]);
-  assert.deepEqual(plain(p.end),[37/255*.62,89/255*.62,179/255*.62]);
-});
-test('invalid RGB channels, months and intensity values cannot reach uniforms',()=>{
-  const n=api.normalize({mode:'rgb',red:'255',green:Infinity,blue:-1,month:13,period:'midday',top:NaN,bottom:99});
-  assert.deepEqual(plain(n),{mode:'rgb',themeClock:false,clock:'auto',dateMode:'auto',timeMode:'auto',month:1,period:'day',red:37,green:89,blue:179,top:.09,bottom:.62});
+test('invalid month and period values cannot reach uniforms',()=>{
+  const n=api.normalize({mode:'ps3',month:13,period:'midday'});
+  assert.deepEqual(plain(n),{mode:'ps3',clock:'auto',dateMode:'auto',timeMode:'auto',month:1,period:'day'});
 });
 test('resolved colours are independent objects and cannot mutate the preset table',()=>{
   const a=api.resolve({mode:'monthly',month:1}),b=api.resolve({mode:'monthly',month:1});a.start[0]=0;assert.equal(b.start[0],197/255);

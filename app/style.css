@@ -669,6 +669,7 @@ header {
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
+    animation: none !important;
   }
 }
 @media (max-aspect-ratio: 4/3) {
@@ -714,8 +715,7 @@ header {
   margin: 0.6em 0;
 }
 
-/* One persistent horizontal transform, with the same timing as up/down.
-   The vertical list never gets a temporary transform or opacity layer. */
+/* The bar and incoming list share the recovered position curve. */
 #categories {
   transform: translateX(0);
   transition: transform var(--navigation-duration) var(--ease);
@@ -723,13 +723,15 @@ header {
 #categories.categories-instant,
 #categories.categories-instant .category,
 #categories.categories-instant .category-icon,
-#categories.categories-instant .category-label {
+#categories.categories-instant .category-label,
+#categories.categories-instant ~ .cross-content .rows {
   transition: none !important;
+  animation: none !important;
 }
 
-/* Category changes move layers, they don't repaint. Each category's rows live in
-   a wrapper that is its own GPU layer and parks off the right edge while it's
-   inactive. Each bar entry has dim and lit icons, painted once and swapped by
+/* Park retained lists offscreen without hiding or fading their text layers.
+   Only the incoming list moves; the old list parks immediately to avoid overlap.
+   Each bar entry has dim and lit icons, painted once and swapped by
    transform, since recolouring two entries per step was most of what a category
    change cost the C5. The 3D transforms are what make the layers.
    The lit icon is drawn at its full size, so it no longer grows into place. */
@@ -739,10 +741,35 @@ header {
   left: 0;
   width: 100%;
   height: 100%;
-  transform: translate3d(0, 0, 0);
-}
-.rows.parked {
   transform: translate3d(100vw, 0, 0);
+  transition: none;
+}
+.rows:not(.parked) {
+  transform: translate3d(0, 0, 0);
+  animation: category-entry-right var(--navigation-duration) var(--ease);
+}
+.rows:not(.parked)[data-entry='left'] {
+  animation-name: category-entry-left;
+}
+.simple-menu-animations .rows:not(.parked) {
+  animation: none;
+}
+/* Keep the entry distance in step with CategoryTransition.DISTANCE. */
+@keyframes category-entry-right {
+  from {
+    transform: translate3d(10.6vw, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes category-entry-left {
+  from {
+    transform: translate3d(-10.6vw, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
 }
 .category .face {
   display: block;

@@ -56,6 +56,7 @@ out. **Colour → Original** follows the season and time of day. The other colou
 stay fixed. **Background** selects a [wallpaper and brightness](docs/BACKGROUND.md).
 **Advanced** contains [frame-rate, resolution and rendering controls](docs/WEBGL2.md#settings)
 for adjusting the background load.
+**Advanced → Menu animations** switches between the PS3 list slide and the lighter Simple style.
 **Screensaver** sets the idle delay and [background dimming](docs/SCREENSAVER.md).
 **Clock** defaults to the PS3-style date/time bar. The plain clock is still available;
 updates preserve your saved choice.

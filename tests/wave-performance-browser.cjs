@@ -2,25 +2,11 @@
 // Exercise individual rendering controls through the real menu, without TV access.
 'use strict';
 const assert = require('node:assert/strict');
-const http = require('node:http');
-const fs = require('node:fs/promises');
-const path = require('node:path');
+const createServer = require('../tools/preview.cjs');
 const {chromium} = require('playwright');
 const menu = require('./support/menu-navigation.cjs');
-const app = path.resolve(__dirname, '../app');
-const types = {'.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
-  '.json': 'application/json', '.png': 'image/png', '.mp3': 'audio/mpeg'};
 (async () => {
-  const server = http.createServer(async (request, response) => {
-    try {
-      const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
-      const file = path.resolve(app, '.' + (pathname === '/' ? '/index.html' : pathname));
-      if (!file.startsWith(app + path.sep)) return response.writeHead(403).end();
-      const bytes = await fs.readFile(file);
-      response.writeHead(200, {'Content-Type': types[path.extname(file)] || 'application/octet-stream',
-        'Cache-Control': 'no-store'}).end(bytes);
-    } catch { response.writeHead(404).end(); }
-  });
+  const server = createServer();
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const browser = await chromium.launch(menu.launchOptions());
   try {

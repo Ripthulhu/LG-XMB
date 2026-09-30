@@ -25,13 +25,9 @@
       localStorage.setItem(key, value);
     }
   };
-  var preferences = LGXMBPreferences.load(
-    preferenceStorage,
-    function () {
-      return matchMedia('(prefers-reduced-motion: reduce)').matches;
-    },
-    LGXMBWaveColors.normalize
-  );
+  var preferences = LGXMBPreferences.load(preferenceStorage, function () {
+    return matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
   var $ = function (id) {
     return document.getElementById(id);
   };
@@ -272,6 +268,10 @@
         .join(',')
     );
     document.body.classList.toggle('reduced-motion', preferences.motion === 'reduced');
+    document.body.classList.toggle(
+      'simple-menu-animations',
+      preferences.menuAnimation === 'simple'
+    );
     wave.setTheme(theme);
     wave.setStyle(style);
     wave.setQuality(LGXMBPreferences.waveQuality(preferences));

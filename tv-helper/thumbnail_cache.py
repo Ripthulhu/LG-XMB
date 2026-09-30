@@ -178,18 +178,13 @@ def read_preview_identity(directory, name, limit=131072, developer_reference=Fal
         else:
             check_file(before)
         require(before.st_size <= limit, "home_preview_identity_oversized")
-        raw = bytearray()
-        while len(raw) <= limit:
-            chunk = os.read(fd, min(8192, limit + 1 - len(raw)))
-            if not chunk:
-                break
-            raw.extend(chunk)
+        with os.fdopen(os.dup(fd), "rb") as stream:
+            raw = stream.read(limit + 1)
         require(len(raw) <= limit, "home_preview_identity_oversized")
         named = os.stat(name, dir_fd=directory, follow_symlinks=False)
         require(content_identity(before) == content_identity(os.fstat(fd)) == content_identity(named),
                 "home_preview_identity_changed")
-        data = bytes(raw)
-        return data, (content_identity(before), hashlib.sha256(data).hexdigest())
+        return raw, (content_identity(before), hashlib.sha256(raw).hexdigest())
     finally:
         os.close(fd)
 

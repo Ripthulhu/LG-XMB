@@ -115,15 +115,6 @@ async function main() {
     }
     checks.push('Night, day and year-end month blending match independent reference pixels on both axes');
 
-    const rgb = await page.evaluate(() => renderBackground({
-      mode: 'rgb', red: 180, green: 120, blue: 60, top: 0, bottom: 1
-    }));
-    for (const side of ['Left', 'Right']) {
-      assert.ok(rgb['bottom' + side][0] > rgb['top' + side][0] + 100,
-        'Custom RGB top/bottom controls must match screen positions');
-    }
-    checks.push('Custom RGB top/bottom controls keep their screen direction through compositing');
-
     const theme = await page.evaluate(() => renderBackground({ mode: 'theme' }, [0.4, 0.6, 0.8]));
     for (const side of ['Left', 'Right']) {
       assert.ok(theme['bottom' + side][2] > theme['top' + side][2] + 10,
@@ -161,7 +152,7 @@ async function main() {
     checks.push('A manually selected colour does not change with the date or time');
     assert.deepEqual(errors, []);
     await page.evaluate(() => orientationWave.destroy());
-    console.log(JSON.stringify({ checks, original, rgb, theme, preset, testedOnTV: false }, null, 2));
+    console.log(JSON.stringify({ checks, original, theme, preset, testedOnTV: false }, null, 2));
   } finally {
     await browser.close();
   }

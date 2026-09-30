@@ -15,6 +15,11 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       document.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
       document.dispatchEvent(new KeyboardEvent('keyup',{key,bubbles:true,cancelable:true}));
     };
+    window.menuAnimations=()=>[
+      ...document.getElementById('categories').getAnimations({subtree:true}),
+      ...[...document.querySelectorAll('#items>.rows')].flatMap(n=>n.getAnimations())
+    ];
+    window.finishMenuMotion=()=>menuAnimations().forEach(a=>a.finish());
   }
   async function create(width,init,deviceScaleFactor=1){
     const page=await browser.newPage({viewport:{width,height:Math.round(width*9/16)},deviceScaleFactor});
@@ -23,29 +28,56 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
     await page.waitForFunction(()=>window.C5App&&!['pending','compiling'].includes(C5App.getState().waveMode));
     await page.evaluate(()=>menuWave.setPaused(true));return page;
   }
-  function seekBar(time){
-    const bar=document.getElementById('categories');
-    const animations=bar.getAnimations({subtree:true});
-    animations.forEach(a=>{a.pause();a.currentTime=time;});
-    const travel=animations.find(a=>a.effect.target===bar&&a.transitionProperty==='transform');
-    return {count:animations.length,travel:travel&&{duration:travel.effect.getTiming().duration,
-      easing:travel.effect.getTiming().easing},x:new DOMMatrix(getComputedStyle(bar).transform).m41};
+  function motion(time){
+    if(Number.isFinite(time))menuAnimations().forEach(a=>{a.pause();a.currentTime=time;});
+    const bar=document.getElementById('categories'),list=document.getElementById('items');
+    const travel=bar.getAnimations().find(a=>a.transitionProperty==='transform');
+    const x=n=>new DOMMatrix(getComputedStyle(n).transform).m41;
+    return {width:innerWidth,barX:x(bar),travel:travel&&{duration:travel.effect.getTiming().duration,easing:travel.effect.getTiming().easing},
+      plane:{transform:getComputedStyle(list).transform,opacity:getComputedStyle(list).opacity,
+        willChange:getComputedStyle(list).willChange,effects:list.getAnimations().length},
+      rows:[...list.children].map(n=>{
+        const style=getComputedStyle(n),selected=n.querySelector('.selected');
+        return {id:n.dataset.category,x:x(n),parked:n.classList.contains('parked'),departing:n.classList.contains('departing'),
+          visibility:style.visibility,opacity:style.opacity,willChange:style.willChange,filter:style.filter,
+          childVisibility:selected&&getComputedStyle(selected).visibility,
+          pointerEvents:selected&&getComputedStyle(selected).pointerEvents,
+          aria:n.getAttribute('aria-hidden'),ids:[...n.querySelectorAll('[id]')].map(item=>item.id),
+          effects:n.getAnimations().map(a=>{
+            const timing=a.effect.getTiming(),frames=a.effect.getKeyframes();
+            return {property:a.transitionProperty||(frames.every(f=>'transform' in f&&!('opacity' in f))?'transform':'other'),
+              duration:timing.duration,delay:timing.delay,easing:a.transitionProperty?timing.easing:frames[0].easing};
+          })};
+      })};
   }
-  function column(){
-    const list=document.getElementById('items');
-    return {transform:getComputedStyle(list).transform,opacity:getComputedStyle(list).opacity,
-      willChange:getComputedStyle(list).willChange,effects:list.getAnimations().length,
-      x:[...list.querySelectorAll('.rows:not(.parked) .item-icon')].map(n=>n.getBoundingClientRect().left)};
+  function near(actual,expected,message){assert.ok(Math.abs(actual-expected)<0.1,message+': '+actual+' vs '+expected);}
+  function noGroupEffects(state){
+    assert.deepEqual(state.plane,{transform:'none',opacity:'1',willChange:'auto',effects:0});
+    state.rows.forEach(row=>{
+      assert.equal(row.opacity,'1');assert.equal(row.visibility,'visible');
+      assert.equal(row.willChange,'auto');assert.equal(row.filter,'none');assert.equal(row.departing,false);
+    });
+    assert.ok(state.rows.filter(row=>row.effects.length).length<=1,'only the incoming wrapper animates');
+    const active=state.rows.filter(row=>!row.parked);assert.equal(active.length,1);assert.notEqual(active[0].aria,'true');
+    state.rows.filter(row=>row.parked).forEach(row=>{
+      near(row.x,state.width,'inactive lists remain off screen');
+      assert.equal(row.effects.length,0);assert.equal(row.aria,'true');assert.equal(row.ids.length,0);
+    });
+  }
+  function settled(state){
+    noGroupEffects(state);
+    state.rows.forEach(row=>{
+      assert.equal(row.effects.length,0,'settled wrapper must have no animation');
+      if(!row.parked)near(row.x,0,'active list anchor');
+    });
   }
   for(const [width,dpr] of [[1280,1],[1920,1],[1366,1.25]]){
     const page=await create(width,null,dpr);
     try{
       await menu.item(page,'tv','com.webos.app.hdmi4');
-      await page.evaluate(()=>{
-        window.inputRows=[...document.querySelectorAll('#items>.rows:not(.parked)>.item')];
-      });
+      await page.evaluate(()=>{window.inputRows=[...document.querySelectorAll('#items>.rows:not(.parked)>.item')];});
       await page.waitForTimeout(450);
-      // Rows follow input faster; the category bar retains its original duration.
+      // Category handoff must not change the faster vertical row transition.
       const vertical=await page.evaluate(()=>{
         menuPress('ArrowUp');const row=document.querySelector('#items>.rows:not(.parked)>.item');
         const animation=row.getAnimations().find(a=>a.transitionProperty==='transform');
@@ -53,29 +85,38 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       });
       assert.equal(vertical.duration,240);await page.waitForTimeout(450);
       await page.evaluate(()=>menuPress('ArrowDown'));await page.waitForTimeout(450);
+      const resting=await page.evaluate(motion);settled(resting);
+      const distance=width*0.106;
       await page.evaluate(()=>menuPress('ArrowRight'));
-      const frame=await page.evaluate(seekBar,0);assert.deepEqual(frame.travel,{duration:400,easing:vertical.easing});
+      const first=await page.evaluate(motion,0);noGroupEffects(first);
+      assert.deepEqual(first.travel,{duration:400,easing:vertical.easing});
       assert.equal(await page.evaluate(()=>C5App.getState().category),'apps');
-      const initial=await page.evaluate(column);
-      assert.equal(initial.transform,'none');assert.equal(initial.opacity,'1');assert.equal(initial.effects,0);
-      for(const time of [100,200,399,400]){
-        await page.evaluate(seekBar,time);
-        assert.deepEqual(await page.evaluate(column),initial,'the entire vertical column must stay anchored');
+      near(first.rows.find(r=>r.id==='apps').x,distance,'Right enters from one category spacing');
+      near(first.rows.find(r=>r.id==='tv').x,width,'outgoing list parks immediately');
+      assert.deepEqual(first.rows.find(r=>r.id==='apps').effects,
+        [{property:'transform',duration:400,delay:0,easing:vertical.easing}]);
+      for(const time of [40,60,100,200,399]){
+        const frame=await page.evaluate(motion,time);noGroupEffects(frame);
+        const shift=frame.barX-resting.barX;
+        near(frame.rows.find(r=>r.id==='apps').x,distance+shift,'incoming list follows the bar');
       }
-      // The final sampled frame and normal rest must have the same icon pixels,
-      // not just approximately equal CSS boxes (the reported one-pixel snap).
+      const hit=await page.evaluate(()=>{
+        const old=document.querySelector('#items>.rows.parked[data-category="tv"] .selected'),bounds=old.getBoundingClientRect();
+        const hit=document.elementsFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2).some(n=>n===old||old.contains(n));
+        const before=C5App.getState();old.click();const after=C5App.getState();
+        return {hit,unchanged:before.category===after.category&&before.item===after.item&&before.busy===after.busy&&before.modal===after.modal};
+      });
+      assert.equal(hit.hit,false,'parked rows must not receive pointer input');assert.equal(hit.unchanged,true,'programmatic inactive clicks must be ignored');
+      const end=await page.evaluate(motion,400);noGroupEffects(end);
+      near(end.rows.find(r=>r.id==='apps').x,0,'incoming endpoint');near(end.rows.find(r=>r.id==='tv').x,width,'outgoing remains parked');
+      // The final sampled frame and settled icon must have identical edge pixels.
       const clip=await page.locator('#items>.rows:not(.parked) .selected .item-icon').boundingBox();
       const before=await page.screenshot({clip});
       const transform=await page.locator('#categories').evaluate(n=>n.style.transform);
-      await page.evaluate(()=>document.getElementById('categories').getAnimations({subtree:true}).forEach(a=>a.finish()));
-      await page.waitForTimeout(450);
-      assert.deepEqual(await page.evaluate(column),initial);
+      await page.evaluate(()=>finishMenuMotion());await page.waitForTimeout(450);
+      settled(await page.evaluate(motion));
       assert.equal(await page.locator('#categories').evaluate(n=>n.style.transform),transform);
-      // Pixels, not PNG bytes. The wave shows through the icon, and the GPU's
-      // blend over it wobbles by one level on a few dozen pixels between two
-      // identical frames. A one-pixel snap moves an edge, which is a change of
-      // tens of levels, so two levels of slack still catches it.
-      const settled=await page.screenshot({clip});
+      const after=await page.screenshot({clip});
       const delta=await page.evaluate(async([first,second])=>{
         const load=data=>new Promise(resolve=>{const image=new Image();image.onload=()=>resolve(image);image.src='data:image/png;base64,'+data;});
         const images=[await load(first),await load(second)];
@@ -83,21 +124,27 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
         const canvas=document.createElement('canvas');canvas.width=images[0].width;canvas.height=images[0].height;
         const context=canvas.getContext('2d'),pixels=images.map(image=>{context.clearRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0);return context.getImageData(0,0,canvas.width,canvas.height).data;});
         let worst=0;for(let i=0;i<pixels[0].length;i++)worst=Math.max(worst,Math.abs(pixels[0][i]-pixels[1][i]));return worst;
-      },[before.toString('base64'),settled.toString('base64')]);
+      },[before.toString('base64'),after.toString('base64')]);
       assert.ok(delta<=2,'icon rasterization changes after settling: '+delta+' levels');
 
-      await page.evaluate(()=>menuPress('ArrowLeft'));await page.evaluate(seekBar,60);
-      const reversal=await page.evaluate(()=>{
-        const bar=document.getElementById('categories');
-        const before=new DOMMatrix(getComputedStyle(bar).transform).m41;
-        menuPress('ArrowRight');
-        bar.getAnimations({subtree:true}).forEach(a=>{a.pause();a.currentTime=0;});
-        return new DOMMatrix(getComputedStyle(bar).transform).m41-before;
-      });
-      assert.ok(Math.abs(reversal)<0.05,'CSS reversal must start at the current horizontal position');
-      await page.evaluate(()=>document.getElementById('categories').getAnimations({subtree:true}).forEach(a=>a.finish()));
-      await page.waitForTimeout(30);
-      await page.evaluate(()=>menuPress('ArrowLeft'));await page.waitForTimeout(450);
+      await page.evaluate(()=>menuPress('ArrowLeft'));
+      const left=await page.evaluate(motion,0);
+      near(left.rows.find(r=>r.id==='tv').x,-distance,'Left enters from the left');
+      const reversing=await page.evaluate(motion,60);
+      await page.evaluate(()=>menuPress('ArrowRight'));
+      const reversed=await page.evaluate(motion,0);noGroupEffects(reversed);
+      near(reversed.barX,reversing.barX,'bar reversal preserves current position');
+      near(reversed.rows.find(r=>r.id==='apps').x,distance,'reversed entry restarts from its new direction');
+      near(reversed.rows.find(r=>r.id==='tv').x,width,'reversal parks the previous entry');
+      await page.evaluate(()=>finishMenuMotion());await page.waitForTimeout(30);
+      // A third category cancels prior entries and retains just one moving list.
+      await page.evaluate(()=>menuPress('ArrowLeft'));await page.evaluate(motion,60);
+      await page.evaluate(()=>menuPress('ArrowRight'));await page.evaluate(motion,60);
+      await page.evaluate(()=>menuPress('ArrowRight'));
+      const third=await page.evaluate(motion,0);noGroupEffects(third);
+      const oldest=third.rows.find(r=>r.id==='tv');assert.equal(oldest.departing,false);near(oldest.x,width,'oldest entry remains parked');assert.equal(oldest.effects.length,0);
+      await page.evaluate(()=>finishMenuMotion());await page.waitForTimeout(30);
+      await menu.category(page,'tv');await page.waitForTimeout(450);
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#items>.rows:not(.parked)>.item')].every((n,i)=>n===inputRows[i])),true);
       assert.equal(await page.locator('#items>.rows:not(.parked) .above-bar[aria-hidden="false"]').count(),2);
       assert.equal(await page.evaluate(()=>C5App.getState().item),'com.webos.app.hdmi4');
@@ -113,39 +160,36 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
       });
       assert.equal(verticalWork.writes,0,'vertical navigation must not rewrite the horizontal bar');
       assert.equal(verticalWork.sameIcon,true,'HDMI rows share the existing detail SVG');
-      assert.equal(verticalWork.selected,'com.webos.app.hdmi4');
-      assert.equal(verticalWork.detail,'com.webos.app.hdmi4');
+      assert.equal(verticalWork.selected,'com.webos.app.hdmi4');assert.equal(verticalWork.detail,'com.webos.app.hdmi4');
       const burst=await page.evaluate(()=>{
         for(let i=0;i<40;i++)menuPress(i%2?'ArrowLeft':'ArrowRight');
-        const bar=document.getElementById('categories');
-        return {travel:bar.getAnimations().filter(a=>a.transitionProperty==='transform').length,
-          list:document.getElementById('items').getAnimations().length,
-          ghosts:document.querySelectorAll('.items-outgoing').length,
-          boxes:document.querySelectorAll('[role=listbox]').length,
+        return {travel:document.getElementById('categories').getAnimations().filter(a=>a.transitionProperty==='transform').length,
+          ghosts:document.querySelectorAll('.items-outgoing').length,boxes:document.querySelectorAll('[role=listbox]').length,
           ids:[...document.querySelectorAll('[id]')].map(n=>n.id)};
       });
-      assert.ok(burst.travel<=1);assert.equal(burst.list,0);assert.equal(burst.ghosts,0);assert.equal(burst.boxes,1);
-      assert.equal(new Set(burst.ids).size,burst.ids.length);
-      await page.waitForTimeout(450);
-      // A far pointer jump is still one position transition and selection is immediate.
+      assert.ok(burst.travel<=1);assert.equal(burst.ghosts,0);assert.equal(burst.boxes,1);
+      assert.equal(new Set(burst.ids).size,burst.ids.length);noGroupEffects(await page.evaluate(motion));
+      await page.waitForTimeout(450);settled(await page.evaluate(motion));
+      // Far pointer jumps select immediately and still animate just one wrapper.
       await page.evaluate(()=>document.querySelector('[aria-label="Settings"]').click());
       assert.equal(await page.evaluate(()=>C5App.getState().category),'settings');
-      const jump=await page.evaluate(seekBar,60);assert.equal(jump.travel.duration,400);
+      const jump=await page.evaluate(motion,60);assert.equal(jump.travel.duration,400);noGroupEffects(jump);
       await page.screenshot({path:path.join(dir,`menu-css-${width}.png`)});
       await page.evaluate(()=>menuPress('Enter'));assert.equal(await page.evaluate(()=>C5App.getState().modal),'appearance');
       assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().filter(a=>a.transitionProperty==='transform').length),0);
+      settled(await page.evaluate(motion));
       await page.keyboard.press('Escape');
       await page.evaluate(()=>{menuPress('ArrowRight');window.dispatchEvent(new Event('pagehide'));});
-      const hiddenCategory=await page.evaluate(()=>C5App.getState().category);
+      const hiddenCategory=await page.evaluate(()=>C5App.getState().category);settled(await page.evaluate(motion));
       await page.evaluate(()=>menuPress('ArrowRight'));assert.equal(await page.evaluate(()=>C5App.getState().category),hiddenCategory);
       await page.evaluate(()=>{window.dispatchEvent(new Event('pageshow'));menuWave.setPaused(true);menuPress('ArrowRight');window.dispatchEvent(new Event('resize'));});
       assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().filter(a=>a.transitionProperty==='transform').length),0);
-      await page.evaluate(()=>menuPress('ArrowRight'));await page.waitForTimeout(220);
-      assert.equal(await page.locator('#items').evaluate(n=>getComputedStyle(n).willChange),'auto');
+      settled(await page.evaluate(motion));
+      await page.evaluate(()=>menuPress('ArrowRight'));await page.waitForTimeout(450);
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.item,.category')].every(n=>getComputedStyle(n).willChange==='auto')),true);
       assert.ok(['none','normal'].includes(await page.locator('#items>.rows:not(.parked) .selected').evaluate(n=>getComputedStyle(n,'::after').content)));
-      await page.screenshot({path:path.join(dir,`home-rest-${width}.png`)});
-      checks.push(`${width}px DPR ${dpr}: faster rows with preserved category timing, stationary unfaded column, identical settled icon pixels, native reversal, one bar-position transition, reused rows/upper labels, immediate activation and hidden/resize cleanup`);
+      settled(await page.evaluate(motion));await page.screenshot({path:path.join(dir,`home-rest-${width}.png`)});
+      checks.push(`${width}px DPR ${dpr}: opaque incoming category movement, unchanged vertical timing, directional reversal, one animated wrapper, inactive hit-testing, retained rows, identical settled pixels and lifecycle cleanup`);
     }finally{await page.close();}
   }
   for(const mode of ['reduced','no-animation-api','refused-animation','system-reduced']){
@@ -157,11 +201,12 @@ module.exports=async function checkCategoryTransitions(browser,checks,errors,loa
     try{
       if(mode==='system-reduced')await page.emulateMedia({reducedMotion:'reduce'});
       await page.keyboard.press('ArrowRight');assert.equal(await page.evaluate(()=>C5App.getState().category),'apps');
-      assert.equal(await page.locator('#items').evaluate(n=>n.getAnimations().length),0);
-      assert.equal(await page.locator('#items').evaluate(n=>getComputedStyle(n).opacity),'1');
-      if(mode==='reduced'||mode==='system-reduced')assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().length),0);
-      await page.waitForTimeout(450);
-      checks.push(`${mode}: usable immediate selection, no column effects or JavaScript animation dependency`);
+      noGroupEffects(await page.evaluate(motion));
+      if(mode==='reduced'||mode==='system-reduced'){
+        assert.equal(await page.locator('#categories').evaluate(n=>n.getAnimations().length),0);settled(await page.evaluate(motion));
+      }
+      await page.waitForTimeout(450);settled(await page.evaluate(motion));
+      checks.push(`${mode}: immediate selection, settled off-screen lists and no JavaScript animation dependency`);
     }finally{await page.close();}
   }
   assert.deepEqual(errors,[]);

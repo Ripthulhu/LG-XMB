@@ -120,6 +120,21 @@ class SetupFixture(unittest.TestCase):
             result = startup.start()
         return result, launch
 
+    def test_bounded_reads_accept_limit_and_reject_one_extra_byte(self):
+        directory = os.open(self.bundle, os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, directory)
+        for reader, code in ((startup.read_file, 'oversized_helper_file'),
+                             (startup.read_sound_identity, 'sound_payload_identity_oversized')):
+            for size in (0, 4, 5):
+                with self.subTest(reader=reader.__name__, size=size):
+                    raw = b'x' * size
+                    (self.bundle / 'bounded').write_bytes(raw)
+                    if size <= 4:
+                        self.assertEqual(reader(directory, 'bounded', limit=4), raw)
+                    else:
+                        with self.assertRaisesRegex(startup.SetupError, code):
+                            reader(directory, 'bounded', limit=4)
+
     def test_clean_install_records_bundle_and_creates_app_owned_links(self):
         result, launch = self.run_setup()
         self.assertTrue(result['ready'])

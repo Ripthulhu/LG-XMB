@@ -188,15 +188,15 @@ class HomeSoundLinks(unittest.TestCase):
     def test_writable_developer_reference_changed_during_read_is_rejected(self):
         self.sync_payload(); reference = self.dev / 'index.html'; reference.chmod(0o777)
         original, inode = reference.read_bytes(), reference.stat().st_ino
-        read = os.read
+        fdopen = os.fdopen
         changed = False
-        def change(fd, size):
+        def change(fd, mode):
             nonlocal changed
             if not changed and os.fstat(fd).st_ino == inode:
                 changed = True
                 reference.write_bytes(original + b'changed')
-            return read(fd, size)
-        with patch.object(startup.os, 'read', side_effect=change):
+            return fdopen(fd, mode)
+        with patch.object(startup.os, 'fdopen', side_effect=change):
             with self.assertRaisesRegex(startup.SetupError, 'sound_payload_identity_changed'):
                 startup.checked_home_payload()
         self.assertFalse((self.home / 'user-sounds').exists())
@@ -205,16 +205,15 @@ class HomeSoundLinks(unittest.TestCase):
         self.sync_payload(); reference = self.dev / 'index.html'; reference.chmod(0o777)
         replacement = self.dev / 'replacement.html'; replacement.write_bytes(reference.read_bytes())
         replacement.chmod(0o777)
-        inode, read = reference.stat().st_ino, os.read
+        inode, fdopen = reference.stat().st_ino, os.fdopen
         changed = False
-        def replace(fd, size):
+        def replace(fd, mode):
             nonlocal changed
-            result = read(fd, size)
             if not changed and os.fstat(fd).st_ino == inode:
                 changed = True
                 replacement.replace(reference)
-            return result
-        with patch.object(startup.os, 'read', side_effect=replace):
+            return fdopen(fd, mode)
+        with patch.object(startup.os, 'fdopen', side_effect=replace):
             with self.assertRaisesRegex(startup.SetupError, 'sound_payload_identity_changed'):
                 startup.checked_home_payload()
         self.assertFalse((self.home / 'user-sounds').exists())

@@ -308,6 +308,11 @@ const menu = require('./support/menu-navigation.cjs');
       await panel.evaluate((element) => {
         element.scrollTop = 0;
       });
+      assert.equal(
+        await panel.evaluate((element) => element.scrollHeight > element.clientHeight),
+        true,
+        'Native scroll fixture must contain overflowing content: ' + selector
+      );
       const before = await page.evaluate(() => wheelProbe.snapshot());
       const box = await panel.boundingBox();
       await page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.6);
@@ -327,6 +332,7 @@ const menu = require('./support/menu-navigation.cjs');
     }
     await menu.item(page, 'settings', 'appearance');
     await page.keyboard.press('Enter');
+    await page.locator('#openAppearanceAdvanced').click();
     const panelWheel = await page.evaluate(async () => {
       wheelProbe.key('keydown', 'ArrowDown');
       wheelProbe.key('keydown', 'ArrowDown', true);
@@ -352,6 +358,7 @@ const menu = require('./support/menu-navigation.cjs');
     checks.push('wheel scrolling inside a panel cancels pending keyboard repeats');
     await nativeScroll('#modalContent', 560);
     await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
     await start();
     await page.keyboard.press('F2');
     await page.locator('[data-action="info"]').click();
@@ -365,7 +372,9 @@ const menu = require('./support/menu-navigation.cjs');
     await page.keyboard.press('Escape');
     await menu.item(page, 'settings', 'appearance');
     await page.keyboard.press('Enter');
+    await page.locator('#openAppearanceAdvanced').click();
     await page.locator('[aria-label="Animation"] [data-choice="reduced"]').click();
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     const reduced = await page.evaluate(() => {
       wheelProbe.wheel(120);
