@@ -87,11 +87,7 @@ async function checkClock(browser, url) {
         timeBeforeDate:
           document.getElementById('time').getBoundingClientRect().right <=
           document.getElementById('date').getBoundingClientRect().left,
-        expectedDate: new Date().toLocaleDateString('en-GB', {
-          weekday: 'short',
-          day: '2-digit',
-          month: 'short'
-        })
+        expectedDate: new Date().getDate() + '/' + (new Date().getMonth() + 1)
       };
     });
     assert.equal(current.border, '0px');
@@ -176,6 +172,7 @@ async function checkClock(browser, url) {
     await page.goto(url);
     await ready();
     assert.equal((await state()).preferences.clockStyle, 'ps3');
+    assert.equal((await state()).preferences.dateFormat, 'dm');
     await expectPS3Layout();
     checks.push('New settings default to the PS3 clock');
     await openPanel();
@@ -185,7 +182,7 @@ async function checkClock(browser, url) {
     assert.equal(await page.locator('#time').textContent(), '09:45');
     await screenshot('clock-current-1080.png');
     checks.push(
-      'Current remains available with its original time and date formatting'
+      'Current remains available with padded time and the short day-first date'
     );
 
     await openPanel();
@@ -295,14 +292,14 @@ async function checkClock(browser, url) {
         await page.evaluate(() => document.activeElement.closest('[role=group]').getAttribute('aria-label')),
         'Date format'
       );
-      const defaultDate = label === 'PS3' ? '20/9' : await page.evaluate(() =>
-        new Date().toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' })
+      assert.deepEqual(
+        await page.getByRole('group', { name: 'Date format', exact: true }).locator('button')
+          .evaluateAll(nodes => nodes.map(node => [node.firstElementChild.textContent, node.dataset.choice])),
+        [['Day first', 'dm'], ['Month first', 'md']]
       );
       for (const [name, value, date] of [
-        ['Style default', 'default', defaultDate],
-        ['Day first', 'dmy', '20/09/2026'],
-        ['Month first', 'mdy', '09/20/2026'],
-        ['Year first', 'ymd', '2026-09-20']
+        ['Day first', 'dm', '20/9'],
+        ['Month first', 'md', '9/20']
       ]) {
         await formatChoice('Date format', name).click();
         assert.equal((await state()).preferences.dateFormat, value);
@@ -312,17 +309,16 @@ async function checkClock(browser, url) {
       await formatChoice('Date format', 'Day first').focus();
       await page.keyboard.press('ArrowRight');
       await page.keyboard.press('Enter');
-      assert.equal((await state()).preferences.dateFormat, 'mdy');
-      assert.equal(await page.locator('#date').textContent(), '09/20/2026');
+      assert.equal((await state()).preferences.dateFormat, 'md');
+      assert.equal(await page.locator('#date').textContent(), '9/20');
       await page.keyboard.press('ArrowDown');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'openDateTimeEditor');
       await page.keyboard.press('ArrowUp');
-      assert.equal(await page.evaluate(() => document.activeElement.dataset.choice), 'mdy');
-      await formatChoice('Date format', 'Year first').click();
+      assert.equal(await page.evaluate(() => document.activeElement.dataset.choice), 'md');
       assert.equal(await page.evaluate(() => clockTimeReads), 0);
       assert.deepEqual(await page.evaluate(() => clockTimeWrites), []);
     }
-    checks.push('Both clock styles apply all date formats and 12-hour time immediately by pointer or remote without reading or setting TV time');
+    checks.push('Both clock styles offer only short day-first and month-first dates and apply 12-hour time immediately by pointer or remote without reading or setting TV time');
 
     await closePanels();
     await page.clock.setSystemTime(new Date('2026-09-20T23:45:00+02:00'));
@@ -337,12 +333,12 @@ async function checkClock(browser, url) {
     await page.reload();
     await ready();
     assert.equal((await state()).preferences.timeFormat, '12h');
-    assert.equal((await state()).preferences.dateFormat, 'ymd');
+    assert.equal((await state()).preferences.dateFormat, 'md');
     assert.equal(await page.locator('#time').textContent(), '11:45 PM');
-    assert.equal(await page.locator('#date').textContent(), '2026-09-20');
+    assert.equal(await page.locator('#date').textContent(), '9/20');
     await openFormats();
     assert.equal(await page.evaluate(() => document.activeElement.dataset.choice), '12h');
-    assert.equal(await formatChoice('Date format', 'Year first').getAttribute('aria-pressed'), 'true');
+    assert.equal(await formatChoice('Date format', 'Month first').getAttribute('aria-pressed'), 'true');
     await page.evaluate(() => {
       const key = 'lg-xmb-preferences-v1', preferences = JSON.parse(localStorage.getItem(key));
       preferences.timeFormat = '__proto__';
@@ -352,8 +348,8 @@ async function checkClock(browser, url) {
     await page.reload();
     await ready();
     assert.equal((await state()).preferences.timeFormat, '24h');
-    assert.equal((await state()).preferences.dateFormat, 'default');
-    checks.push('Format choices survive reload, invalid saved choices return to defaults, and the longest date and 12-hour time fit the PS3 bar at 1080p and 720p');
+    assert.equal((await state()).preferences.dateFormat, 'dm');
+    checks.push('Format choices survive reload, invalid saved choices return to day first, and short dates with 12-hour time fit the PS3 bar at 1080p and 720p');
 
     await openPanel();
     await choice('PS3').click();

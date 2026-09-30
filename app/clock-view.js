@@ -25,20 +25,9 @@
         ':' +
         String(now.getMinutes()).padStart(2, '0') +
         (hour12 ? (hour < 12 ? ' AM' : ' PM') : ''),
-      date;
-    if (dateFormat === 'dmy' || dateFormat === 'mdy' || dateFormat === 'ymd') {
-      var day = String(now.getDate()).padStart(2, '0'),
-        month = String(now.getMonth() + 1).padStart(2, '0'),
-        year = now.getFullYear();
-      date =
-        dateFormat === 'ymd'
-          ? year + '-' + month + '-' + day
-          : (dateFormat === 'mdy' ? month + '/' + day : day + '/' + month) + '/' + year;
-    } else {
-      date = ps3
-        ? now.getDate() + '/' + (now.getMonth() + 1)
-        : now.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
-    }
+      day = now.getDate(),
+      month = now.getMonth() + 1,
+      date = dateFormat === 'md' ? month + '/' + day : day + '/' + month;
     attribute(this.element, 'data-style', ps3 ? 'ps3' : 'current');
     if (this.time.textContent !== time) {
       text(this.time, time);

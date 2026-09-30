@@ -24,12 +24,13 @@ test('both clock styles format midnight, noon and the year boundary without chan
   for (const style of ['current', 'ps3']) {
     const view = clock();
     for (const [now, time24, time12, dates] of [
-      [new Date(2026, 11, 31, 23, 59), '23:59', '11:59 PM', ['31/12/2026', '12/31/2026', '2026-12-31']],
-      [new Date(2027, 0, 1, 0, 34), style === 'ps3' ? '0:34' : '00:34', '12:34 AM', ['01/01/2027', '01/01/2027', '2027-01-01']],
-      [new Date(2027, 0, 1, 12, 5), '12:05', '12:05 PM', ['01/01/2027', '01/01/2027', '2027-01-01']]
+      [new Date(2026, 11, 31, 23, 59), '23:59', '11:59 PM', ['31/12', '12/31']],
+      [new Date(2027, 0, 1, 0, 34), style === 'ps3' ? '0:34' : '00:34', '12:34 AM', ['1/1', '1/1']],
+      [new Date(2027, 0, 1, 12, 5), '12:05', '12:05 PM', ['1/1', '1/1']],
+      [new Date(2027, 8, 4, 12, 5), '12:05', '12:05 PM', ['4/9', '9/4']]
     ]) {
       for (const [timeFormat, expected] of [['24h', time24], ['12h', time12]]) {
-        for (const [index, dateFormat] of ['dmy', 'mdy', 'ymd'].entries()) {
+        for (const [index, dateFormat] of ['dm', 'md'].entries()) {
           view.update(now, style, timeFormat, dateFormat);
           assert.equal(view.time.textContent, expected);
           assert.equal(view.date.textContent, dates[index]);
@@ -45,15 +46,14 @@ test('both clock styles format midnight, noon and the year boundary without chan
   }
 });
 
-test('omitted formats retain each clock style and invalid dates leave it unchanged', () => {
+test('omitted formats use short day-first dates and invalid dates leave the clock unchanged', () => {
   const now = new Date(2026, 8, 20, 9, 45), view = clock();
   for (const style of ['current', 'ps3']) {
     view.update(now, style);
     assert.equal(view.time.textContent, style === 'ps3' ? '9:45' : '09:45');
-    const date = style === 'ps3' ? '20/9'
-      : now.toLocaleDateString('en-GB', {weekday: 'short', day: '2-digit', month: 'short'});
+    const date = '20/9';
     assert.equal(view.date.textContent, date);
-    view.update(new Date(NaN), style, '12h', 'ymd');
+    view.update(new Date(NaN), style, '12h', 'md');
     assert.equal(view.date.textContent, date);
     assert.equal(view.time.textContent, style === 'ps3' ? '9:45' : '09:45');
   }

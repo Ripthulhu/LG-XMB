@@ -59,15 +59,17 @@ async function closeEditor(p){
  try{
   await load(p);await navigate(p,'settings','datetime');await p.keyboard.press('Enter');
   assert.equal((await state(p)).modal,'datetime');assert.equal(await p.evaluate(()=>document.activeElement.dataset.choice),'24h');
+  assert.equal((await state(p)).preferences.dateFormat,'dm');
   assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getSystemTime')).length),0);
   await p.getByRole('group',{name:'Time format',exact:true}).getByRole('button',{name:'12-hour',exact:true}).click();
   await p.getByRole('group',{name:'Date format',exact:true}).getByRole('button',{name:'Month first',exact:true}).click();
-  assert.equal((await state(p)).preferences.timeFormat,'12h');assert.equal((await state(p)).preferences.dateFormat,'mdy');
+  assert.equal((await state(p)).preferences.timeFormat,'12h');assert.equal((await state(p)).preferences.dateFormat,'md');
   assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>/\/(get|set)SystemTime$/.test(c.uri)).length),0);
   const formats=await p.getByRole('group',{name:'Date format',exact:true}).locator('button').evaluateAll(buttons=>buttons.map(button=>{
    const box=button.getBoundingClientRect(),label=button.firstElementChild.getBoundingClientRect(),mark=button.lastElementChild.getBoundingClientRect();
-   return {label:button.firstElementChild.textContent,inside:label.left>=box.left&&label.right<=box.right,clearOfMark:label.right<=mark.left,singleLine:label.height<=parseFloat(getComputedStyle(button.firstElementChild).lineHeight)+.5};
+   return {label:button.firstElementChild.textContent,value:button.dataset.choice,inside:label.left>=box.left&&label.right<=box.right,clearOfMark:label.right<=mark.left,singleLine:label.height<=parseFloat(getComputedStyle(button.firstElementChild).lineHeight)+.5};
   }));
+  assert.deepEqual(formats.map(format=>[format.label,format.value]),[['Day first','dm'],['Month first','md']]);
   for(const format of formats){assert.equal(format.inside,true,format.label+' fits option');assert.equal(format.clearOfMark,true,format.label+' clears checkmark');assert.equal(format.singleLine,true,format.label+' stays on one line');}
   await p.screenshot({path:path.join(out,'date-time-formats-'+width+'.png')});
   checks.push(width+': display formats work without native time access');

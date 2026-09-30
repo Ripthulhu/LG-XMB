@@ -15,7 +15,7 @@
     screensaverParticleBrightness: 0.25,
     clockStyle: 'ps3',
     timeFormat: '24h',
-    dateFormat: 'default',
+    dateFormat: 'dm',
     motion: 'full',
     menuAnimation: 'ps3',
     sound: false,
@@ -148,8 +148,8 @@
         preferences.clockStyle = saved.clockStyle;
       if (['24h', '12h'].indexOf(saved.timeFormat) !== -1)
         preferences.timeFormat = saved.timeFormat;
-      if (['default', 'dmy', 'mdy', 'ymd'].indexOf(saved.dateFormat) !== -1)
-        preferences.dateFormat = saved.dateFormat;
+      // Drop the year from older formats, preserving the month/day order.
+      preferences.dateFormat = ['md', 'mdy', 'ymd'].indexOf(saved.dateFormat) !== -1 ? 'md' : 'dm';
       if (['simple', 'ps3'].indexOf(saved.menuAnimation) !== -1)
         preferences.menuAnimation = saved.menuAnimation;
       if (saved.motion === 'reduced' || saved.motion === 'full') preferences.motion = saved.motion;

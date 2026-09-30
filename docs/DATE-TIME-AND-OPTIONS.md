@@ -1,10 +1,9 @@
 # Date and time
 
 Open **Settings → Date & time** to choose 12-hour or 24-hour time and a date
-format: **Day first** (31/12/2026), **Month first** (12/31/2026) or **Year first**
-(2026-12-31). **Style default** keeps
-the PS3 clock's short day/month date or the Current clock's weekday and month
-name. These choices apply immediately to both clock styles and stay saved.
+format: **Day first** (20/9) or **Month first** (9/20). Both clock styles use
+the short PS3 date, without a year or leading zeroes. Day first is the default.
+These choices apply immediately and stay saved.
 
 To change the TV clock itself, choose **Set TV date & time**. The editor reads
 the native clock and time zone before enabling edits. Display formats work

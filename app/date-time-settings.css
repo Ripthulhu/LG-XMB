@@ -1,9 +1,4 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-.date-format-options .option {
-  padding-left: 0.5vw;
-  padding-right: 0.5vw;
-  gap: 0.3vw;
-}
 .date-time-fields {
   display: flex;
   gap: 0.65vw;

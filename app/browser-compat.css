@@ -46,6 +46,3 @@
 .no-flex-gap .screensaver-settings .choice-options .option > * + * {
   margin-left: 0.3vw;
 }
-.no-flex-gap .date-format-options .option > * + * {
-  margin-left: 0.3vw;
-}

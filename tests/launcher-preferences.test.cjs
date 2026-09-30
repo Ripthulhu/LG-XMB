@@ -210,7 +210,7 @@ test('clock style defaults to PS3 and preserves supported saved choices', () => 
 test('clock formats preserve defaults and only restore supported strings', () => {
   for (const [key, choices] of [
     ['timeFormat', ['24h', '12h']],
-    ['dateFormat', ['default', 'dmy', 'mdy', 'ymd']]
+    ['dateFormat', ['dm', 'md']]
   ]) {
     assert.equal(preferences.load({getItem: () => null}, false)[key], choices[0]);
     for (const value of [...choices, 'invalid', '', null, 12, true, [], ['12h'], {}]) {
@@ -220,6 +220,16 @@ test('clock formats preserve defaults and only restore supported strings', () =>
       preferences.save({setItem: (_, value) => {saved = value;}}, state);
       assert.equal(preferences.load({getItem: () => saved}, false)[key], state[key]);
     }
+  }
+});
+
+test('older date formats drop the year and retain their day/month order', () => {
+  for (const [oldFormat, dateFormat] of [['default', 'dm'], ['dmy', 'dm'], ['mdy', 'md'], ['ymd', 'md']]) {
+    const state = preferences.load({getItem: () => JSON.stringify({dateFormat: oldFormat})}, false);
+    assert.equal(state.dateFormat, dateFormat);
+    let saved;
+    preferences.save({setItem: (_, value) => {saved = value;}}, state);
+    assert.equal(preferences.load({getItem: () => saved}, false).dateFormat, dateFormat);
   }
 });
 
