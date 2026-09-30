@@ -149,6 +149,22 @@
     canAssign: function (item) {
       return appCategories.canAssign(item);
     },
+    canCustomizeIcon: function (item) {
+      return appCategories.canAssign(item);
+    },
+    getIcons: function () {
+      return C5Icon.choices;
+    },
+    getIcon: function (id) {
+      return appCategories.getIcon(id);
+    },
+    getDefaultIcon: function (id) {
+      return appCategories.defaultIcon(id);
+    },
+    onIcon: function (item, key) {
+      appCategories.setIcon(item, key, selections);
+      categoryTransition.cancel();
+    },
     getCategories: function () {
       return appCategories.choices();
     },

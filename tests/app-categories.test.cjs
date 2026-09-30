@@ -236,11 +236,11 @@ test('Default for a discovered app restores Apps', () => {
   );
   assert.deepEqual(f.where(apps[0].id), ['apps']);
 });
-test('settings, inputs, empty placeholders and Home identities cannot be assigned', () => {
+test('settings, empty placeholders and Home identities cannot be assigned', () => {
   const f = fixture();
   for (const item of [
     f.cat('settings').items[0],
-    f.cat('tv').items[0],
+    { id: 'fake.input', action: 'input' },
     f.cat('apps').items[0],
     { id: 'com.webos.app.home' },
     { id: 'org.local.openxmb.c5' },
@@ -627,4 +627,124 @@ test('catalog metadata never populates shortcuts before discovery or after absen
   assert.deepEqual(f.where('native.media'), []);
   model.reconcile([{id:'native.media',title:'Media Player'}], f.sel);
   assert.deepEqual(f.where('native.media'), ['video']);
+});
+
+test('physical inputs move, share categories, refresh and restore without changing their launch identity', () => {
+  const inputs = require('../app/input-discovery.js');
+  const snapshot = inputs.normalize([
+    { appId: 'com.webos.app.hdmi2', label: 'DVD player' },
+    { appId: 'com.webos.app.externalinput.av1', label: 'VCR' }
+  ]);
+  const f = fixture();
+  f.model.reconcileInputs(snapshot, f.sel);
+  const item = f.cat('tv').items[0];
+  assert.equal(f.model.canAssign(item), true);
+  assert.equal(f.cats[f.model.assign(item, ['video', 'tv'], f.sel, 'video')].id, 'video');
+  const video = f.cat('video').items[0], tv = f.cat('tv').items[0];
+  assert.notEqual(video, tv);
+  assert.equal(video.id, 'com.webos.app.hdmi2');
+  assert.equal(video.action, 'input');
+  assert.equal(f.model.canHide(video), false);
+  assert.equal(f.model.reconcileInputs(snapshot, f.sel), false);
+  assert.equal(f.cat('video').items[0], video);
+  assert.equal(f.model.reconcileInputs([{ ...snapshot[0], label: 'New name' }, snapshot[1]], f.sel), true);
+  assert.equal(video.title, 'New name');
+  assert.equal(tv.title, 'New name');
+  assert.equal(f.cat('video').items[f.sel[3]], video);
+  f.model.assign(f.cat('tv').items[1], ['video'], f.sel);
+  assert.deepEqual(f.where(snapshot[1].id), ['video']);
+  assert.equal(f.cat('video').items[1].action, 'input');
+  const fresh = fixture(f.store);
+  fresh.model.reconcileInputs(snapshot, fresh.sel);
+  assert.deepEqual(fresh.where(item.id), ['video', 'tv']);
+  assert.deepEqual(fresh.where(snapshot[1].id), ['video']);
+  fresh.model.reconcileInputs([], fresh.sel);
+  fresh.model.reconcile(snapshot.map(i => ({ id: i.id, title: i.label })), fresh.sel);
+  assert.deepEqual(fresh.where(item.id), []);
+  fresh.model.reconcileInputs(snapshot, fresh.sel);
+  fresh.model.assign(fresh.cat('video').items[0], 'default', fresh.sel);
+  assert.deepEqual(fresh.where(item.id), ['tv']);
+});
+
+test('custom artwork survives copies, input refresh, disappearance and restart; reset restores defaults', () => {
+  const inputs = require('../app/input-discovery.js');
+  const snapshot = inputs.normalize([{ appId: 'com.webos.app.hdmi2', label: 'DVD' }]);
+  const f = fixture();
+  f.model.reconcileInputs(snapshot, f.sel);
+  const input = f.cat('tv').items[0];
+  f.model.setIcon(input, 'disc', f.sel);
+  f.model.assign(input, ['video', 'tv'], f.sel);
+  const copies = [f.cat('video').items[0], f.cat('tv').items[0]];
+  copies.forEach(row => {
+    assert.equal(row.customIcon, 'disc');
+    assert.equal(row.icon, 'hdmi');
+  });
+  assert.equal(f.model.defaultIcon(input.id), 'hdmi');
+  for (let n = 0; n < 3; n++) assert.equal(f.model.reconcileInputs(snapshot, f.sel), false);
+  assert.equal(f.cat('video').items[0], copies[0]);
+  const fresh = fixture(f.store);
+  fresh.model.reconcileInputs(snapshot, fresh.sel);
+  assert.equal(fresh.cat('video').items[0].customIcon, 'disc');
+  fresh.model.reconcileInputs([], fresh.sel);
+  fresh.model.reconcileInputs(snapshot, fresh.sel);
+  assert.equal(fresh.cat('tv').items[0].customIcon, 'disc');
+  fresh.model.setIcon(fresh.cat('video').items[0], 'default', fresh.sel);
+  assert.equal(fresh.model.getIcon(input.id), 'default');
+  for (const category of ['tv', 'video']) {
+    const row = fresh.cat(category).items[0];
+    assert.equal(row.customIcon, undefined);
+    assert.equal(row.icon, 'hdmi');
+  }
+  f.model.reconcile(apps, f.sel);
+  const app = f.cat('apps').items[0];
+  f.model.setIcon(app, 'handheld', f.sel);
+  f.model.assign(app, ['apps', 'video'], f.sel);
+  f.model.hide(app, f.sel);
+  f.model.restore(app.id, f.sel);
+  assert.equal(f.cat('apps').items[0].customIcon, 'handheld');
+  assert.equal(f.cat('video').items.find(row => row.id === app.id).customIcon, 'handheld');
+  f.model.reconcile([], f.sel);
+  f.model.reconcile(apps, f.sel);
+  const reinstalled = f.cat('apps').items.find(row => row.id === app.id);
+  assert.equal(reinstalled.customIcon, 'handheld');
+  f.model.setIcon(app, 'default', f.sel);
+  assert.equal(reinstalled.icon, 'application');
+  assert.equal(reinstalled.customIcon, undefined);
+});
+
+test('invalid icons and failed saves leave artwork, categories and selection intact', () => {
+  const f = fixture();
+  f.model.reconcile(apps, f.sel);
+  const app = f.cat('apps').items[0], before = JSON.stringify(f.store.data), selections = f.sel.slice();
+  for (const key of ['appearance', 'sound', 'tvsettings', 'remotesettings', 'unknown', '<svg/>', null, {}])
+    assert.throws(() => f.model.setIcon(app, key, f.sel), /available XMB icon/);
+  assert.throws(() => f.model.setIcon(f.cat('settings').items[0], 'disc', f.sel));
+  assert.throws(() => f.model.setIcon({ id: 'missing.app' }, 'disc', f.sel));
+  assert.equal(JSON.stringify(f.store.data), before);
+  f.model.setIcon(app, 'headset', f.sel);
+  f.store.setItem = () => { throw Error('quota'); };
+  assert.throws(() => f.model.setIcon(app, 'default', f.sel), /quota/);
+  const input = f.cat('tv').items[0];
+  assert.throws(() => f.model.assign(input, ['video'], f.sel), /quota/);
+  assert.deepEqual(f.where(input.id), ['tv']);
+  assert.equal(f.model.getIcon(app.id), 'headset');
+  assert.equal(app.customIcon, 'headset');
+  assert.deepEqual(f.sel, selections);
+});
+
+test('saved icons accept only known plain XMB symbols and valid IDs without startup writes', () => {
+  const store = storage({ 'lg-xmb-item-icons-v1': JSON.stringify({
+    'org.example.player': 'disc', 'cdp-30': 'sound', '../bad': 'music',
+    'com.webos.app.home': 'headset', 'unknown.app': '<img src=x>', appearance: 'disc'
+  }) });
+  store.setItem = () => { throw Error('must not write'); };
+  const f = fixture(store);
+  f.model.reconcile(apps, f.sel);
+  assert.equal(f.cat('apps').items[0].customIcon, 'disc');
+  assert.equal(f.model.getIcon('cdp-30'), 'default');
+  assert.equal(f.cat('settings').items[0].customIcon, undefined);
+  assert.equal(f.model.getIcon('../bad'), 'default');
+  assert.equal(f.model.getIcon('com.webos.app.home'), 'default');
+  for (const raw of ['{broken', '["disc"]', 'x'.repeat(262145)])
+    assert.deepEqual(Object.keys(fixture(storage({ 'lg-xmb-item-icons-v1': raw })).model.iconOverrides), []);
 });

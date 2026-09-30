@@ -14,11 +14,11 @@ async function navigate(p,category,id){
  assert.ok(row.b>=0,id);for(let i=0;i<Math.abs(row.b-row.a);i++)await p.keyboard.press(row.b>row.a?'ArrowDown':'ArrowUp');
  assert.equal((await state(p)).item,id);
 }
-async function load(p){
+async function load(p,saved={}){
  // Source injection is isolated from managed-browser URL policy. A local
  // storage double supplies the otherwise opaque about:blank origin.
  await p.setContent('<!doctype html><html><body></body></html>');
- await p.evaluate(()=>{const data={};Object.defineProperty(window,'localStorage',{configurable:true,value:{getItem:k=>data[k]||null,setItem:(k,v)=>{data[k]=String(v);},removeItem:k=>{delete data[k];}}});});
+ await p.evaluate(saved=>{const data=window.optionsStorage={...saved};Object.defineProperty(window,'localStorage',{configurable:true,value:{getItem:k=>data[k]||null,setItem:(k,v)=>{data[k]=String(v);},removeItem:k=>{delete data[k];}}});},saved);
  let html=fs.readFileSync(path.join(base,'app/index.html'),'utf8').replace(/<script src="[^"]+"><\/script>/g,'').replace(/<link[^>]+rel="stylesheet"[^>]*>/g,'');
  await p.setContent(html);
  await p.addStyleTag({content:fs.readFileSync(path.join(base,'app/style.css'),'utf8')});
@@ -27,6 +27,7 @@ async function load(p){
  for(const name of ['icons.js','input-discovery.js','catalog.js','category-transition.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'tests/fixtures/catalog-platform.js'),'utf8')});
  await p.evaluate(()=>{
+  window.optionsIconHTML=key=>{const node=document.createElement('span');node.innerHTML=C5Icon(key);return node.innerHTML;};
   window.optionsHarness={calls:[],metaDelayed:false,metas:[],removes:[]};
   const infos={
    'org.test.one':{title:'Alpha Player',vendor:'Example Studio',version:'2.4.0'},
@@ -47,8 +48,8 @@ async function load(p){
  for(const name of ['menu-focus.js','directional-repeat.js','wheel-navigation.js','menu-sounds.js','app-manager.js','hold-gesture.js','menu-order.js','app-categories.js','app-refresh.js','item-options.js','system-time.js','date-time-settings.js','launcher-preferences.js','settings-ui.js','appearance-settings.js','launcher-view.js','clock-view.js','app.js'])await p.addScriptTag({content:fs.readFileSync(path.join(base,'app',name),'utf8')});
  await p.waitForFunction(()=>window.C5App);
  await p.evaluate(()=>{
-  catalogHarness.apps({preview:false,apps:[{id:'org.test.two',title:'Beta Tools'},{id:'org.test.one',title:'Alpha Player'},{id:'cdp-30',title:'Plex'}]});
-  catalogHarness.labels({preview:false,inputs:[]});
+  catalogHarness.apps({preview:false,apps:catalogHarness.builtins.concat([{id:'org.test.two',title:'Beta Tools'},{id:'org.test.one',title:'Alpha Player'},{id:'cdp-30',title:'Plex'}])});
+  catalogHarness.labels({preview:false,inputs:[1,2,3,4].map(port=>({id:'com.webos.app.hdmi'+port,port,kind:'hdmi',label:'HDMI '+port}))});
  });
  await p.waitForFunction(()=>C5Catalog.find(c=>c.id==='apps').items.some(i=>i.id==='org.test.one'));
 }
@@ -70,7 +71,7 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
   for(let i=0;i<4;i++)await p.keyboard.down('Enter');
   await p.keyboard.up('Enter');assert.equal(await p.evaluate(()=>catalogHarness.launches.length),before);
   await p.waitForFunction(()=>C5App.getState().itemOptions.removable);
-  assert.equal(await p.locator('.item-options-button').count(),8);assert.equal(await p.locator('.item-options-shade').isVisible(),true);
+  assert.equal(await p.locator('.item-options-button').count(),9);assert.equal(await p.locator('.item-options-shade').isVisible(),true);
   assert.equal(await p.evaluate(()=>document.activeElement.dataset.action),'start');
   await p.waitForTimeout(250);const box=await p.locator('.item-options-panel').boundingBox();assert.ok(Math.abs(box.x+box.width-size.width*.94)<2);assert.ok(Math.abs(box.height-size.height*.82)<2);
   await p.screenshot({path:path.join(out,'options-'+size.width+'.png')});checks.push(size.width+': hold opens right panel, consumes repeats/release, keeps target and fits viewport');
@@ -112,6 +113,63 @@ async function finishRemoval(p,success=true){await p.evaluate(success=>{const e=
   assert.equal((await state(p)).item,'org.test.two');
   assert.deepEqual(await p.evaluate(()=>JSON.parse(localStorage.getItem('lg-xmb-recent-items-v1'))),['org.test.two']);
   checks.push(size.width+': recent sort ignores failed launches and records successful replies after Home hides');
+  await p.evaluate(()=>{optionsHarness.metaDelayed=true;});
+  await p.keyboard.press('F2');await p.waitForFunction(()=>optionsHarness.metas.length>0);await p.locator('[data-action=icon]').focus();await p.keyboard.press('ArrowRight');
+  assert.equal((await state(p)).itemOptions.view,'icon');
+  assert.equal(await p.evaluate(()=>document.activeElement.dataset.action),'icon-default');
+  assert.equal(await p.locator('.item-options-icon-choice').count(),await p.evaluate(()=>C5Icon.choices.length+1));
+  const iconTitles=await p.locator('.item-options-icon-choice').allTextContents();
+  assert.equal(iconTitles[0],'Default icon');
+  assert.deepEqual(iconTitles.slice(1),iconTitles.slice(1).sort((a,b)=>a.localeCompare(b)));
+  assert.equal(await p.locator('.item-options-icon-choice svg.settings-symbol').count(),0);
+  await p.evaluate(()=>{window.pickerFocusBefore=document.activeElement;const meta=optionsHarness.metas.pop();meta.entry.reply(JSON.stringify({returnValue:true,appInfo:meta.info}));optionsHarness.metaDelayed=false;});
+  await p.waitForFunction(()=>C5App.getState().itemOptions.removable);
+  assert.equal(await p.evaluate(()=>document.activeElement===pickerFocusBefore),true);
+  await p.evaluate(()=>window.iconRowBefore=document.querySelector('#items .rows:not(.parked) [data-item="org.test.two"]'));
+  await p.evaluate(()=>{window.saveIconStorage=localStorage.setItem;localStorage.setItem=()=>{throw Error('Storage full');};});
+  await p.locator('[data-action=icon-disc]').click();
+  assert.equal((await state(p)).itemOptions.open,true);assert.match(await p.locator('.item-options-status').innerText(),/Storage full/);
+  assert.equal(await p.evaluate(()=>iconRowBefore.querySelector('.item-icon').innerHTML===optionsIconHTML('application')),true);
+  await p.evaluate(()=>{localStorage.setItem=saveIconStorage;});
+  await p.locator('[data-action=icon-disc]').click();
+  assert.equal((await state(p)).itemOptions.open,false);
+  assert.equal(await p.evaluate(()=>iconRowBefore===document.querySelector('#items .rows:not(.parked) [data-item="org.test.two"]')),true);
+  assert.equal(await p.evaluate(()=>iconRowBefore.querySelector('.item-icon').innerHTML===optionsIconHTML('disc')),true);
+  assert.equal(await p.evaluate(()=>document.getElementById('detailEmblem').innerHTML===optionsIconHTML('disc')),true);
+  await p.keyboard.press('F2');await p.locator('[data-action=category]').click();await p.locator('[data-action=category-video]').click();await p.locator('[data-action=category-apply]').click();
+  assert.equal(await p.locator('#items [data-item="org.test.two"]').count(),2);
+  assert.equal(await p.locator('#items [data-item="org.test.two"] .item-icon').evaluateAll(nodes=>nodes.every(n=>n.innerHTML===optionsIconHTML('disc'))),true);
+  checks.push(size.width+': icon picker excludes wrench artwork, keeps retained rows and updates every category copy');
+  await navigate(p,'tv','com.webos.app.hdmi2');await p.keyboard.press('F2');
+  assert.equal(await p.locator('[data-action=hide]').getAttribute('aria-disabled'),'true');
+  await p.locator('[data-action=category]').click();await p.locator('[data-action=category-tv]').click();await p.locator('[data-action=category-video]').click();await p.locator('[data-action=category-apply]').click();
+  await navigate(p,'video','com.webos.app.hdmi2');await p.keyboard.press('F2');await p.locator('[data-action=icon]').click();await p.locator('[data-action=icon-disc]').click();
+  assert.equal((await state(p)).thumbnail.port,2);
+  assert.equal(await p.evaluate(()=>C5Catalog.find(c=>c.id==='tv').items.some(i=>i.id==='com.webos.app.hdmi2')),false);
+  await p.keyboard.press('Enter');await p.waitForFunction(()=>catalogHarness.inputLaunches.length>0);
+  assert.equal(await p.evaluate(()=>catalogHarness.inputLaunches[catalogHarness.inputLaunches.length-1]),'com.webos.app.hdmi2');
+  checks.push(size.width+': HDMI moves to Video, accepts an icon and retains its preview and native input launch');
+  const reloaded=await context.newPage();reloaded.on('pageerror',e=>errors.push(e.message));
+  try{
+   await load(reloaded,await p.evaluate(()=>optionsStorage));
+   await navigate(reloaded,'video','com.webos.app.hdmi2');
+   assert.equal(await reloaded.evaluate(()=>C5Catalog.find(c=>c.id==='video').items.find(i=>i.id==='com.webos.app.hdmi2').customIcon),'disc');
+   await navigate(reloaded,'apps','org.test.two');await reloaded.keyboard.press('F2');await reloaded.locator('[data-action=icon]').click();
+   assert.equal(await reloaded.evaluate(()=>document.activeElement.dataset.action),'icon-disc');
+   const selected=await reloaded.locator('[data-action=icon-disc]').boundingBox(),scroll=await reloaded.locator('.item-options-scroll').boundingBox();
+   assert.ok(selected.y>=scroll.y && selected.y+selected.height<=scroll.y+scroll.height+1);
+   await reloaded.mouse.move(0,0);
+   await reloaded.screenshot({path:path.join(out,'icons-'+size.width+'.png')});
+   const iconSteps=await reloaded.evaluate(()=>C5Icon.choices.findIndex(c=>c.id==='handheld')-C5Icon.choices.findIndex(c=>c.id==='disc'));
+   for(let i=0;i<Math.abs(iconSteps);i++)await reloaded.keyboard.press(iconSteps>0?'ArrowDown':'ArrowUp');
+   assert.equal(await reloaded.evaluate(()=>document.activeElement.dataset.action),'icon-handheld');
+   await reloaded.screenshot({path:path.join(out,'icons-extra-'+size.width+'.png')});
+   await reloaded.locator('[data-action=icon-default]').click();
+   assert.equal(await reloaded.locator('#items [data-item="org.test.two"] .item-icon').evaluateAll(nodes=>nodes.length===2 && nodes.every(n=>n.innerHTML===optionsIconHTML('application'))),true);
+   await navigate(reloaded,'settings');await reloaded.keyboard.press('F2');
+   assert.equal(await reloaded.locator('[data-action=icon]').getAttribute('aria-disabled'),'true');
+   checks.push(size.width+': category and icon choices survive a fresh app; Default restores every copy; settings remain fixed');
+  }finally{await reloaded.close();}
  }finally{await context.close();}
  }
  assert.deepEqual(errors,[]);

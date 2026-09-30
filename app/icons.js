@@ -114,6 +114,49 @@
       'M5 23a18 18 0 0 1 18 18h-4A14 14 0 0 0 5 27zm0 8a10 10 0 0 1 10 10h-4a6 6 0 0 0-6-6z"/>' +
       '<circle cx="6" cy="40" r="2"/>',
 
+    // Extra device symbols for custom app and input shortcuts.
+    disc:
+      '<path d="M24 4a20 20 0 1 0 0 40 20 20 0 0 0 0-40z' +
+      'M24 20.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z"/>',
+    mediasearch:
+      // One nonzero fill joins the drive, network bus and magnifier. The lens
+      // and drive slot wind the other way, leaving transparent openings.
+      '<path fill-rule="nonzero" d="M4.5 21.4H29.9q.6 0 .6.6v7.9q0 .6-.6.6H4.5q-.6 0-.6-.6V22q0-.6.6-.6z' +
+      'M15.9 30.1h2.7v5.4h-2.7z' +
+      'M5.1 37h24.1a1.5 1.5 0 0 1 0 3H5.1a1.5 1.5 0 0 1 0-3z' +
+      'M17.3 34.9a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 1 1 0-7.6z' +
+      'M34.8 18.7 43.8 28.3q.4.4 0 .8l-2.7 2.7q-.4.4-.8 0L32 22.1z' +
+      'M28 5.5a9.3 9.3 0 1 1 0 18.6 9.3 9.3 0 1 1 0-18.6z' +
+      'M28 8.5a6.3 6.3 0 1 0 0 12.6 6.3 6.3 0 1 0 0-12.6z' +
+      'M9.8 25.1a.85.85 0 0 0 0 1.7h14.8a.85.85 0 0 0 0-1.7z"/>',
+    headset:
+      '<path d="M9.2 18.3a14.8 14.8 0 0 1 29.6 0c1.5.8 2.3 2.3 2.3 4v3.4c0 1.6-.3 2.6-1.5 4L28.2 43c-2.4 2.1-6 1.4-7.1-.7-1.6-2.8-.5-6.1 2.4-7.1 1.8-.7 3.5-.2 4.9.9l6.2-8.8c-.3-.7-1.3-1.4-1.3-2.2v-6.9a9.3 9.3 0 0 0-18.6 0v6.4c0 2.7-.9 4.4-3.4 4.4H11c-2.4 0-4.1-1.7-4.1-4.2v-3c0-1.5.8-3 2.3-3.9z"/>',
+    display:
+      '<path transform="translate(3 8.4) scale(.0907) translate(-251 -284)" d="M298 304c123-27 246-27 370 0 12 2 15 9 18 18 38 88 38 182 0 270-5 13-10 14-18 17-124 27-247 27-370 0-13-3-16-8-19-17-37-88-37-182 0-270 6-15 10-16 19-18z' +
+      'M321 350c108-22 216-22 324 0 26 70 26 142 0 212-108 22-216 22-324 0-26-70-26-142 0-212z"/>',
+    handheld:
+      '<path d="M8 12h32q.5 0 .8.4c6.2 6.6 6.2 16.6 0 23.2q-.3.4-.8.4H8q-.5 0-.8-.4C1 29 1 19 7.2 12.4q.3-.4.8-.4z' +
+      'M11.7 16h24.6q.3 0 .3.3v15.4q0 .3-.3.3H11.7q-.3 0-.3-.3V16.3q0-.3.3-.3z"/>',
+    pc:
+      '<path d="M5 11h25q2 0 2 2v18q0 2-2 2h-9v4h7v3H8v-3h8v-4H5q-2 0-2-2V13q0-2 2-2z' +
+      'M6 14v15h23V14z' +
+      'M37 7h6q2 0 2 2v30q0 2-2 2h-6q-2 0-2-2V9q0-2 2-2z' +
+      'M37.5 11v2h5v-2zm0 5v2h5v-2z' +
+      'M40 32.3a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4z"/>',
+    streamer:
+      '<path d="M7 26h34a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4v-6a4 4 0 0 1 4-4z' +
+      'M21 29v8l7-4z"/>' +
+      '<path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" d="M12 14q12-11 24 0M17 18q7-7 14 0"/>' +
+      '<circle cx="24" cy="21" r="1.5"/>',
+    console:
+      // Leave a gap around the controller so its silhouette reads in front
+      // of the console without overlapping translucent fills.
+      '<path d="M6 9h36q3 0 3 3v12q0 3-3 3h-4c-.8-2.8-2.3-5.4-5.3-5.8-2.1-.3-3.8.9-5.6 2.2h-4.2c-1.8-1.3-3.5-2.5-5.6-2.2-3 .4-4.5 3-5.3 5.8H6q-3 0-3-3V12q0-3 3-3z' +
+      'M8 13v3h20v-3zM39 13a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z' +
+      'M17.3 24c2-.4 3.8 1.3 5.2 2.2h3c1.4-.9 3.2-2.6 5.2-2.2 2.8.6 4 5.1 5.4 10.7.7 3.7-.1 5.3-2.2 5.3s-3.2-2.1-4.6-4.2H18.7c-1.4 2.1-2.5 4.2-4.6 4.2s-2.9-1.6-2.2-5.3c1.4-5.6 2.6-10.1 5.4-10.7z' +
+      'M18.3 28.7h1.6v1.5h1.5v1.6h-1.5v1.5h-1.6v-1.5h-1.5v-1.6h1.5z' +
+      'M28.6 28.4a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM31 30.4a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/>',
+
     // Settings and controls.
     motion:
       '<path d="' +
@@ -237,5 +280,37 @@
     );
   }
 
+  // Keep choices alphabetical; wrench badges and menu controls are not shortcuts.
+  icon.choices = [
+    { id: 'application', title: 'Application' },
+    { id: 'globe', title: 'Browser' },
+    { id: 'casting', title: 'Casting' },
+    { id: 'channels', title: 'Channels' },
+    { id: 'disc', title: 'Disc' },
+    { id: 'library', title: 'Folder' },
+    { id: 'console', title: 'Game console' },
+    { id: 'apps', title: 'Game controller' },
+    { id: 'handheld', title: 'Handheld' },
+    { id: 'hdmi', title: 'HDMI' },
+    { id: 'headset', title: 'Headset' },
+    { id: 'home', title: 'Home' },
+    { id: 'homehub', title: 'Home Hub' },
+    { id: 'brew', title: 'Homebrew' },
+    { id: 'inputs', title: 'Input' },
+    { id: 'mediasearch', title: 'Media search' },
+    { id: 'streamer', title: 'Media streamer' },
+    { id: 'watch', title: 'Monitor' },
+    { id: 'music', title: 'Music' },
+    { id: 'network', title: 'Network' },
+    { id: 'pc', title: 'PC' },
+    { id: 'image', title: 'Photo' },
+    { id: 'display', title: 'Screen' },
+    { id: 'shop', title: 'Store' },
+    { id: 'settings', title: 'Toolbox' },
+    { id: 'live', title: 'TV' },
+    { id: 'media', title: 'Video' }
+  ];
+
   root.C5Icon = icon;
-})(window);
+  if (typeof module !== 'undefined' && module.exports) module.exports = icon;
+})(typeof window !== 'undefined' ? window : globalThis);

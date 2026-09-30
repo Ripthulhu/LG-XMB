@@ -11,6 +11,8 @@ the panel without waiting for the hold timer.
 | Action | Behaviour |
 | --- | --- |
 | Sort By | Default order, Recently used, Name A–Z or Name Z–A for this category |
+| Categories | Put an app or physical input in one or more categories |
+| Icon | Choose a plain XMB icon, or restore the default artwork |
 | Start / Open | Launch the app or input, or open a launcher setting |
 | Hide app | Hide its shortcuts across all categories without uninstalling it |
 | Show hidden apps | List hidden apps; select one to restore its shortcuts |
@@ -23,15 +25,27 @@ panel is open. The background animation continues. In Information, Up and Down
 scroll the text, including long descriptions; Back returns to the actions.
 
 Sort order is saved per category. Removing an app removes its shortcuts from
-all categories, including both Plex entries. An empty category shows a
+all categories. An empty category shows a
 non-launching “No apps” row. A later installed-app refresh restores shortcuts
 for a reinstalled app.
+
+Inputs start under TV, but you can move them. For a DVD player on HDMI 2, hold
+OK on that input, open **Categories**, select **Video**, clear **TV**, then choose
+**Apply categories**. Its name, launch target and HDMI preview still refer to
+the same input. **Default locations** restores the original placement.
+
+**Icon** shows previews of the plain XMB symbols, including Disc, Media search,
+Headset, Screen, Handheld, PC, Media streamer and Game console. Settings symbols
+with a wrench aren't offered.
+Choose **Default** to restore an item's original icon. Category and icon choices
+are saved locally and apply to every copy of the item, including after an app or
+input refresh. Launcher settings keep their fixed placement and artwork.
 
 Hidden apps stay installed and retain their category assignments and recent-use
 history. Their visibility is saved locally and survives app-list refreshes and
 restarts. Show hidden apps is available from any item's options, including the
 “No apps” row. It remains reachable when every app in a category is hidden.
-Launcher settings and HDMI inputs cannot be hidden. If saving fails, the app
+Launcher settings and physical inputs cannot be hidden. If saving fails, the app
 stays in its previous state and the menu reports the error.
 
 ## Deleting an app
@@ -67,6 +81,9 @@ failure doesn't prevent startup, but choices then might not survive a restart.
 
 `app/app-categories.js` stores hidden IDs and display names in
 `lg-xmb-hidden-apps-v1`. Hiding and restoring make no native install/remove calls.
+It stores app and input placements in `lg-xmb-app-categories-v1` and icon overrides
+in `lg-xmb-item-icons-v1`. Only keys in `C5Icon.choices` are accepted; no external
+images or SVG markup are loaded from preferences.
 
 ## Presentation
 

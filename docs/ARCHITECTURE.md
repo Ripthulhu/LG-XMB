@@ -17,10 +17,10 @@ page structure. Read the controller only when a change crosses feature boundarie
 | Preferences | `app/launcher-preferences.js` | Defaults, themes, saved-value migration, persistence and quality options |
 | Menu content | `app/catalog.js`, `app/icons.js` | Default categories, app placement metadata and reusable SVG icons; inventory confirms which shortcuts exist |
 | Desktop preview | `app/demo-data.js` | Example app/input snapshots, used only outside the TV |
-| App organisation | `app/app-categories.js`, `app/menu-order.js` | Category assignments, hidden apps, sorting and successful-launch history |
+| Item organisation | `app/app-categories.js`, `app/menu-order.js` | App/input categories and icon overrides, hidden apps, sorting and successful-launch history |
 | App discovery | `app/app-refresh.js`, `app/tv-discovery.js` | Schedule inventory reads, select the native or elevated read transport and defer reconciliation during interaction |
 | Physical inputs | `app/input-discovery.js`, `app/app-categories.js` | Validate reported input identities and reconcile actual sockets without resetting selection |
-| Item options | `app/item-options.js`, `app/item-options.css` | Long-press panel, hide/restore, category selection and uninstall confirmation |
+| Item options | `app/item-options.js`, `app/item-options.css` | Long-press panel, hide/restore, category and icon selection, uninstall confirmation |
 | Input handling | `app/hold-gesture.js`, `app/directional-repeat.js`, `app/wheel-navigation.js`, `app/menu-focus.js`, `app/category-transition.js` | Hold state, key repeat pacing, wheel distance, focus/scroll and horizontal transitions |
 | Shared settings controls | `app/settings-ui.js` | Option rows, choice groups and generic panel navigation |
 | Appearance | `app/appearance-settings.js`, `app/wave-color-settings.js` | Theme, colour, background and advanced rendering controls |
@@ -69,6 +69,12 @@ The `apps` icon is the controller for the category; `application` is the cube
 for ordinary apps and the fallback for unknown icon names. A catalog shortcut
 can choose its own icon. Discovered-app exceptions are assigned by
 `iconForApp()` in `app/catalog.js`. Check category, list-row and detail sizes together.
+
+`C5Icon.choices` in `app/icons.js` lists the symbols offered by the item icon picker.
+Add a name and label there to make a plain icon selectable; keep wrench variants
+out of that list. `app/app-categories.js` validates and saves overrides by item ID,
+leaving each row's default `icon` intact. The view uses `customIcon` when present
+and updates retained SVGs only when the choice changes.
 
 Settings icons are composed in `app/icons.js` from the `settingsIcons` table:
 

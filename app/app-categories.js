@@ -2,11 +2,14 @@
 (function (root) {
   'use strict';
   var CATEGORY_STORAGE_KEY = 'lg-xmb-app-categories-v1',
-    HIDDEN_STORAGE_KEY = 'lg-xmb-hidden-apps-v1';
+    HIDDEN_STORAGE_KEY = 'lg-xmb-hidden-apps-v1',
+    ICON_STORAGE_KEY = 'lg-xmb-item-icons-v1';
   var inputs =
     root.LGXMBInputs ||
     (typeof module === 'object' && module.exports ? require('./input-discovery.js') : null);
-  // Settings and input actions stay fixed; only app shortcuts are assignable.
+  var icons =
+    root.C5Icon || (typeof module === 'object' && module.exports ? require('./icons.js') : null);
+  // Launcher settings stay fixed; apps and physical inputs share these destinations.
   var DESTINATIONS = ['photo', 'music', 'video', 'tv', 'apps', 'browser', 'network'];
   function isValidAppId(id) {
     return (
@@ -23,7 +26,7 @@
           .slice(0, 120) || fallback
       : fallback;
   }
-  // The catalog owns app artwork; this model only places and retains rows.
+  // The catalog owns default artwork; this model retains rows and user overrides.
   // An explicit resolver also lets tests and alternate catalogs stay independent.
   function AppCategories(categories, order, storage, iconForApp) {
     this.categories = categories;
@@ -47,6 +50,18 @@
     this.waitForAbsence = new Set();
     this.empties = Object.create(null);
     this.hidden = Object.create(null);
+    this.iconOverrides = Object.create(null);
+    try {
+      var iconRaw = storage.getItem(ICON_STORAGE_KEY),
+        savedIcons = iconRaw && iconRaw.length <= 262144 ? JSON.parse(iconRaw) : null;
+      if (savedIcons && typeof savedIcons === 'object' && !Array.isArray(savedIcons))
+        Object.keys(savedIcons)
+          .slice(0, 1000)
+          .forEach(function (id) {
+            if (isValidAppId(id) && !isLauncher(id) && this.validIcon(savedIcons[id]))
+              this.iconOverrides[id] = savedIcons[id];
+          }, this);
+    } catch (ignore) {}
     try {
       var hiddenRaw = storage.getItem(HIDDEN_STORAGE_KEY),
         hidden = hiddenRaw && hiddenRaw.length <= 262144 ? JSON.parse(hiddenRaw) : null;
@@ -82,10 +97,55 @@
     );
   };
   AppCategories.prototype.canAssign = function (item) {
-    return !!item && !item.action && isValidAppId(item.id) && !isLauncher(item.id);
+    return (
+      !!item &&
+      (!item.action || (item.action === 'input' && inputs && !!inputs.identity(item.id))) &&
+      isValidAppId(item.id) &&
+      !isLauncher(item.id)
+    );
   };
   AppCategories.prototype.canHide = function (item) {
-    return this.canAssign(item);
+    return this.canAssign(item) && !item.action;
+  };
+  AppCategories.prototype.hasItem = function (id) {
+    return this.categories.some(function (c) {
+      return c.items.some(function (item) {
+        return item.id === id && this.canAssign(item);
+      }, this);
+    }, this);
+  };
+  AppCategories.prototype.validIcon = function (key) {
+    return (
+      !!icons &&
+      icons.choices.some(function (choice) {
+        return choice.id === key;
+      })
+    );
+  };
+  AppCategories.prototype.getIcon = function (id) {
+    return this.iconOverrides[id] || 'default';
+  };
+  AppCategories.prototype.defaultIcon = function (id) {
+    for (var ci = 0; ci < this.base.length; ci++) {
+      var item = this.base[ci].find(function (row) {
+        return row.id === id;
+      });
+      if (item) return item.icon;
+    }
+    var discovered = this.inventory.get(id);
+    return discovered ? discovered.icon : 'application';
+  };
+  AppCategories.prototype.setIcon = function (item, key, selections) {
+    if (!this.canAssign(item) || !this.hasItem(item.id))
+      throw new Error('This item is no longer available.');
+    if (key !== 'default' && !this.validIcon(key)) throw new Error('Choose an available XMB icon.');
+    var next = Object.assign(Object.create(null), this.iconOverrides);
+    if (key === 'default') delete next[item.id];
+    else next[item.id] = key;
+    if (Object.keys(next).length > 1000) throw new Error('Too many saved icons.');
+    this.storage.setItem(ICON_STORAGE_KEY, JSON.stringify(next));
+    this.iconOverrides = next;
+    return this.rebuild(selections);
   };
   AppCategories.prototype.hiddenApps = function () {
     return Object.keys(this.hidden)
@@ -161,7 +221,7 @@
     var locations = this.categories
       .filter(function (c, ci) {
         return this.base[ci].some(function (item) {
-          return item.id === id && !item.action;
+          return item.id === id && (!item.action || item.action === 'input');
         });
       }, this)
       .map(function (c) {
@@ -293,7 +353,8 @@
       }),
       byId = new Map(),
       seen = new Set(),
-      changed = false;
+      changed = false,
+      iconOverrides = this.iconOverrides;
     // The DOM caches buttons by item object. Each category needs its own row,
     // or appending a shared button to Video steals it from Music. Reuse rows
     // within their category so unchanged inventory reads do not repaint them.
@@ -322,34 +383,44 @@
     function appendRow(ci, source) {
       if (added[ci].has(source.id)) return;
       added[ci].add(source.id);
-      if (source.action) {
+      if (source.action && source.action !== 'input') {
         lists[ci].push(source);
         return;
       }
       var template = defaults[ci].get(source.id) || source,
         item = rows[ci].get(source.id);
-      if (!item || item.action) item = defaults[ci].get(source.id) || Object.assign({}, template);
+      if (!item || item.action !== template.action)
+        item = defaults[ci].get(source.id) || Object.assign({}, template);
       else
         Object.keys(template).forEach(function (key) {
+          if (key === 'customIcon') return;
           if (item[key] !== template[key]) {
             item[key] = template[key];
             changed = true;
           }
         });
+      // Keep the default artwork intact for reset and later discovery updates.
+      if (item.customIcon !== iconOverrides[source.id]) {
+        item.customIcon = iconOverrides[source.id];
+        changed = true;
+      }
       lists[ci].push(item);
     }
     // Catalog entries provide placement and artwork, never proof an app exists.
     // Native inventory must confirm each shortcut before it is shown.
     this.base.forEach(function (items, ci) {
       items.forEach(function (item) {
-        if (item.action) {
+        if (item.action && item.action !== 'input') {
           appendRow(ci, item);
           return;
         }
-        if (!this.inventory.has(item.id)) return;
+        if (!item.action && !this.inventory.has(item.id)) return;
         if (!byId.has(item.id)) byId.set(item.id, item);
         seen.add(item.id);
-        if (this.hidden[item.id] || this.order.removed.has(item.id) || this.assignments[item.id])
+        if (
+          (!item.action && (this.hidden[item.id] || this.order.removed.has(item.id))) ||
+          this.assignments[item.id]
+        )
           return;
         appendRow(ci, item);
       }, this);
@@ -366,7 +437,12 @@
     }, this);
     Object.keys(this.assignments).forEach(function (id) {
       var item = byId.get(id);
-      if (!item || !this.canAssign(item) || this.hidden[id] || this.order.removed.has(id)) return;
+      if (
+        !item ||
+        !this.canAssign(item) ||
+        (!item.action && (this.hidden[id] || this.order.removed.has(id)))
+      )
+        return;
       this.assignments[id].forEach(function (destination) {
         var ci = this.categories.findIndex(function (c) {
           return c.id === destination;
@@ -382,7 +458,7 @@
             title: 'No apps',
             icon: c.icon,
             type: c.title.toUpperCase(),
-            description: 'Assign an app here using its options menu, or install one from Network.',
+            description: 'Assign an app or input here using its options menu.',
             action: 'empty'
           };
         lists[ci].push(this.empties[c.id]);
@@ -418,16 +494,11 @@
     var destinations = value === 'default' ? null : this.normalize(value);
     if (!this.canAssign(item) || (value !== 'default' && !destinations))
       throw new Error('Choose at least one available category.');
-    var found = this.categories.some(function (c) {
-      return c.items.some(function (i) {
-        return i.id === item.id && !i.action;
-      });
-    });
-    if (!found) throw new Error('This app is no longer in the menu.');
+    if (!this.hasItem(item.id)) throw new Error('This item is no longer in the menu.');
     var next = Object.assign(Object.create(null), this.assignments);
     if (value === 'default') delete next[item.id];
     else next[item.id] = destinations;
-    if (Object.keys(next).length > 1000) throw new Error('Too many saved app categories.');
+    if (Object.keys(next).length > 1000) throw new Error('Too many saved categories.');
     // Persist the complete choice before moving any shortcuts. A refused save
     // leaves the menu, selection and the previous assignment unchanged.
     this.storage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(next));

@@ -66,7 +66,7 @@ async function checkArrows(page, label) {
   for (const fallback of [false, true]) {
     const arrows=await page.evaluate(fallback => {
       document.documentElement.classList.toggle('no-flex-gap',fallback);
-      return ['sort','category','hidden'].map(action => {
+      return ['sort','category','icon','hidden'].map(action => {
         const button=styleOptions.actions.querySelector('[data-action='+action+']');
         const box=button.getBoundingClientRect(), panel=styleOptions.panel.getBoundingClientRect();
         const style=getComputedStyle(button), arrow=getComputedStyle(button,'::after');

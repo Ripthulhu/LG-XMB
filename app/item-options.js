@@ -5,7 +5,8 @@
   var DISABLED_ACTION_MESSAGES = {
     hide: 'Only apps can be hidden.',
     'category-apply': 'Choose at least one category, or restore the default locations.',
-    category: 'Inputs and launcher settings keep their categories.',
+    category: 'Launcher settings keep their categories.',
+    icon: 'Only apps and inputs can use a different icon.',
     sort: 'This category has only one item.',
     start: 'There is no app to open.'
   };
@@ -76,7 +77,8 @@
   ItemOptions.prototype.focus = function () {
     root.LGXMBMenuFocus(
       (this.view === 'category' && this.actions.querySelector('[aria-checked=true]')) ||
-        (this.view === 'sort' && this.actions.querySelector('[aria-pressed=true]')) ||
+        ((this.view === 'sort' || this.view === 'icon') &&
+          this.actions.querySelector('[aria-pressed=true]')) ||
         this.actions.querySelector('[data-action=start]') ||
         this.actions.querySelector('button') ||
         this.panel
@@ -90,6 +92,7 @@
       id: item.id,
       title: item.title,
       description: item.description,
+      icon: item.icon,
       type: item.type,
       action: item.action
     };
@@ -115,6 +118,7 @@
       !this.item ||
       this.item.id !== item.id ||
       this.item.title !== item.title ||
+      this.item.icon !== item.icon ||
       this.category !== category ||
       this.view !== 'main'
     )
@@ -203,6 +207,9 @@
       case 'category':
         this.renderCategories();
         break;
+      case 'icon':
+        this.renderIcons();
+        break;
       case 'confirm':
         this.renderDeleteConfirmation();
         break;
@@ -230,6 +237,12 @@
       });
       this.button('Categories', 'category', function () {
         self.beginCategories();
+        self.sound('option');
+      });
+      this.button('Icon', 'icon', function () {
+        self.view = 'icon';
+        self.render();
+        self.focus();
         self.sound('option');
       });
       this.button('Start', 'start', function () {
@@ -284,6 +297,12 @@
       .setAttribute(
         'aria-disabled',
         String(!this.options.canAssign || !this.options.canAssign(item))
+      );
+    this.actions
+      .querySelector('[data-action=icon]')
+      .setAttribute(
+        'aria-disabled',
+        String(!this.options.canCustomizeIcon || !this.options.canCustomizeIcon(item))
       );
     var start = this.actions.querySelector('[data-action=start]');
     start.textContent = item.action && item.action !== 'input' ? 'Open' : 'Start';
@@ -363,6 +382,39 @@
       this.caption.textContent = '';
       this.status.textContent = 'No hidden apps.';
     }
+  };
+
+  ItemOptions.prototype.renderIcons = function () {
+    var self = this,
+      item = this.item,
+      selected = this.options.getIcon(item.id),
+      defaultIcon = this.options.getDefaultIcon(item.id);
+    this.caption.textContent = 'Choose an icon';
+    this.actions.setAttribute('role', 'group');
+    this.actions.setAttribute('aria-labelledby', 'itemOptionsCaption');
+    [{ id: 'default', title: 'Default icon' }]
+      .concat(this.options.getIcons())
+      .forEach(function (choice) {
+        var b = self.button(choice.title, 'icon-' + choice.id, function () {
+          try {
+            self.options.onIcon(item, choice.id);
+            self.sound('decide');
+            self.close('icon');
+          } catch (error) {
+            self.status.textContent = error.message || 'Could not save the icon.';
+            self.sound('error');
+          }
+        });
+        b.classList.add('item-options-icon-choice');
+        b.setAttribute('aria-pressed', String(selected === choice.id));
+        var label = root.document.createElement('span'),
+          title = root.document.createElement('span');
+        label.innerHTML = root.C5Icon(choice.id === 'default' ? defaultIcon : choice.id);
+        title.textContent = choice.title;
+        label.appendChild(title);
+        b.textContent = '';
+        b.appendChild(label);
+      });
   };
 
   ItemOptions.prototype.renderCategories = function () {
@@ -605,6 +657,7 @@
         a &&
         (a.dataset.action === 'sort' ||
           a.dataset.action === 'category' ||
+          a.dataset.action === 'icon' ||
           a.dataset.action === 'hidden')
       )
         a.click();

@@ -43,14 +43,15 @@
     var detailIcon = null,
       renderedCategory = -1;
     function detail(item) {
+      var icon = item.customIcon || item.icon;
       // Labels can change while the selected physical input stays the same.
       if ($('detailType').textContent !== item.type) $('detailType').textContent = item.type;
       if ($('detailTitle').textContent !== item.title) $('detailTitle').textContent = item.title;
       if ($('detailDescription').textContent !== item.description)
         $('detailDescription').textContent = item.description;
-      if (detailIcon !== item.icon) {
-        $('detailEmblem').innerHTML = C5Icon(item.icon);
-        detailIcon = item.icon;
+      if (detailIcon !== icon) {
+        $('detailEmblem').innerHTML = C5Icon(icon);
+        detailIcon = icon;
       }
 
       $('previewButton').setAttribute('aria-label', 'Open ' + item.title + ' full-screen');
@@ -118,10 +119,7 @@
               b.setAttribute('role', 'option');
               b.setAttribute('data-item', item.id);
               b.tabIndex = -1;
-              b.innerHTML =
-                '<span class="item-icon">' +
-                C5Icon(item.icon) +
-                '</span><span class="item-text"></span>';
+              b.innerHTML = '<span class="item-icon"></span><span class="item-text"></span>';
               b.addEventListener('click', function () {
                 if (b.parentNode !== itemLists[options.getCategory()] || !options.canActivate())
                   return;
@@ -145,7 +143,13 @@
         }
         [].forEach.call(wrap.children, function (b, index) {
           var item = cat.items[index],
-            id = active ? 'item-' + index : '';
+            id = active ? 'item-' + index : '',
+            icon = item.customIcon || item.icon || 'application';
+          // Change artwork only when its saved choice changes, not during scrolling.
+          if (b.dataset.icon !== icon) {
+            b.querySelector('.item-icon').innerHTML = C5Icon(icon);
+            b.dataset.icon = icon;
+          }
           // Only the active list owns the item-N ids the listbox points at.
           if (b.id !== id) {
             if (id) b.id = id;

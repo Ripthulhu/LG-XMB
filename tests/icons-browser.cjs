@@ -12,6 +12,16 @@ vm.runInNewContext(source, {window});
 const names = [...source.matchAll(/^    (\w+):/gm)].map(match => match[1]);
 assert.ok(names.length > 0, 'Found icon definitions to check');
 const icons = Object.fromEntries(names.map(name => [name, window.C5Icon(name)]));
+const choices = require('../app/icons.js').choices;
+assert.equal(new Set(choices.map(choice => choice.id)).size, choices.length);
+for (const choice of choices) {
+  assert.ok(icons[choice.id], choice.id + ' uses defined artwork');
+  assert.ok(choice.title, choice.id + ' has a picker label');
+  assert.ok(!icons[choice.id].includes('settings-symbol'), choice.id + ' has no wrench badge');
+  assert.ok(!['motion', 'info', 'remote'].includes(choice.id), choice.id + ' is a shortcut symbol');
+}
+const newIcons = ['disc', 'mediasearch', 'headset', 'display', 'handheld', 'pc', 'streamer', 'console'];
+for (const name of newIcons) assert.ok(choices.some(choice => choice.id === name));
 
 (async () => {
   const browser = await chromium.launch(launchOptions());
@@ -34,16 +44,25 @@ const icons = Object.fromEntries(names.map(name => [name, window.C5Icon(name)]))
           context.drawImage(image, 0, 0);
           const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
           let maximum = 0, outside = 0, filled = 0;
+          let left = canvas.width, top = canvas.height, right = 0, bottom = 0;
           for (let y = 0; y < canvas.height; y++) {
             for (let x = 0; x < canvas.width; x++) {
               const alpha = pixels[(y * canvas.width + x) * 4 + 3];
               maximum = Math.max(maximum, alpha);
               if (alpha) filled++;
+              if (alpha > 10) {
+                left = Math.min(left, x); top = Math.min(top, y);
+                right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1);
+              }
               if (x < 6 || y < 6 || x >= size + 6 || y >= size + 6)
                 outside = Math.max(outside, alpha);
             }
           }
-          checks.push({name, size, maximum, outside, filled});
+          checks.push({name, size, maximum, outside, filled,
+            width: (right - left) * 48 / size,
+            height: (bottom - top) * 48 / size,
+            centerX: ((left + right) / 2 - 6) * 48 / size,
+            centerY: ((top + bottom) / 2 - 6) * 48 / size});
         }
       }
       return checks;
@@ -53,6 +72,12 @@ const icons = Object.fromEntries(names.map(name => [name, window.C5Icon(name)]))
       assert.ok(check.filled > 0, label + ' paints');
       assert.ok(check.maximum <= 100, label + ' has no brighter overlapping fills');
       assert.equal(check.outside, 0, label + ' fits its viewBox');
+      if (newIcons.includes(check.name)) {
+        assert.ok(Math.max(check.width, check.height) >= 39, label + ' matches the XMB icon scale');
+        assert.ok(Math.max(check.width, check.height) <= 44, label + ' leaves room around its silhouette');
+        assert.ok(Math.abs(check.centerX - 24) <= 1, label + ' is horizontally centered');
+        assert.ok(Math.abs(check.centerY - 24) <= 1, label + ' is vertically centered');
+      }
     }
     assert.equal(window.C5Icon('camera'), window.C5Icon('image'));
     assert.equal(window.C5Icon('game'), window.C5Icon('apps'));

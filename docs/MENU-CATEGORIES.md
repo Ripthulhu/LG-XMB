@@ -8,21 +8,24 @@ Changing categories doesn't launch an app.
 | --- | --- |
 | Settings | Launcher settings and native TV Settings |
 | Photo | LG Gallery+ and Media Player |
-| Music | Music, Media Player and Plex |
-| Video | Media Player and Plex |
-| TV | Live TV, LG Channels and HDMI 1–4 |
+| Music | Music and Media Player |
+| Video | Media Player |
+| TV | Live TV, LG Channels and physical inputs reported by the TV |
 | Apps | Home Hub and other discovered apps |
 | Browser | Web Browser |
 | Network | Homebrew Channel and LG Apps |
 
 Media Player opens the same native media browser from each category. These
 aren't separate photo, music or video players implemented by LG-XMB.
-Plex uses the curated LG store ID `cdp-30`; availability can differ on another TV.
+Other installed apps, including Plex, start under Apps.
 Curated shortcuts are excluded from the discovered Apps list to avoid duplicates.
 
-HDMI names are read from the TV where its service permits it. Refreshing a name
+Input names are read from the TV where its service permits it. Refreshing a name
 keeps the physical input ID and selection unchanged. Cached and live previews
 are selected by that input ID, not by the category's position in the bar.
+Apps and inputs can appear in one or more categories chosen from their long-press
+menu. For example, HDMI 2 can sit under Video for a DVD player. The same menu lets
+you choose a plain XMB icon. These choices survive inventory refreshes and restarts.
 
 Hold OK on an item for [sorting, information and other options](ITEM-OPTIONS.md).
 Sort order is local to LG-XMB and doesn't reorder LG's launcher.

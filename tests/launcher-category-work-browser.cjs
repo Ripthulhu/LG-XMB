@@ -37,6 +37,14 @@ const {launchOptions} = require('./support/menu-navigation.cjs');
             copy.querySelectorAll('.rows').forEach(rows => {
               rows.removeAttribute('data-entry');
             });
+            // Chromium can serialize lazily updated style attributes after id.
+            // Compare their values, not the order attributes were inserted.
+            copy.querySelectorAll('*').forEach(element => {
+              const attributes = Array.from(element.attributes, attr => [attr.name, attr.value])
+                .sort(([a], [b]) => a.localeCompare(b));
+              attributes.forEach(([name]) => element.removeAttribute(name));
+              attributes.forEach(([name, value]) => element.setAttribute(name, value));
+            });
             snapshots.push({html: copy.innerHTML, objects: view.menuObjects()});
           }
           function switchTo(index) {

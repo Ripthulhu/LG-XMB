@@ -90,11 +90,12 @@
   margin-top: 2vh;
   border-top: 1px solid rgba(var(--accent-rgb), 0.16);
 }
-.item-options-button[data-action='category'] {
+.item-options-button[data-action='icon'] {
   margin-bottom: 2.6vh;
 }
 .item-options-button[data-action='sort']::after,
 .item-options-button[data-action='category']::after,
+.item-options-button[data-action='icon']::after,
 .item-options-button[data-action='hidden']::after {
   content: '';
   flex: none;
@@ -105,6 +106,12 @@
   border-bottom: 0.22em solid transparent;
   border-left: 0.34em solid currentColor;
   color: var(--accent);
+}
+.item-options-icon-choice svg {
+  display: block;
+  flex: none;
+  width: 1.7em;
+  height: 1.7em;
 }
 .item-options-status {
   margin: 2vh 1.3vw;
