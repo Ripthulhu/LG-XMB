@@ -1,11 +1,18 @@
 # Date and time
 
-Open **Settings → Date & time** to edit the TV clock. The panel reads the native
-clock and time zone before enabling edits.
+Open **Settings → Date & time** to choose 12-hour or 24-hour time and a date
+format: **Day first** (31/12/2026), **Month first** (12/31/2026) or **Year first**
+(2026-12-31). **Style default** keeps
+the PS3 clock's short day/month date or the Current clock's weekday and month
+name. These choices apply immediately to both clock styles and stay saved.
+
+To change the TV clock itself, choose **Set TV date & time**. The editor reads
+the native clock and time zone before enabling edits. Display formats work
+even when the TV does not allow reading or setting its clock.
 
 Left and Right select a field. Up and Down change its value. Number keys enter
 a value directly; pointer users can use the +/− controls. OK moves to **Apply
-date & time**. Back closes without submitting the edits.
+date & time**. Back returns to the format settings without submitting the edits.
 
 The editor uses 24-hour time and supports dates from 2000 through 2099. The TV's
 native service may accept a narrower range. Automatic time synchronisation
@@ -31,12 +38,15 @@ The desktop preview doesn't set the computer's clock or connect to a TV.
 ## Code and tests
 
 `app/system-time.js` handles the native calls and time conversion.
-`app/date-time-settings.js` implements the editor. There is no shell command,
+`app/date-time-settings.js` contains the format choices and editor;
+`app/clock-view.js` formats the on-screen clock. There is no shell command,
 permission change or automatic root fallback. A service refusal leaves the
 rest of Home usable.
 
 ```sh
 node --test tests/system-time.test.cjs
+node --test tests/clock-view.test.cjs tests/launcher-preferences.test.cjs
+node tests/clock-style-browser.cjs
 node tests/date-time-options-browser.cjs
 ```
 

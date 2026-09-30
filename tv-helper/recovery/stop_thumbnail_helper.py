@@ -1,9 +1,13 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Stop only lg-xmb's worker and remove its reviewed startup links."""
+import sys
+if __name__ == "__main__" and not getattr(sys.flags, "isolated", 0):
+    del sys.path[0]
 import errno
 import hashlib
 import json
+import math
 import os
 import signal
 import stat
@@ -13,10 +17,12 @@ APP_DIR = "/media/developer/apps/usr/palm/applications/org.local.openxmb.c5"
 HELPER = (APP_DIR + "/helper/thumbnail_cache.py").encode()
 LEGACY_HELPER = b"/var/lib/openxmb-c5/thumbnail-cache.py"
 PYTHON = "/usr/bin/python3"
+PYTHONS = (PYTHON, "/usr/bin/python", "/usr/bin/python2")
 HOOK_DIR = "/var/lib/webosbrew/init.d"
 HOOK_NAME = "60-lg-xmb"
 LEGACY_HOOK_NAME = "60-openxmb-thumbnails"
 HOOK_TARGET = APP_DIR + "/helper-startup.py"
+BOOTSTRAP = HOOK_TARGET.encode()
 # Exact copies shipped before the app-owned startup link was introduced.
 HOOK_HASHES = {'c23680117ea88b6932215150683bdde735eb4476fcace0f7dc2a96d9deb88ca8', '855eab9fbcea192ae82c33cf0b3398ab06559a965c44beb24254388fc4399576', '373ca1934619a4887b3bc07ba2859dbb79e91145ee31efa08a359d47b8b0fa81'}
 
@@ -31,6 +37,27 @@ def regular_owned(info):
             and info.st_nlink == 1 and not info.st_mode & 0o022)
 
 
+def at(directory, name):
+    require(name not in ("", ".", "..") and "/" not in name and "\0" not in name,
+            "Invalid anchored filename")
+    return "/proc/self/fd/%d/%s" % (directory, name)
+
+
+def monotonic():
+    if hasattr(time, "monotonic"):
+        return time.monotonic()
+    with open("/proc/uptime", "rb") as stream:
+        raw = stream.read(129)
+    require(len(raw) <= 128, "Invalid monotonic clock")
+    try:
+        value = float(raw.split()[0])
+    except (ValueError, IndexError):
+        raise RuntimeError("Invalid monotonic clock")
+    require(not math.isnan(value) and not math.isinf(value) and value >= 0,
+            "Invalid monotonic clock")
+    return value
+
+
 def inspect_hook(name=None):
     """Return an anchored directory descriptor and exact reviewed hook identity."""
     name = HOOK_NAME if name is None else name
@@ -38,8 +65,10 @@ def inspect_hook(name=None):
     for directory in ("/var", "/var/lib", "/var/lib/webosbrew", HOOK_DIR):
         try:
             info = os.lstat(directory)
-        except FileNotFoundError:
-            return None, None
+        except EnvironmentError as error:
+            if error.errno == errno.ENOENT:
+                return None, None
+            raise
         require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
                 and not info.st_mode & 0o022,
                 "Refusing an unsafe startup directory: " + directory)
@@ -56,7 +85,9 @@ def inspect_hook(name=None):
 
 def hook_identity(entry):
     return (entry.st_dev, entry.st_ino, entry.st_mode, entry.st_uid, entry.st_nlink,
-            entry.st_size, entry.st_mtime_ns, entry.st_ctime_ns)
+            entry.st_size,
+            entry.st_mtime_ns if hasattr(entry, "st_mtime_ns") else entry.st_mtime,
+            entry.st_ctime_ns if hasattr(entry, "st_ctime_ns") else entry.st_ctime)
 
 
 def read_hook(directory, name=None):
@@ -64,33 +95,44 @@ def read_hook(directory, name=None):
     name = HOOK_NAME if name is None else name
     require(name in (HOOK_NAME, LEGACY_HOOK_NAME), "Unknown startup hook")
     try:
-        entry = os.stat(name, dir_fd=directory, follow_symlinks=False)
-    except FileNotFoundError:
-        return None
+        entry = os.lstat(at(directory, name))
+    except EnvironmentError as error:
+        if error.errno == errno.ENOENT:
+            return None
+        raise
     target = None
+    digest = None
     if stat.S_ISLNK(entry.st_mode):
         require(entry.st_uid == 0 and entry.st_nlink == 1,
                 "Refusing an unsafe thumbnail startup link")
-        target = os.readlink(name, dir_fd=directory)
+        target = os.readlink(at(directory, name))
         require(target == HOOK_TARGET,
                 "Thumbnail startup link targets another file; leaving it untouched")
     else:
         require(regular_owned(entry) and entry.st_size <= 8192,
                 "Refusing an unsafe thumbnail startup hook")
-        hook = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
-                       dir_fd=directory)
+        hook = os.open(at(directory, name), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         try:
             opened = os.fstat(hook)
             require(regular_owned(opened) and hook_identity(opened) == hook_identity(entry),
                     "Thumbnail startup hook changed")
             content = os.read(hook, 8193)
+            # Python 2 has no nanosecond stat fields. Recheck bytes as well as
+            # metadata, and carry their hash into the pre-removal comparison.
+            os.lseek(hook, 0, os.SEEK_SET)
+            require(os.read(hook, 8193) == content
+                    and hook_identity(os.fstat(hook)) == hook_identity(entry),
+                    "Thumbnail startup hook changed")
         finally:
             os.close(hook)
+        digest = hashlib.sha256(content).hexdigest()
         require(hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest() in HOOK_HASHES,
                 "Thumbnail startup hook contents differ; leaving it untouched")
-    current = os.stat(name, dir_fd=directory, follow_symlinks=False)
+    current = os.lstat(at(directory, name))
     require(hook_identity(current) == hook_identity(entry), "Thumbnail startup hook changed")
-    return hook_identity(entry), target
+    if target is not None:
+        require(os.readlink(at(directory, name)) == target, "Thumbnail startup hook changed")
+    return hook_identity(entry) + (digest,), target
 
 
 def remove_hook(directory, expected, name=None):
@@ -99,14 +141,23 @@ def remove_hook(directory, expected, name=None):
         return
     require(read_hook(directory, name) == expected,
             "Thumbnail startup hook changed; refusing to remove it")
-    os.unlink(name, dir_fd=directory)
+    os.unlink(at(directory, name))
 
 
 def helper_argument(raw):
-    arguments = raw.rstrip(b"\0").split(b"\0")
-    if len(arguments) < 2 or arguments[0] not in (b"python3", PYTHON.encode()):
+    arguments = (raw[:-1] if raw.endswith(b"\0") else raw).split(b"\0")
+    if len(arguments) < 2:
         return None
-    arguments = arguments[1:]
+    interpreter, arguments = arguments[0], arguments[1:]
+    if interpreter in tuple(path.encode() for path in PYTHONS):
+        if arguments == [b"-E", b"-s", b"-S", b"-B", BOOTSTRAP, b"home-button-worker"]:
+            return BOOTSTRAP
+        if arguments == [b"-E", b"-s", b"-S", b"-B", HELPER, b"--allow-home-preview"]:
+            return HELPER
+    if interpreter not in (b"python3", PYTHON.encode()):
+        return None
+    if arguments == [b"-I", b"-B", BOOTSTRAP, b"home-button-worker"]:
+        return BOOTSTRAP
     if arguments[:2] == [b"-I", b"-B"]:
         arguments = arguments[2:]
     return arguments[0] if arguments and arguments[0] in (HELPER, LEGACY_HELPER) else None
@@ -123,16 +174,20 @@ def process_identity(pid):
             raw = handle.read(16385)
         if len(raw) > 16384 or helper_argument(raw) is None:
             return None
-        require(os.path.samefile(directory + "/exe", PYTHON),
+        interpreter = raw.split(b"\0", 1)[0].decode("ascii")
+        interpreter = PYTHON if interpreter == "python3" else interpreter
+        require(os.path.samefile(directory + "/exe", interpreter),
                 "Helper-like command has a different interpreter; refusing to signal")
-        with open(directory + "/stat", "r", encoding="ascii") as handle:
+        with open(directory + "/stat", "r") as handle:
             fields = handle.read(4096).rsplit(")", 1)[1].split()
         if fields[0] == "Z":
             return None
         start = int(fields[19])
         return (pid, start, raw)
-    except (FileNotFoundError, ProcessLookupError):
-        return None
+    except EnvironmentError as error:
+        if error.errno in (errno.ENOENT, errno.ESRCH):
+            return None
+        raise
 
 
 def find_helpers():
@@ -166,8 +221,10 @@ def stop_one(identity):
                 signal.pidfd_send_signal(descriptor, signal.SIGTERM)
             else:
                 os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            return False
+        except EnvironmentError as error:
+            if error.errno == errno.ESRCH:
+                return False
+            raise
         return True
     finally:
         if descriptor is not None:
@@ -190,9 +247,9 @@ def stop(legacy_only=False):
         for name, directory, hook in hooks:
             remove_hook(directory, hook, name)
         signalled = sum(stop_one(identity) for identity in processes)
-        deadline = time.monotonic() + 40
+        deadline = monotonic() + 40
         while any(process_identity(identity[0]) == identity for identity in processes):
-            require(time.monotonic() < deadline,
+            require(monotonic() < deadline,
                     "Thumbnail helper did not stop after SIGTERM; recovery halted without force")
             time.sleep(.25)
         require(not matching(),
@@ -208,7 +265,8 @@ def stop(legacy_only=False):
 
 
 def main():
-    print(json.dumps(stop()), flush=True)
+    sys.stdout.write(json.dumps(stop()) + "\n")
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":

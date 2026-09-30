@@ -1,14 +1,31 @@
-#!/usr/bin/python3
+#!/bin/sh
+""":"
+for python in /usr/bin/python3 /usr/bin/python /usr/bin/python2; do
+    if [ -x "$python" ]; then
+        exec "$python" -E -s -S -B "$0" "$@"
+    fi
+done
+printf '%s\n' '{"returnValue":false,"errorCode":"python_missing"}'
+exit 2
+":"""
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Prepare lg-xmb's bundled helper and start its single background worker."""
+# One entry point for boot and app calls, including Python 2-only TVs.
+from __future__ import print_function
+import sys
+# Python 2 has no -I. The dispatcher disables environment/site imports; remove
+# the script directory too before importing anything outside the interpreter.
+if __name__ == "__main__" and not getattr(sys.flags, "isolated", 0):
+    del sys.path[0]
+import binascii
+import errno
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import stat
 import subprocess
-import sys
 import time
 import types
 import traceback
@@ -30,7 +47,6 @@ LOG_NAME = "lg-xmb-startup.log"
 WORKER_LOCK_NAME = "lg-xmb-worker.lock"
 LOG_LIMIT = 16384
 SETUP_WAIT_SECONDS = 30  # Below the frontend RPC deadline; never wait indefinitely.
-PYTHON = "/usr/bin/python3"
 CAPTURE_MODULE = "thumbnail_cache.py"
 RECOVERY_MODULE = "stop_thumbnail_helper.py"
 HOME_BUTTON_MODULE = "home_button.py"
@@ -40,7 +56,7 @@ LEGACY_HELPER_OWNER = (1001, 1001)  # CI runner IDs shipped in the early 0.1.12 
 
 class SetupError(Exception):
     def __init__(self, code, **details):
-        super().__init__(code)
+        Exception.__init__(self, code)
         self.details = details
 
 
@@ -49,12 +65,38 @@ def require(condition, code="unsafe_helper_path", **details):
         raise SetupError(code, **details)
 
 
+def at(directory, name):
+    """Keep filesystem operations anchored to held directories on Python 2 too."""
+    require(name not in ("", ".", "..") and "/" not in name and "\0" not in name)
+    return "/proc/self/fd/{}/{}".format(directory, name)
+
+
+def python_command():
+    require(sys.executable in ("/usr/bin/python3", "/usr/bin/python", "/usr/bin/python2"),
+            "python_missing")
+    return [sys.executable, "-E", "-s", "-S", "-B"]
+
+
+def monotonic():
+    if hasattr(time, "monotonic"):
+        return time.monotonic()
+    with open("/proc/uptime", "rb") as stream:
+        raw = stream.read(129)
+    require(len(raw) <= 128, "invalid_monotonic_clock")
+    try:
+        value = float(raw.split()[0])
+    except (ValueError, IndexError):
+        raise SetupError("invalid_monotonic_clock")
+    require(not math.isnan(value) and not math.isinf(value) and value >= 0,
+            "invalid_monotonic_clock")
+    return value
+
+
 def open_directory(path, app_path=False):
     descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         for part in path.strip("/").split("/"):
-            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                            dir_fd=descriptor)
+            child = os.open(at(descriptor, part), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
             os.close(descriptor)
             descriptor = child
             info = os.fstat(descriptor)
@@ -91,12 +133,13 @@ def restore_owner_only_write(fd, info):
 
 def read_file(directory, name, limit=131072, optional=False, app_file=False, repair_permissions=True):
     try:
-        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
-                     dir_fd=directory)
-    except FileNotFoundError:
+        fd = os.open(at(directory, name), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except EnvironmentError as error:
+        if error.errno != errno.ENOENT:
+            raise
         if optional:
             return None
-        raise SetupError("bundle_incomplete") from None
+        raise SetupError("bundle_incomplete")
     try:
         info = os.fstat(fd)
         if not app_file and repair_permissions:
@@ -114,10 +157,11 @@ def read_file(directory, name, limit=131072, optional=False, app_file=False, rep
 
 def make_directory(parent, name):
     try:
-        os.mkdir(name, 0o755, dir_fd=parent)
-    except FileExistsError:
-        pass
-    child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        os.mkdir(at(parent, name), 0o755)
+    except EnvironmentError as error:
+        if error.errno != errno.EEXIST:
+            raise
+    child = os.open(at(parent, name), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         meta = os.fstat(child)
         require(meta.st_uid == 0 and not meta.st_mode & 0o022)
@@ -130,30 +174,32 @@ def make_directory(parent, name):
 def write_file(directory, name, raw):
     # Atomic replacement, but never follow or replace a foreign existing entry.
     try:
-        regular_file(os.stat(name, dir_fd=directory, follow_symlinks=False))
-    except FileNotFoundError:
-        pass
-    temporary = ".setup-" + os.urandom(8).hex()
-    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                 0o600, dir_fd=directory)
+        regular_file(os.lstat(at(directory, name)))
+    except EnvironmentError as error:
+        if error.errno != errno.ENOENT:
+            raise
+    temporary = ".setup-" + binascii.hexlify(os.urandom(8)).decode("ascii")
+    fd = os.open(at(directory, temporary), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                 0o600)
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
+        os.rename(at(directory, temporary), at(directory, name))
         os.fsync(directory)
     finally:
         try:
-            os.unlink(temporary, dir_fd=directory)
-        except FileNotFoundError:
-            pass
+            os.unlink(at(directory, temporary))
+        except EnvironmentError as error:
+            if error.errno != errno.ENOENT:
+                raise
 
 
 def load_module(name, raw, path):
     module = types.ModuleType(name)
     module.__file__ = path
-    # Dataclasses consult sys.modules while the class body is evaluated.
+    # Entry points use their registered module as the shared setup context.
     sys.modules[name] = module
     exec(compile(raw, path, "exec"), module.__dict__)
     return module
@@ -162,16 +208,16 @@ def load_module(name, raw, path):
 def read_bundle(app, directory, repair_permissions=True):
     raw = read_file(directory, "bundle.json", 4096, repair_permissions=repair_permissions)
     require(hashlib.sha256(raw).hexdigest() == BUNDLE_SHA256, "helper_bundle_mismatch")
-    manifest = json.loads(raw)
+    manifest = json.loads(raw.decode("utf-8"))
     require(isinstance(manifest, dict) and manifest.get("schema") == 1,
             "invalid_helper_bundle")
     hashes = manifest.get("files")
     # The build pin authenticates the complete inventory, including any future
     # modules. Entry points remain explicit; paths can only be flat Python names.
     require(isinstance(hashes, dict) and {CAPTURE_MODULE, RECOVERY_MODULE, HOME_BUTTON_MODULE}.issubset(hashes)
-            and all(re.fullmatch(r"[a-z][a-z0-9_]*\.py", name) for name in hashes),
+            and all(re.match(r"\A[a-z][a-z0-9_]*\.py\Z", name) for name in hashes),
             "invalid_helper_bundle")
-    require(all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h)
+    require(all(isinstance(h, type(u"")) and re.match(r"\A[0-9a-f]{64}\Z", h)
                 for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
             "invalid_helper_bundle")
     appinfo = read_file(app, "appinfo.json", 65536, app_file=repair_permissions,
@@ -186,12 +232,12 @@ def read_bundle(app, directory, repair_permissions=True):
 
 def repair_helper_directory(app, directory, original, bundle):
     """Recover only a verified app-owned directory left by an earlier install."""
-    expected = {"bundle.json", *bundle[0]["files"]}
+    expected = set(bundle[0]["files"]) | {"bundle.json"}
 
     def check_binding():
         # Hold the original directory descriptor: never chown a symlink or a
         # replacement selected by a second pathname lookup.
-        named = os.stat("helper", dir_fd=app, follow_symlinks=False)
+        named = os.lstat(at(app, "helper"))
         opened = os.fstat(directory)
         require(stat.S_ISDIR(named.st_mode) and
                 (named.st_dev, named.st_ino) == (original.st_dev, original.st_ino) ==
@@ -202,7 +248,7 @@ def repair_helper_directory(app, directory, original, bundle):
             require((a.st_dev, a.st_ino) == (b.st_dev, b.st_ino), "helper_path_changed")
         finally:
             os.close(current)
-        require(set(os.listdir(directory)) == expected, "unexpected_helper_files")
+        require(set(os.listdir("/proc/self/fd/{}".format(directory))) == expected, "unexpected_helper_files")
 
     check_binding()
     require(read_bundle(app, directory) == bundle, "helper_bundle_changed")
@@ -237,8 +283,7 @@ def verified_bundle(allow_repair=True):
     try:
         if not allow_repair:
             require(stat.S_IMODE(os.fstat(app).st_mode) == 0o755, "helper_permissions_required")
-        directory = os.open("helper", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                            dir_fd=app)
+        directory = os.open(at(app, "helper"), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             meta = os.fstat(directory)
             require(meta.st_uid == 0 or (meta.st_uid, meta.st_gid) == LEGACY_HELPER_OWNER,
@@ -246,13 +291,16 @@ def verified_bundle(allow_repair=True):
                     gid=meta.st_gid, mode=oct(stat.S_IMODE(meta.st_mode)))
             try:
                 fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise SetupError("bundle_lock_busy") from None
+            except EnvironmentError as error:
+                if error.errno not in (errno.EAGAIN, errno.EACCES):
+                    raise
+                raise SetupError("bundle_lock_busy")
             if not allow_repair:
                 require(meta.st_uid == 0 and stat.S_IMODE(meta.st_mode) == 0o755,
                         "helper_permissions_required")
             bundle = read_bundle(app, directory, repair_permissions=allow_repair)
-            if allow_repair and (meta.st_uid != 0 or stat.S_IMODE(meta.st_mode) != 0o755):
+            if allow_repair and (meta.st_uid != 0 or stat.S_IMODE(meta.st_mode) != 0o755
+                                 or stat.S_IMODE(os.fstat(app).st_mode) != 0o755):
                 repair_helper_directory(app, directory, meta, bundle)
             manifest, raw, appinfo, sources = bundle
         finally:
@@ -277,35 +325,41 @@ def thumbnail_link():
         meta = os.fstat(app)
         require(not meta.st_mode & 0o022)
         try:
-            entry = os.stat("thumbnails", dir_fd=app, follow_symlinks=False)
-        except FileNotFoundError:
+            entry = os.lstat(at(app, "thumbnails"))
+        except EnvironmentError as error:
+            if error.errno != errno.ENOENT:
+                raise
             entry = None
         if entry is not None:
             require(stat.S_ISLNK(entry.st_mode) and entry.st_uid == 0 and entry.st_nlink == 1,
                     "foreign_thumbnail_path")
-            target = os.readlink("thumbnails", dir_fd=app)
+            target = os.readlink(at(app, "thumbnails"))
             require(target in (CACHE, LEGACY_CACHE), "foreign_thumbnail_path")
             if target == CACHE:
                 return
-            current = os.stat("thumbnails", dir_fd=app, follow_symlinks=False)
-            require((entry.st_dev, entry.st_ino, entry.st_ctime_ns) ==
-                    (current.st_dev, current.st_ino, current.st_ctime_ns), "thumbnail_path_changed")
-            os.unlink("thumbnails", dir_fd=app)
-        os.symlink(CACHE, "thumbnails", dir_fd=app)
+            current = os.lstat(at(app, "thumbnails"))
+            require(sound_entry_identity(entry) == sound_entry_identity(current)
+                    and os.readlink(at(app, "thumbnails")) == target, "thumbnail_path_changed")
+            os.unlink(at(app, "thumbnails"))
+        os.symlink(CACHE, at(app, "thumbnails"))
     finally:
         os.close(app)
 
 
 def startup_link(recovery):
-    parent = open_directory(LOG_DIR)
+    parent = open_directory(os.path.dirname(LOG_DIR))
     try:
-        directory = make_directory(parent, "init.d")
+        logdir = make_directory(parent, os.path.basename(LOG_DIR))
     finally:
         os.close(parent)
     try:
+        directory = make_directory(logdir, "init.d")
+    finally:
+        os.close(logdir)
+    try:
         existing = recovery.read_hook(directory)
         if existing is None:
-            os.symlink(recovery.HOOK_TARGET, recovery.HOOK_NAME, dir_fd=directory)
+            os.symlink(recovery.HOOK_TARGET, at(directory, recovery.HOOK_NAME))
         else:
             # New setup creates links only; do not overwrite even a reviewed copy.
             require(existing[1] == recovery.HOOK_TARGET, "startup_hook_conflict")
@@ -324,20 +378,22 @@ def record_startup(event, error=None, **details):
             directory = make_directory(parent, os.path.basename(LOG_DIR))
         finally:
             os.close(parent)
-        log = os.open(LOG_NAME, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
-                      0o600, dir_fd=directory)
+        log = os.open(at(directory, LOG_NAME), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                      0o600)
         regular_file(os.fstat(log))
         fcntl.flock(log, fcntl.LOCK_EX | fcntl.LOCK_NB)
         os.fchmod(log, 0o600)
-        value = {"time": int(time.time()), "event": event, "pid": os.getpid(), **details}
+        value = {"time": int(time.time()), "event": event, "pid": os.getpid()}
+        value.update(details)
         if error is not None:
             value["exception"] = type(error).__name__
-            value["frames"] = [{"file": os.path.basename(f.filename), "line": f.lineno,
-                                "function": f.name} for f in traceback.extract_tb(error.__traceback__)[-8:]]
+            frames = traceback.extract_tb(getattr(error, "__traceback__", sys.exc_info()[2]))[-8:]
+            value["frames"] = [{"file": os.path.basename(f[0]), "line": f[1],
+                                "function": f[2]} for f in frames]
             if isinstance(error, SetupError):
                 value["code"] = str(error)
                 value.update(error.details)
-            elif isinstance(error, OSError):
+            elif isinstance(error, EnvironmentError):
                 value["errno"] = error.errno
         # No raw native replies, config contents or exception messages in logs.
         line = (json.dumps(value, ensure_ascii=True, separators=(",", ":")) + "\n").encode()
@@ -370,26 +426,30 @@ def record_startup(event, error=None, **details):
 def launch_worker(recovery):
     directory = open_directory(LOG_DIR)
     try:
-        lock = os.open(WORKER_LOCK_NAME, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
-                       0o600, dir_fd=directory)
+        lock = os.open(at(directory, WORKER_LOCK_NAME),
+                       os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
     finally:
         os.close(directory)
     try:
         regular_file(os.fstat(lock))
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise SetupError("worker_lock_busy") from None
+        except EnvironmentError as error:
+            if error.errno not in (errno.EAGAIN, errno.EACCES):
+                raise
+            raise SetupError("worker_lock_busy")
         record_startup("worker_start")
-        child = subprocess.Popen([PYTHON, "-I", "-B", APP_DIR + "/helper/thumbnail_cache.py",
-                                  "--allow-home-preview"],
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL, pass_fds=(lock,),
-                                 start_new_session=True, close_fds=True)
+        # The worker never reads stdin. Its fd 0 retains this flock across exec
+        # on Python 2 too, while close_fds drops every setup/directory descriptor.
+        with open(os.devnull, "r+b") as null:
+            child = subprocess.Popen(python_command() + [APP_DIR + "/helper/thumbnail_cache.py",
+                                                         "--allow-home-preview"],
+                                     stdin=lock, stdout=null, stderr=null,
+                                     preexec_fn=os.setsid, close_fds=True)
         # Catch immediate interpreter/import failures. Capture diagnostics remain
         # in /tmp/lg-xmb-thumbnails/status.json, not an unbounded output stream.
-        deadline = time.monotonic() + 1
-        while time.monotonic() < deadline:
+        deadline = monotonic() + 1
+        while monotonic() < deadline:
             if child.poll() is not None:
                 record_startup("worker_exited", returnCode=child.returncode)
                 return False
@@ -401,23 +461,25 @@ def launch_worker(recovery):
 
 def acquire_setup_lock(base, lock):
     """Serialize boot/app invocations, then read the winning setup's new state."""
-    deadline = time.monotonic() + SETUP_WAIT_SECONDS
+    deadline = monotonic() + SETUP_WAIT_SECONDS
     waiting = False
     while True:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        except EnvironmentError as error:
+            if error.errno not in (errno.EAGAIN, errno.EACCES):
+                raise
             if not waiting:
                 record_startup("setup_waiting")
                 waiting = True
-            remaining = deadline - time.monotonic()
+            remaining = deadline - monotonic()
             require(remaining > 0, "setup_in_progress")
             time.sleep(min(.1, remaining))
             continue
         # Never proceed on an unlinked/replaced lock inode. Lock files are kept
         # in place: deleting a held lock could allow two owners to run at once.
         opened = os.fstat(lock)
-        named = os.stat("setup.lock", dir_fd=base, follow_symlinks=False)
+        named = os.lstat(at(base, "setup.lock"))
         regular_file(named)
         require((opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino),
                 "setup_lock_changed")
@@ -445,37 +507,42 @@ def prepare_user_music():
             name = "user-music.mp3"
             target = MUSIC_DIR + "/background.mp3"
             try:
-                info = os.stat(name, dir_fd=app, follow_symlinks=False)
-            except FileNotFoundError:
-                os.symlink(target, name, dir_fd=app)
+                info = os.lstat(at(app, name))
+            except EnvironmentError as error:
+                if error.errno != errno.ENOENT:
+                    raise
+                os.symlink(target, at(app, name))
             else:
                 require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0,
                         "music_path_conflict")
-                previous = os.readlink(name, dir_fd=app)
+                previous = os.readlink(at(app, name))
                 require(previous in (target, BASE + "/music/background.mp3"),
                         "music_path_conflict")
                 if previous != target:
                     # Only replace our recognized legacy link, never either track.
                     temporary = ".user-music-" + str(os.getpid())
-                    os.symlink(target, temporary, dir_fd=app)
+                    os.symlink(target, at(app, temporary))
                     try:
-                        os.replace(temporary, name, src_dir_fd=app, dst_dir_fd=app)
+                        os.rename(at(app, temporary), at(app, name))
                     finally:
                         try:
-                            os.unlink(temporary, dir_fd=app)
-                        except FileNotFoundError:
-                            pass
+                            os.unlink(at(app, temporary))
+                        except EnvironmentError as error:
+                            if error.errno != errno.ENOENT:
+                                raise
             return True
         finally:
             os.close(app)
-    except (OSError, SetupError) as error:
+    except (EnvironmentError, SetupError) as error:
         record_startup("music_path_unavailable", error)
         return False
 
 
 def sound_entry_identity(info):
     return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
-            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+            info.st_nlink, info.st_size,
+            info.st_mtime_ns if hasattr(info, "st_mtime_ns") else info.st_mtime,
+            info.st_ctime_ns if hasattr(info, "st_ctime_ns") else info.st_ctime)
 
 
 def read_sound_identity(directory, name, limit=131072, developer_reference=False):
@@ -485,14 +552,19 @@ def read_sound_identity(directory, name, limit=131072, developer_reference=False
     still have to match the separate protected Home payload byte for byte.
     Manifests and Home files always retain the strict mode checks.
     """
-    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    fd = os.open(at(directory, name), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(fd)
         regular_file(before, app_file=developer_reference)
         with os.fdopen(os.dup(fd), "rb") as stream:
             raw = stream.read(limit + 1)
         require(len(raw) <= limit, "sound_payload_identity_oversized")
-        named = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        if not hasattr(before, "st_mtime_ns"):
+            # Re-read through the held fd, bypassing Python 2's stdio buffer;
+            # coarse timestamps alone cannot establish unchanged content.
+            os.lseek(fd, 0, os.SEEK_SET)
+            require(os.read(fd, limit + 1) == raw, "sound_payload_identity_changed")
+        named = os.lstat(at(directory, name))
         require(sound_entry_identity(before) == sound_entry_identity(os.fstat(fd)) ==
                 sound_entry_identity(named), "sound_payload_identity_changed")
         return raw
@@ -509,13 +581,15 @@ def checked_home_payload():
     """
     try:
         payload = open_directory(HOME_PAYLOAD_DIR)
-    except FileNotFoundError:
-        return None
+    except EnvironmentError as error:
+        if error.errno == errno.ENOENT:
+            return None
+        raise
     try:
         source = open_directory(APP_DIR, app_path=True)
         try:
-            original = json.loads(read_sound_identity(source, "appinfo.json", 65536))
-            home = json.loads(read_sound_identity(payload, "appinfo.json", 65536))
+            original = json.loads(read_sound_identity(source, "appinfo.json", 65536).decode("utf-8"))
+            home = json.loads(read_sound_identity(payload, "appinfo.json", 65536).decode("utf-8"))
             require(isinstance(original, dict) and isinstance(home, dict) and
                     original.get("id") == "org.local.openxmb.c5" and
                     home.get("id") == "com.webos.app.home" and
@@ -541,25 +615,26 @@ def checked_home_payload():
 
 def sound_alias_inventory(directory):
     """Inspect links themselves; user recordings are never opened or changed."""
-    names = set(os.listdir(directory))
+    names = set(os.listdir("/proc/self/fd/{}".format(directory)))
     require(names.issubset(set(SOUND_FILES)), "sound_path_conflict")
     entries = {}
     for name in names:
-        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        info = os.lstat(at(directory, name))
         require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1,
                 "sound_path_conflict")
-        target = os.readlink(name, dir_fd=directory)
+        target = os.readlink(at(directory, name))
         require(target == MUSIC_DIR + "/Sounds/" + name, "sound_path_conflict")
-        current = os.stat(name, dir_fd=directory, follow_symlinks=False)
-        require(sound_entry_identity(info) == sound_entry_identity(current), "sound_path_changed")
+        current = os.lstat(at(directory, name))
+        require(sound_entry_identity(info) == sound_entry_identity(current)
+                and os.readlink(at(directory, name)) == target, "sound_path_changed")
         entries[name] = sound_entry_identity(info), target
-    require(set(os.listdir(directory)) == names, "sound_path_changed")
+    require(set(os.listdir("/proc/self/fd/{}".format(directory))) == names, "sound_path_changed")
     return entries
 
 
 def check_sound_directory_binding(app, directory):
     opened = os.fstat(directory)
-    named = os.stat("user-sounds", dir_fd=app, follow_symlinks=False)
+    named = os.lstat(at(app, "user-sounds"))
     require(stat.S_ISDIR(named.st_mode) and named.st_uid == 0 and opened.st_uid == 0 and
             (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino), "sound_path_changed")
 
@@ -568,10 +643,11 @@ def prepare_sound_aliases(app, repair_developer=False):
     """Prepare fixed aliases, repairing only a verified developer alias directory."""
     require(not os.fstat(app).st_mode & 0o022)
     try:
-        os.mkdir("user-sounds", 0o755, dir_fd=app)
-    except FileExistsError:
-        pass
-    directory = os.open("user-sounds", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=app)
+        os.mkdir(at(app, "user-sounds"), 0o755)
+    except EnvironmentError as error:
+        if error.errno != errno.EEXIST:
+            raise
+    directory = os.open(at(app, "user-sounds"), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         meta = os.fstat(directory)
         require(meta.st_uid == 0 and (repair_developer or not meta.st_mode & 0o022))
@@ -609,11 +685,13 @@ def prepare_sound_aliases(app, repair_developer=False):
             # Exclusive creation: a raced-in entry is not overwritten. Validate
             # an identical concurrent creation, but never replace a foreign one.
             try:
-                os.symlink(target, name, dir_fd=directory)
-            except FileExistsError:
-                info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                os.symlink(target, at(directory, name))
+            except EnvironmentError as error:
+                if error.errno != errno.EEXIST:
+                    raise
+                info = os.lstat(at(directory, name))
                 require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1
-                        and os.readlink(name, dir_fd=directory) == target, "sound_path_conflict")
+                        and os.readlink(at(directory, name)) == target, "sound_path_conflict")
         check_sound_directory_binding(app, directory)
         require(set(sound_alias_inventory(directory)) == set(SOUND_FILES), "sound_path_changed")
     finally:
@@ -636,7 +714,7 @@ def prepare_user_sounds():
                 continue
             prepare_sound_aliases(app, repair_developer=destination == "developer")
             record_startup("sound_paths_ready", destination=destination)
-        except (OSError, SetupError, ValueError, TypeError) as error:
+        except (EnvironmentError, SetupError, ValueError, TypeError) as error:
             ready = False
             record_startup("sound_path_unavailable", error, destination=destination)
         finally:
@@ -649,14 +727,16 @@ def prepare_fixed_asset_alias(app, name, target):
     """Create one fixed link without opening user data or replacing an entry."""
     require(not os.fstat(app).st_mode & 0o022)
     try:
-        os.symlink(target, name, dir_fd=app)
-    except FileExistsError:
-        pass
-    before = os.stat(name, dir_fd=app, follow_symlinks=False)
+        os.symlink(target, at(app, name))
+    except EnvironmentError as error:
+        if error.errno != errno.EEXIST:
+            raise
+    before = os.lstat(at(app, name))
     require(stat.S_ISLNK(before.st_mode) and before.st_uid == 0 and before.st_nlink == 1
-            and os.readlink(name, dir_fd=app) == target, "asset_path_conflict")
-    after = os.stat(name, dir_fd=app, follow_symlinks=False)
-    require(sound_entry_identity(before) == sound_entry_identity(after), "asset_path_changed")
+            and os.readlink(at(app, name)) == target, "asset_path_conflict")
+    after = os.lstat(at(app, name))
+    require(sound_entry_identity(before) == sound_entry_identity(after)
+            and os.readlink(at(app, name)) == target, "asset_path_changed")
 
 
 def prepare_user_asset(alias, relative, label, directory_asset=False):
@@ -673,7 +753,7 @@ def prepare_user_asset(alias, relative, label, directory_asset=False):
                 os.close(directory)
         finally:
             os.close(parent)
-    except (OSError, SetupError) as error:
+    except (EnvironmentError, SetupError) as error:
         record_startup(label + "_path_unavailable", error)
         return False
     ready = True
@@ -686,7 +766,7 @@ def prepare_user_asset(alias, relative, label, directory_asset=False):
                 continue
             prepare_fixed_asset_alias(app, alias, MUSIC_DIR + "/" + relative)
             record_startup(label + "_path_ready", destination=destination)
-        except (OSError, SetupError, ValueError, TypeError) as error:
+        except (EnvironmentError, SetupError, ValueError, TypeError) as error:
             ready = False
             record_startup(label + "_path_unavailable", error, destination=destination)
         finally:
@@ -705,7 +785,7 @@ def prepare_user_fonts():
 
 def start():
     require(os.geteuid() == 0, "root_required")
-    require(sys.version_info >= (3, 7), "python_too_old")
+    require(sys.version_info >= (2, 7), "python_too_old")
     parent = open_directory(os.path.dirname(BASE))
     try:
         base = make_directory(parent, os.path.basename(BASE))
@@ -715,8 +795,8 @@ def start():
         os.close(parent)
     lock = None
     try:
-        lock = os.open("setup.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
-                       0o600, dir_fd=base)
+        lock = os.open(at(base, "setup.lock"), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                       0o600)
         regular_file(os.fstat(lock))
         acquire_setup_lock(base, lock)
         # Verification/repair belongs inside the lock too. Do not use a bundle
@@ -727,10 +807,10 @@ def start():
         prepare_user_wallpaper()
         prepare_user_fonts()
         raw = read_file(base, "installed.json", 4096, optional=True)
-        previous = json.loads(raw) if raw is not None else None
+        previous = json.loads(raw.decode("utf-8")) if raw is not None else None
         require(previous is None or (isinstance(previous, dict)
                 and set(previous) == {"bundle", "legacyMigrated"}
-                and isinstance(previous["bundle"], str)
+                and isinstance(previous["bundle"], type(u""))
                 and type(previous["legacyMigrated"]) is bool), "invalid_setup_record")
         # Stop old code before reading its last saved restoration values.
         recovery.stop(legacy_only=True)
@@ -738,7 +818,8 @@ def start():
             recovery.stop()
         thumbnail_link()
         startup_link(recovery)
-        running = recovery.find_helpers()
+        running = [p for p in recovery.find_helpers()
+                   if recovery.helper_argument(p[2]) != recovery.BOOTSTRAP]
         require(all(recovery.helper_argument(p[2]) == recovery.HELPER for p in running)
                 and len(running) <= 1, "unexpected_helper_process")
         capture_running = bool(running) or launch_worker(recovery)
@@ -754,20 +835,48 @@ def start():
         os.close(base)
 
 
-def home_button(args):
-    """Run a bounded user-requested mapping operation, never worker setup."""
+def home_modules(allow_repair=False):
     require(os.geteuid() == 0, "root_required")
-    require(sys.version_info >= (3, 7), "python_too_old")
-    require(args == ["get"] or (len(args) == 3 and args[0] == "set"
-            and args[1] in ("stock", "xmb") and re.fullmatch("[0-9a-f]{64}", args[2])),
-            "invalid_command")
-    manifest, raw, appinfo, sources = verified_bundle(allow_repair=False)
+    require(sys.version_info >= (2, 7), "python_too_old")
+    manifest, raw, appinfo, sources = verified_bundle(allow_repair=allow_repair)
     module = load_module("lg_xmb_home_button", sources[HOME_BUTTON_MODULE],
                          APP_DIR + "/helper/" + HOME_BUTTON_MODULE)
-    return module.command(args)
+    recovery = load_module("lg_xmb_home_recovery", sources[RECOVERY_MODULE],
+                           APP_DIR + "/helper/" + RECOVERY_MODULE)
+    module.monotonic = recovery.monotonic
+    return module, recovery, hashlib.sha256(raw).hexdigest()
+
+
+def home_button(args):
+    """Dispatch explicit Home settings separately from capture setup."""
+    require(os.geteuid() == 0, "root_required")
+    require(args == ["get"] or (len(args) == 3 and args[0] == "set"
+            and args[1] in ("stock", "xmb") and re.match(r"\A[0-9a-f]{64}\Z", args[2])),
+            "invalid_command")
+    module, recovery, bundle = home_modules()
+    return module.command(args, sys.modules[__name__], recovery, bundle)
+
+
+def restore_home_button():
+    """An optional saved mapping must not depend on capture being supported."""
+    try:
+        module, recovery, bundle = home_modules(allow_repair=True)
+        result = module.ensure(sys.modules[__name__], recovery, bundle)
+        if result["mode"] == "xmb":
+            record_startup("home_button_restored", running=result["running"])
+    except Exception as error:
+        record_startup("home_button_unavailable", error)
 
 
 def main():
+    if sys.argv[1:] == ["home-button-worker"]:
+        try:
+            module, recovery, bundle = home_modules(allow_repair=True)
+            module.run(sys.modules[__name__], recovery, bundle)
+            return 0
+        except Exception as error:
+            record_startup("home_button_worker_failed", error)
+            return 2
     if sys.argv[1:2] == ["home-button"]:
         try:
             result = home_button(sys.argv[2:])
@@ -775,7 +884,8 @@ def main():
             result = {"returnValue": False, "errorCode": str(error)}
         except Exception:
             result = {"returnValue": False, "errorCode": "home_button_unavailable"}
-        print(json.dumps(result), flush=True)
+        print(json.dumps(result))
+        sys.stdout.flush()
         return 0 if result.get("returnValue") else 2
     if sys.argv[1:] not in ([], ["ensure"]):
         print(json.dumps({"returnValue": False, "errorCode": "invalid_command"}))
@@ -788,15 +898,21 @@ def main():
         if str(error) == "root_required":
             result["effectiveUid"] = os.geteuid()
         result["logWritten"] = record_startup("setup_failed", error)
-    except (FileNotFoundError, ImportError) as error:
-        result = {"returnValue": False, "errorCode": "bundle_incomplete",
+    except (EnvironmentError, ImportError) as error:
+        code = ("bundle_incomplete" if isinstance(error, ImportError) or error.errno == errno.ENOENT
+                else "setup_failed")
+        result = {"returnValue": False, "errorCode": code,
                   "logWritten": record_startup("setup_failed", error)}
     except Exception as error:
         result = {"returnValue": False, "errorCode": "setup_failed",
                   "logWritten": record_startup("setup_failed", error)}
     else:
         record_startup("setup_ready", captureRunning=result["captureRunning"])
-    print(json.dumps(result), flush=True)
+    # Also run after capture failure. Native remote input needs neither the
+    # video capture API nor the optional OpenCV/NumPy crop dependencies.
+    restore_home_button()
+    print(json.dumps(result))
+    sys.stdout.flush()
     return 0 if result["returnValue"] else 2
 
 

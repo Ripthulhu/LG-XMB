@@ -3,7 +3,7 @@
 The **safer, recommended setup** is a normal webOS app alongside stock LG Home.
 On supported rooted TVs, assign the Home button in
 [Remote settings](INSTALLATION.md#remote-settings-and-standalone-use), using
-elevated Homebrew Channel and Python 3.7+. Home replacement is optional.
+elevated Homebrew Channel and Python 2.7+. Home replacement is optional.
 
 A bind mount makes LG-XMB run as `com.webos.app.home`. On the development C5,
 this covers both the Home button and the return path after closing an app.

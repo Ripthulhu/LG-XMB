@@ -9,16 +9,43 @@
 .no-flex-gap .date-time-fields {
   gap: 0;
 }
-.no-flex-gap .clock #date { margin-left: 1.25vw; }
-.no-flex-gap .clock[data-style='ps3'] #date { margin-left: 0; }
-.no-flex-gap .clock[data-style='ps3'] #time { margin-left: 0.5vw; }
-.no-flex-gap .clock[data-style='ps3'] .clock-face { margin-left: 0.55vw; }
-.no-flex-gap .input-preview-message:not(:empty) { margin-top: 1.3vh; }
-.no-flex-gap .option > * + * { margin-left: 1vw; }
-.no-flex-gap .option span:first-child > * + * { margin-left: 1.15vw; }
+.no-flex-gap .clock #date {
+  margin-left: 1.25vw;
+}
+.no-flex-gap .clock[data-style='ps3'] #date {
+  margin-left: 0;
+}
+.no-flex-gap .clock[data-style='ps3'] #time {
+  margin-left: 0.5vw;
+}
+.no-flex-gap .clock[data-style='ps3'] .clock-face {
+  margin-left: 0.55vw;
+}
+.no-flex-gap .input-preview-message:not(:empty) {
+  margin-top: 1.3vh;
+}
+.no-flex-gap .option > * + * {
+  margin-left: 1vw;
+}
+.no-flex-gap .option span:first-child > * + * {
+  margin-left: 1.15vw;
+}
 /* Colour labels are text nodes, so the sibling selector above cannot space them. */
-.no-flex-gap .option .swatch { margin-right: 1.15vw; }
-.no-flex-gap .choice-options > * + * { margin-left: 0.6vw; }
-.no-flex-gap .date-time-fields > * + * { margin-left: 0.65vw; }
-.no-flex-gap .date-time-fields > :nth-child(4) { margin-left: 1.65vw; }
-.no-flex-gap .screensaver-settings .choice-options .option > * + * { margin-left: 0.3vw; }
+.no-flex-gap .option .swatch {
+  margin-right: 1.15vw;
+}
+.no-flex-gap .choice-options > * + * {
+  margin-left: 0.6vw;
+}
+.no-flex-gap .date-time-fields > * + * {
+  margin-left: 0.65vw;
+}
+.no-flex-gap .date-time-fields > :nth-child(4) {
+  margin-left: 1.65vw;
+}
+.no-flex-gap .screensaver-settings .choice-options .option > * + * {
+  margin-left: 0.3vw;
+}
+.no-flex-gap .date-format-options .option > * + * {
+  margin-left: 0.3vw;
+}

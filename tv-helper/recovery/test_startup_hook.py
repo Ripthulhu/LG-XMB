@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import stop_thumbnail_helper as recovery
 
-REAL_STAT, REAL_FSTAT = os.stat, os.fstat
+REAL_LSTAT, REAL_FSTAT = os.lstat, os.fstat
 LEGACY = Path(__file__).parent / "fixtures" / "60-openxmb-thumbnails.legacy"
 
 
@@ -39,7 +39,7 @@ class StartupHookTests(unittest.TestCase):
         self.fd = os.open(self.init, os.O_RDONLY | os.O_DIRECTORY)
         self.addCleanup(os.close, self.fd)
         self.use_patch(patch.object(recovery, 'HOOK_TARGET', str(self.target)))
-        self.use_patch(patch.object(recovery.os, 'stat', side_effect=lambda *a, **kw: root_info(REAL_STAT(*a, **kw))))
+        self.use_patch(patch.object(recovery.os, 'lstat', side_effect=lambda *a, **kw: root_info(REAL_LSTAT(*a, **kw))))
         self.use_patch(patch.object(recovery.os, 'fstat', side_effect=lambda fd: root_info(REAL_FSTAT(fd))))
 
     def test_live_link_removal_preserves_target(self):
@@ -110,9 +110,9 @@ class StartupHookTests(unittest.TestCase):
     def test_nonroot_link_is_refused(self):
         self.hook.symlink_to(self.target)
         def foreign(*args, **kwargs):
-            info = root_info(REAL_STAT(*args, **kwargs)); info.st_uid = 1000
+            info = root_info(REAL_LSTAT(*args, **kwargs)); info.st_uid = 1000
             return info
-        with patch.object(recovery.os, 'stat', side_effect=foreign):
+        with patch.object(recovery.os, 'lstat', side_effect=foreign):
             with self.assertRaisesRegex(RuntimeError, 'unsafe'):
                 recovery.read_hook(self.fd)
 

@@ -2,8 +2,9 @@
 
 The **safer, recommended setup** is to install LG-XMB as a normal webOS app,
 keeping stock LG Home. The IPK adds a launcher named **Home** without changing
-the Home button. After testing the app, supported rooted TVs can assign that
-button in **Settings → Remote** with elevated Homebrew Channel and Python 3.7+.
+the Home button. After testing the app, rooted TVs can enable a Home-button
+listener in **Settings → Remote** with elevated Homebrew Channel, Python 2.7+
+and compatible remote devices. This route needs testing on each TV model.
 
 [Replacing LG Home](HOME-TAKEOVER.md) is a separate, optional procedure tested
 only on the LG C5 with webOS 25 / 10.3.1. Other TVs need manual investigation
@@ -72,7 +73,7 @@ luna-send -n 1 luna://com.webos.applicationManager/launch \
   '{"id":"org.local.openxmb.c5"}'
 ```
 
-Check navigation, launch an app and return from HDMI before assigning the Home button.
+Check navigation, launch an app and return from HDMI before enabling Home-button routing.
 If installation fails, keep the error output. Don't unpack the IPK over the app
 directory or use `opkg` to bypass the TV's app registration.
 
@@ -87,16 +88,24 @@ These native install commands have been used on the C5 with webOS 10.3.1. Read
 
 ## Remote settings and standalone use
 
-Open **Settings → Remote**. Under **Home button**, choose **LG-XMB** to open
-this launcher or **LG Home** to restore the stock assignment. Reading the
-setting does not change it. The saved check mark changes after the TV confirms
-the assignment. If it cannot be confirmed, use **Retry** to read it again.
+Open **Settings → Remote**. Under **Home button**, choose **LG-XMB** to enable
+the direct remote listener or **LG Home** to disable it. The listener opens
+LG-XMB once per Home press, including a hold, and forwards other remote events.
+LG's native long-Home action is unavailable while it is enabled.
 
-Home-button assignment requires root, an elevated Homebrew Channel service,
-Python 3.7 or newer and the TV's native default-app API. The API was used on
-the C5; this implementation still needs hardware testing on other models.
-It leaves the Power On Screen setting alone and does not start Home at boot.
-Unsupported or refused requests leave the control unavailable.
+Reading the setting is read-only. The check mark shows the saved choice, not
+proof that the listener is running. A stopped listener shows an explanation;
+select the checked **LG-XMB** choice to retry. After an uncertain change, use
+**Retry** to read the saved state before trying again. If another app has
+exclusive control of the remote, LG-XMB reports the conflict without stopping it.
+
+This requires root, an elevated Homebrew Channel service, Python 2.7 or newer
+and the remote devices listed in [Compatibility](COMPATIBILITY.md#home-button-routing).
+The choice is saved in `/var/lib/lg-xmb/home-button.json`. The existing
+`60-lg-xmb` bootstrap restores an enabled listener after boot; it does not
+launch the app at boot or change Power On Screen. An old native Home assignment
+to this exact LG-XMB app is cleared only when you explicitly select a Home
+choice. Assignments belonging to other apps are preserved.
 
 If you already replaced LG Home with a bind mount, first follow
 [Restore LG Home](HOME-TAKEOVER.md#restore-lg-home). Choosing LG Home while a
@@ -122,21 +131,25 @@ keep the last valid list. Analog inputs can be opened, but do not have previews.
 
 ## Helper setup
 
-On a rooted TV with Homebrew Channel and Python 3.7 or newer, Home prepares the
+On a rooted TV with Homebrew Channel and Python 2.7 or newer, Home prepares the
 bundled capture helper on launch. No separate helper download is needed.
 **Settings → Input previews** shows its status and a retry option.
+
+The helper uses the TV's installed Python. Capture still depends on the TV's
+native capture service; Python support alone does not establish model support.
+A saved Home-button choice is restored even if capture setup fails.
 
 Check **Root status** in Homebrew Channel's settings. Its service must be
 elevated; a working root SSH connection alone isn't enough. If it reports
 `unelevated`, see [Homebrew Channel's recovery notes](https://repo.webosbrew.org/apps/org.webosbrew.safeupdate/).
 
-Normal helper startup creates cached HDMI pictures and prepares links to
-optional user media. It does not assign Home, stop LG services or manage
-background apps. Home-button changes use a separate verified command only
-when you select an assignment in Remote settings.
+Normal helper startup creates cached HDMI pictures, prepares links to optional
+user media and restores an already enabled Home-button listener. It does not
+enable Home routing by itself, stop LG services or manage background apps.
+Changing the Home choice uses a separate verified command from Remote settings.
 
 A non-root installation can use the menu and permitted native APIs. App and input
-discovery, Home-button assignment, the capture helper and Home replacement
+discovery, Home-button routing, the capture helper and Home replacement
 require root.
 
 Cached pictures appear after an eligible HDMI input has been viewed. An input
@@ -153,7 +166,8 @@ Its package ID, `org.local.openxmb.c5`, stays unchanged for in-place upgrades.
 
 The IPK updates the helper files too; there is no separate helper to copy over
 SSH. Opening Home verifies the new bundle and restarts the capture worker if
-the bundle changed. An unchanged worker is reused. Your music, sounds,
+the bundle changed. An unchanged worker is reused, and an enabled Home-button
+listener is restored. Your music, sounds,
 wallpaper and fonts remain in `/media/internal/lg-xmb/`.
 
 Unknown hooks, foreign links and untrusted files are left alone. Don't delete
@@ -169,6 +183,8 @@ Update it separately from the same build, following
 | --- | --- |
 | `/media/developer/apps/usr/palm/applications/org.local.openxmb.c5/` | Installed app and verified helper bundle |
 | `/var/lib/lg-xmb/` | Helper setup record and lock |
+| `/var/lib/lg-xmb/home-button.json` | Saved Home-button choice |
+| `/var/lib/lg-xmb/home-button-status.json` | Home-button listener status |
 | `/tmp/lg-xmb-thumbnails/` | Cached pictures and capture status |
 | `/var/lib/webosbrew/init.d/60-lg-xmb` | Link to the packaged helper bootstrap |
 | `/var/lib/webosbrew/lg-xmb-startup.log` | Bounded helper setup log |
@@ -200,20 +216,23 @@ directories. Sound-link problems are covered in [HOME-SOUND-REPAIR.md](HOME-SOUN
 
 ## Remove
 
-If you assigned the Home button to LG-XMB, first select **Settings → Remote →
-Home button → LG Home** and confirm the Home button opens stock Home.
+If you enabled Home-button routing, first select **Settings → Remote →
+Home button → LG Home** and confirm the button no longer opens LG-XMB.
 
 For a Home replacement, disable its boot hook and restore the stock Home mount
 **before** removing the developer app. Follow the recovery steps in
 [HOME-TAKEOVER.md](HOME-TAKEOVER.md#restore-lg-home).
 
-On a rooted installation, stop the capture helper while its recovery script is
-still installed:
+On a rooted installation, stop the recognised capture and Home-button workers
+while their recovery script is still installed:
 
 ```sh
 APP=/media/developer/apps/usr/palm/applications/org.local.openxmb.c5
 /usr/bin/python3 -I -B "$APP/helper/stop_thumbnail_helper.py"
 ```
+
+On a Python 2-only TV, use `/usr/bin/python -E -s -S -B` in place of
+`/usr/bin/python3 -I -B` above (or `/usr/bin/python2` if that is its installed path).
 
 Check the result before continuing. A refused identity or hook check needs
 investigation, not forced deletion. Don't reopen Home before uninstalling,
@@ -222,10 +241,9 @@ because opening it starts normal helper setup again.
 Remove the app using Dev Manager or the TV's app manager. A launcher-only
 Developer Mode installation can be removed normally without the root command.
 
-Older builds may have left saved LG settings or a separate Home assignment.
-The current capture helper doesn't restore those settings. Keep any old recovery
-records until you've checked the TV's configuration; don't run commands for a
-controller that isn't in this package.
+Recovery stops recognised workers and removes recognised startup hooks. It
+does not restore native settings or remove another app's Home assignment.
+Keep any earlier recovery records until you've checked the TV's configuration.
 
 ## Audio
 

@@ -42,6 +42,15 @@ async function checkClock(browser, url) {
     await page.keyboard.press('Enter');
     await page.locator('#' + id).click();
   }
+  async function openFormats() {
+    await closePanels();
+    await menu.item(page, 'settings', 'datetime');
+    await page.keyboard.press('Enter');
+    assert.equal((await state()).modal, 'datetime');
+  }
+  const formatChoice = (group, label) =>
+    page.getByRole('group', { name: group, exact: true })
+      .getByRole('button', { name: label, exact: true });
   async function angles() {
     return page.locator('.clock-hour,.clock-minute').evaluateAll((nodes) =>
       nodes.map((node) => {
@@ -108,6 +117,10 @@ async function checkClock(browser, url) {
             rect.top >= 0 &&
             rect.bottom <= innerHeight
         ),
+        insideBar: [date, time, face].every(
+          (rect) => rect.left >= box.left && rect.right <= box.right &&
+            rect.top >= box.top && rect.bottom <= box.bottom
+        ),
         dateBeforeTime: date.right <= time.left,
         timeBeforeFace: time.right <= face.left,
         aligned:
@@ -119,7 +132,7 @@ async function checkClock(browser, url) {
       };
     });
     assert.ok(Math.abs(layout.right - layout.width) < 0.5, 'PS3 bar reaches the right screen edge');
-    for (const key of ['inView', 'dateBeforeTime', 'timeBeforeFace', 'aligned', 'hasBorder'])
+    for (const key of ['inView', 'insideBar', 'dateBeforeTime', 'timeBeforeFace', 'aligned', 'hasBorder'])
       assert.equal(layout[key], true, key);
     assert.equal(layout.overflow, false);
     assert.equal(layout.pointerEvents, 'none');
@@ -141,12 +154,17 @@ async function checkClock(browser, url) {
           JSON.stringify({ motion: 'reduced', screensaverDelay: 0 })
         );
       window.clockTimeWrites = [];
+      window.clockTimeReads = 0;
       let timeAPI;
       Object.defineProperty(window, 'LGXMBSystemTime', {
         configurable: true,
         get: () => timeAPI,
         set: (api) => {
           timeAPI = Object.assign({}, api, {
+            get: () => {
+              clockTimeReads++;
+              return api.get();
+            },
             set: (utc) => {
               clockTimeWrites.push(utc);
               return Promise.reject(new Error('Clock appearance must not set TV time'));
@@ -259,6 +277,83 @@ async function checkClock(browser, url) {
     checks.push(
       'Both styles survive reload; an unsupported stored style safely returns to PS3'
     );
+
+    for (const label of ['Current', 'PS3']) {
+      await openPanel();
+      await choice(label).click();
+      await openFormats();
+      await formatChoice('Time format', '24-hour').click();
+      await formatChoice('Time format', '24-hour').focus();
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.evaluate(() => document.activeElement.dataset.choice), '12h');
+      await page.keyboard.press('Enter');
+      assert.equal((await state()).preferences.timeFormat, '12h');
+      assert.equal(await page.locator('#time').textContent(), '9:45 AM');
+      assert.equal(await formatChoice('Time format', '12-hour').getAttribute('aria-pressed'), 'true');
+      await page.keyboard.press('ArrowDown');
+      assert.equal(
+        await page.evaluate(() => document.activeElement.closest('[role=group]').getAttribute('aria-label')),
+        'Date format'
+      );
+      const defaultDate = label === 'PS3' ? '20/9' : await page.evaluate(() =>
+        new Date().toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' })
+      );
+      for (const [name, value, date] of [
+        ['Style default', 'default', defaultDate],
+        ['Day first', 'dmy', '20/09/2026'],
+        ['Month first', 'mdy', '09/20/2026'],
+        ['Year first', 'ymd', '2026-09-20']
+      ]) {
+        await formatChoice('Date format', name).click();
+        assert.equal((await state()).preferences.dateFormat, value);
+        assert.equal(await page.locator('#date').textContent(), date);
+        assert.equal(await formatChoice('Date format', name).getAttribute('aria-pressed'), 'true');
+      }
+      await formatChoice('Date format', 'Day first').focus();
+      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('Enter');
+      assert.equal((await state()).preferences.dateFormat, 'mdy');
+      assert.equal(await page.locator('#date').textContent(), '09/20/2026');
+      await page.keyboard.press('ArrowDown');
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'openDateTimeEditor');
+      await page.keyboard.press('ArrowUp');
+      assert.equal(await page.evaluate(() => document.activeElement.dataset.choice), 'mdy');
+      await formatChoice('Date format', 'Year first').click();
+      assert.equal(await page.evaluate(() => clockTimeReads), 0);
+      assert.deepEqual(await page.evaluate(() => clockTimeWrites), []);
+    }
+    checks.push('Both clock styles apply all date formats and 12-hour time immediately by pointer or remote without reading or setting TV time');
+
+    await closePanels();
+    await page.clock.setSystemTime(new Date('2026-09-20T23:45:00+02:00'));
+    await page.clock.fastForward(11000);
+    assert.equal(await page.locator('#time').textContent(), '11:45 PM');
+    await expectHands(352.5, 270);
+    for (const [width, height] of [[1920, 1080], [1280, 720]]) {
+      await page.setViewportSize({ width, height });
+      await expectPS3Layout();
+      await screenshot('clock-formats-' + height + '.png');
+    }
+    await page.reload();
+    await ready();
+    assert.equal((await state()).preferences.timeFormat, '12h');
+    assert.equal((await state()).preferences.dateFormat, 'ymd');
+    assert.equal(await page.locator('#time').textContent(), '11:45 PM');
+    assert.equal(await page.locator('#date').textContent(), '2026-09-20');
+    await openFormats();
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.choice), '12h');
+    assert.equal(await formatChoice('Date format', 'Year first').getAttribute('aria-pressed'), 'true');
+    await page.evaluate(() => {
+      const key = 'lg-xmb-preferences-v1', preferences = JSON.parse(localStorage.getItem(key));
+      preferences.timeFormat = '__proto__';
+      preferences.dateFormat = 'unsupported';
+      localStorage.setItem(key, JSON.stringify(preferences));
+    });
+    await page.reload();
+    await ready();
+    assert.equal((await state()).preferences.timeFormat, '24h');
+    assert.equal((await state()).preferences.dateFormat, 'default');
+    checks.push('Format choices survive reload, invalid saved choices return to defaults, and the longest date and 12-hour time fit the PS3 bar at 1080p and 720p');
 
     await openPanel();
     await choice('PS3').click();

@@ -55,6 +55,8 @@
     error.hidden = !message;
   }
   function showHome(message, canRetry) {
+    if (!busy && home && home.available && home.mode === 'xmb' && home.running === false)
+      message = (message ? message + ' ' : '') + 'Select LG-XMB to retry.';
     selection(homeSection, 'Home button', home && home.mode);
     [].forEach.call(homeSection.querySelectorAll('button'), function (button) {
       button.disabled = !home || !home.available;
@@ -100,7 +102,13 @@
       });
   }
   function setHome(value) {
-    if (busy || !home || !home.available || home.mode === value) return;
+    if (
+      busy ||
+      !home ||
+      !home.available ||
+      (home.mode === value && value !== 'stock' && home.running !== false)
+    )
+      return;
     var current = generation;
     busy = true;
     showError('');

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import errno
 import unittest
 from unittest.mock import Mock
 
@@ -11,7 +12,7 @@ class UninstallTests(unittest.TestCase):
         present = [True]
         def app_ready():
             if not present[0]:
-                raise FileNotFoundError()
+                raise OSError(errno.ENOENT, 'missing')
             return True
         luna = Mock(return_value={'returnValue': True, 'state': 'Standby'})
         cache = Mock()
@@ -34,7 +35,7 @@ class UninstallTests(unittest.TestCase):
 
     def test_boot_mount_grace_still_allows_app_to_appear(self):
         now = [0]
-        ready = Mock(side_effect=[FileNotFoundError(), True])
+        ready = Mock(side_effect=[OSError(errno.ENOENT, 'missing'), True])
         luna = Mock(return_value={'returnValue': True, 'state': 'Standby'})
         worker = tc.Worker(luna, Mock(), installed=lambda: True,
                            clock=lambda: now[0], wall=lambda: 0,

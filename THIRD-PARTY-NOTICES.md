@@ -33,6 +33,16 @@ reproduced in `app/licenses/PS3-XMB-MIT.txt`.
 This credit covers the presets still in use. It doesn't describe the current
 wave or particle renderer.
 
+## Magic Mapper
+
+Source: https://github.com/andrewfraley/magic_mapper
+Revision: `9e4161fecdcf602d3f6c5863d848ce2959b6e2f5`.
+
+`tv-helper/home_button.py` adapts Magic Mapper's Linux input-device routing
+and webOS-version-specific launch approach for a Home-only listener.
+Copyright (c) 2022 Andy Fraley. MIT licence, reproduced in
+`app/licenses/MAGIC-MAPPER-MIT.txt`.
+
 ## FXAA
 
 The edge search in `shaders/compositeFragment.frag` derives from three.js

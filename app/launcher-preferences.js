@@ -14,6 +14,8 @@
     screensaverWaveBrightness: 0.25,
     screensaverParticleBrightness: 0.25,
     clockStyle: 'ps3',
+    timeFormat: '24h',
+    dateFormat: 'default',
     motion: 'full',
     menuAnimation: 'ps3',
     sound: false,
@@ -144,6 +146,10 @@
       });
       if (['current', 'ps3'].indexOf(saved.clockStyle) !== -1)
         preferences.clockStyle = saved.clockStyle;
+      if (['24h', '12h'].indexOf(saved.timeFormat) !== -1)
+        preferences.timeFormat = saved.timeFormat;
+      if (['default', 'dmy', 'mdy', 'ymd'].indexOf(saved.dateFormat) !== -1)
+        preferences.dateFormat = saved.dateFormat;
       if (['simple', 'ps3'].indexOf(saved.menuAnimation) !== -1)
         preferences.menuAnimation = saved.menuAnimation;
       if (saved.motion === 'reduced' || saved.motion === 'full') preferences.motion = saved.motion;

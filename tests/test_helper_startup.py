@@ -13,12 +13,13 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER_SOURCES = json.loads((ROOT / 'tv-helper/bundle-sources.json').read_text(encoding='utf-8'))
 spec = importlib.util.spec_from_file_location('startup', ROOT / 'app/helper-startup.py')
 startup = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = startup
 spec.loader.exec_module(startup)
 
 
@@ -63,9 +64,13 @@ class SetupFixture(unittest.TestCase):
             target = Path(args[0])
             if kwargs.get('dir_fd') is not None:
                 target = Path(os.readlink('/proc/self/fd/' + str(kwargs['dir_fd']))) / target
+            elif str(target).startswith('/proc/self/fd/'):
+                parts = target.parts
+                target = Path(os.readlink('/proc/self/fd/' + parts[4])).joinpath(*parts[5:])
             values['st_uid'], values['st_gid'] = self.owners.get(target, (0, 0))
             return SimpleNamespace(**values)
         os_view.stat = named_metadata
+        os_view.lstat = lambda path: named_metadata(path, follow_symlinks=False)
         def change_owner(fd, uid, gid):
             target = Path(os.readlink('/proc/self/fd/' + str(fd)))
             self.chowns.append((target, uid, gid))
@@ -81,6 +86,7 @@ class SetupFixture(unittest.TestCase):
         self.capture = SimpleNamespace(PIN_APPINFO_SHA256='', checked_app=lambda: None)
         self.stops = []
         self.recovery = SimpleNamespace(HOOK_NAME='60-lg-xmb', HOOK_TARGET=str(self.app / 'helper-startup.py'),
+            BOOTSTRAP=str(self.app / 'helper-startup.py').encode(),
             HELPER=str(self.bundle / 'thumbnail_cache.py').encode(),
             stop=lambda **kw: self.stops.append(kw), find_helpers=lambda: [],
             helper_argument=lambda raw: raw, read_hook=self.read_hook)
@@ -307,6 +313,24 @@ class SetupFixture(unittest.TestCase):
         self.assertEqual(os.readlink(self.app / 'user-music.mp3'), str(self.music / 'background.mp3'))
         self.assertTrue((self.app / 'user-sounds/snd_cursor.wav').is_symlink())
 
+    def test_capture_setup_failure_still_attempts_saved_home_restoration(self):
+        mapping = SimpleNamespace(ensure=Mock(return_value={'mode': 'xmb', 'running': True}))
+        with patch.object(startup, 'load_module', side_effect=self.modules), \
+             patch.object(self.capture, 'checked_app', side_effect=startup.SetupError('capture_unavailable')), \
+             patch.object(startup, 'launch_worker') as launch, \
+             patch.object(startup, 'home_modules', return_value=(mapping, self.recovery, startup.BUNDLE_SHA256)) as modules:
+            code, reply = self.main_reply()
+        self.assertEqual(code, 2)
+        self.assertEqual(reply['errorCode'], 'capture_unavailable')
+        self.assertTrue(reply['logWritten'])
+        launch.assert_not_called()
+        modules.assert_called_once_with(allow_repair=True)
+        mapping.ensure.assert_called_once_with(startup, self.recovery, startup.BUNDLE_SHA256)
+        self.assertEqual([entry['event'] for entry in self.log_records()],
+                         ['setup_start', 'setup_failed', 'home_button_restored'])
+        self.assertTrue(self.log_records()[-1]['running'])
+        self.assertFalse((self.base / 'installed.json').exists())
+
     def test_missing_bundle_never_launches_or_records_installation(self):
         (self.bundle / 'thumbnail_cache.py').unlink()
         with self.assertRaisesRegex(startup.SetupError, 'bundle_incomplete'):
@@ -436,10 +460,45 @@ class SetupFixture(unittest.TestCase):
         self.assertFalse(self.base.exists())
 
     def test_old_python_is_not_reported_as_missing_root(self):
-        with patch.object(startup.sys, 'version_info', (3, 6, 9)):
+        with patch.object(startup.sys, 'version_info', (2, 6, 9)):
             with self.assertRaisesRegex(startup.SetupError, 'python_too_old'):
                 startup.start()
         self.assertFalse(self.base.exists())
+
+    def test_python2_clock_fallback_is_bounded_and_rejects_invalid_values(self):
+        with patch.object(startup, 'time', SimpleNamespace()), \
+             patch('builtins.open', return_value=io.BytesIO(b'123.45 678.90\n')):
+            self.assertEqual(startup.monotonic(), 123.45)
+        for raw in (b'', b'bad', b'-1 0', b'nan 0', b'inf 0', b'1 ' + b'0' * 127):
+            with self.subTest(raw=raw), patch.object(startup, 'time', SimpleNamespace()), \
+                 patch('builtins.open', return_value=io.BytesIO(raw)), \
+                 self.assertRaisesRegex(startup.SetupError, 'invalid_monotonic_clock'):
+                startup.monotonic()
+
+    def test_identity_read_rechecks_bytes_without_nanosecond_metadata(self):
+        target = self.bundle / 'identity'
+        target.write_bytes(b'old')
+        directory = os.open(self.bundle, os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, directory)
+        metadata, named_metadata = startup.os.fstat, startup.os.lstat
+        def coarse(info):
+            values = dict(vars(info))
+            values.pop('st_mtime_ns'); values.pop('st_ctime_ns')
+            values['st_mtime'] = values['st_ctime'] = 0
+            return SimpleNamespace(**values)
+        class ChangingRead(io.BytesIO):
+            def close(self):
+                if not self.closed:
+                    target.write_bytes(b'new')
+                super().close()
+        def opened(fd, mode):
+            os.close(fd)
+            return ChangingRead(b'old')
+        with patch.object(startup.os, 'fstat', side_effect=lambda fd: coarse(metadata(fd))), \
+             patch.object(startup.os, 'lstat', side_effect=lambda path: coarse(named_metadata(path))), \
+             patch.object(startup.os, 'fdopen', side_effect=opened), \
+             self.assertRaisesRegex(startup.SetupError, 'sound_payload_identity_changed'):
+            startup.read_sound_identity(directory, 'identity')
 
     def test_symlinked_state_directory_is_not_followed(self):
         self.base.symlink_to(self.root / 'foreign', target_is_directory=True)
@@ -496,6 +555,7 @@ class SetupFixture(unittest.TestCase):
                 descriptors = Path('/proc') / str(children[0].pid) / 'fd'
                 paths = [os.readlink(fd) for fd in descriptors.iterdir()]
                 self.assertIn(str(self.log / startup.WORKER_LOCK_NAME), paths)
+                self.assertEqual(os.readlink(descriptors / '0'), str(self.log / startup.WORKER_LOCK_NAME))
                 self.assertNotIn(str(self.base / 'setup.lock'), paths,
                                  'A live worker must not retain the short-lived setup lock')
                 with self.assertRaisesRegex(startup.SetupError, 'worker_lock_busy'):
@@ -506,6 +566,11 @@ class SetupFixture(unittest.TestCase):
             for child in children:
                 child.terminate()
                 child.wait(timeout=3)
+        # Closing the parent descriptor must not release the worker's lock;
+        # exiting the child must release it without deleting/replacing the file.
+        import fcntl
+        with (self.log / startup.WORKER_LOCK_NAME).open('w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
     def main_reply(self):
         output = io.StringIO()

@@ -220,7 +220,15 @@
   });
   var dateTimeSettings = new LGXMBDateTimeSettings({
     api: LGXMBSystemTime,
+    preferences: preferences,
     sound: tick,
+    onFormatChange: function () {
+      updateClock();
+      save();
+    },
+    openEditor: function () {
+      openModal('datetime-edit');
+    },
     onApplied: function () {
       updateClock();
       wave.setTheme(LGXMBPreferences.backgroundTheme(preferences));
@@ -530,7 +538,7 @@
     categoryTransition.cancel();
     if (!modalOpen || modalType !== type) clearToast();
     if (modalType === 'remote') C5RemoteSettings.close();
-    if (modalType === 'datetime') dateTimeSettings.close();
+    if (modalType === 'datetime-edit') dateTimeSettings.close();
     watchHelperStatus(false);
     stopInputPreview();
     modalType = type;
@@ -551,6 +559,7 @@
     $('modalContent').classList.remove('theme-options');
     $('modalTitle').textContent = {
       datetime: 'Date & time',
+      'datetime-edit': 'Set TV date & time',
       appearance: 'Appearance',
       theme: 'Theme',
       colour: 'Colour',
@@ -577,6 +586,8 @@
     } else if (type === 'appearance-advanced') {
       appearanceSettings.openAdvanced();
     } else if (type === 'datetime') {
+      dateTimeSettings.openFormats(settingsUI);
+    } else if (type === 'datetime-edit') {
       dateTimeSettings.open($('modalContent'));
     } else if (type === 'sound') {
       openSoundSettings();
@@ -624,7 +635,7 @@
       (type === 'background' &&
         $('modalContent').querySelector('.background-source [aria-pressed="true"]')) ||
       (type === 'appearance-advanced' && $('showWavesOnly')) ||
-      (type === 'datetime' && $('modalContent').querySelector('.date-time-value')) ||
+      (type === 'datetime-edit' && $('modalContent').querySelector('.date-time-value')) ||
       $('modalContent').querySelector('[aria-pressed="true"]') ||
       $('modalContent').querySelector('button') ||
       $('modal');
@@ -923,6 +934,11 @@
       return;
     }
     if (quiet !== true) tick('cancel');
+    if (quiet !== true && modalType === 'datetime-edit') {
+      openModal('datetime');
+      LGXMBMenuFocus($('openDateTimeEditor'));
+      return;
+    }
     var appearanceParents = {
       theme: 'openTheme',
       colour: 'openColour',
@@ -938,7 +954,7 @@
       return;
     }
     if (modalType === 'remote') C5RemoteSettings.close();
-    if (modalType === 'datetime') dateTimeSettings.close();
+    if (modalType === 'datetime-edit') dateTimeSettings.close();
     watchHelperStatus(false);
     modalOpen = false;
     $('modalBackdrop').hidden = true;
@@ -954,7 +970,7 @@
       closeModal();
       return;
     }
-    if (modalType === 'datetime') {
+    if (modalType === 'datetime-edit') {
       dateTimeSettings.key(event);
       return;
     }
@@ -1339,7 +1355,7 @@
   });
   function updateClock() {
     var now = new Date();
-    clockView.update(now, preferences.clockStyle);
+    clockView.update(now, preferences.clockStyle, preferences.timeFormat, preferences.dateFormat);
     var gradient = LGXMBWaveColors.menuGradient(
       LGXMBPreferences.backgroundTheme(preferences).colors,
       now
@@ -1471,7 +1487,7 @@
     helperLifecycle('suspend');
     cancelNavigation();
     appRefresh.pause();
-    if (modalType === 'datetime' || modalType === 'remote') {
+    if (modalType === 'datetime-edit' || modalType === 'remote') {
       if (modalType === 'remote') C5RemoteSettings.close();
       else dateTimeSettings.close();
       modalOpen = false;

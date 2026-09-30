@@ -1,8 +1,9 @@
 # TV helper
 
-The helper keeps recent HDMI pictures and prepares app-relative links to your
-optional audio files. It uses an existing rooted Homebrew Channel environment.
-It doesn't replace LG Home, assign remote buttons or stop background services.
+The helper keeps recent HDMI pictures, prepares app-relative links to your
+optional audio files and runs the optional Home-button listener. It needs root,
+an elevated Homebrew Channel service and Python 2.7 or Python 3. It does not
+replace LG Home or stop background services.
 
 The helper ships inside the IPK. See
 [installation and removal](../docs/INSTALLATION.md) for normal use.
@@ -11,20 +12,60 @@ The helper ships inside the IPK. See
 
 | Source | Role |
 | --- | --- |
-| `app/helper-startup.py` | Verify the bundle, prepare paths and start or reuse the worker |
+| `app/helper-startup.py` | Verify the bundle, prepare paths and restore enabled workers |
 | `tv-helper/thumbnail_cache.py` | Poll eligible HDMI sources and capture thumbnails |
+| `tv-helper/home_button.py` | Read/save the Home choice and intercept only Home on the Magic Remote |
 | `tv-helper/recovery/stop_thumbnail_helper.py` | Stop recognised workers and remove recognised startup hooks |
 | `tv-helper/bundle-sources.json` | Shared source inventory for packaging and verification |
 | `tools/stage-helper.mjs` | Copy helper sources and generate package hashes |
 
 The bootstrap runs through Homebrew Channel's existing `exec` service. It starts
-one detached Python worker with `--allow-home-preview` and exits. It doesn't add
-a listener or retry loop. The worker handles SIGTERM and exits cleanly.
+or reuses the detached capture worker with `--allow-home-preview`, restores the
+Home-button listener only if previously enabled, then exits. The workers handle
+SIGTERM and release their resources.
 
 `/var/lib/webosbrew/init.d/60-lg-xmb` is a link to the packaged bootstrap.
 Removing the app leaves a broken link rather than an executable copy of old
 helper code. Recovery accepts that exact root-owned link and recognised legacy
-hooks; it leaves foreign entries alone.
+hooks; it leaves foreign entries alone. The same bootstrap restores the saved
+Home choice after boot without launching LG-XMB or changing Power On Screen.
+
+## Home button
+
+`home_button.py` follows
+[Magic Mapper's device routing](https://github.com/andrewfraley/magic_mapper/blob/9e4161fecdcf602d3f6c5863d848ce2959b6e2f5/magic_mapper.py).
+It discovers the exact `LGE M-RCU - Builtin [0]` input name and exclusively
+grabs that device. Non-Home events are forwarded unchanged to
+`LGE M-RCU - Builtin [2]` through webOS 9, preferring `[1]` on webOS 10 and newer.
+If those outputs are missing, another numbered Builtin device is used. The input
+device is never used as output. Event node numbers are discovered. Missing
+devices, disconnects and conflicting grabs are reported; another grabber is
+never killed. Device failures release the grab and allow a later reconnect.
+
+Home opens LG-XMB once per press, including a hold. Its down, repeat and up
+events are consumed, so LG's native long-Home action is unavailable while the
+listener is enabled. Choosing **LG Home** disables the listener. Physical Home,
+arrow and wheel tests passed with the standalone app on the C5. The listener
+also started after reboot without opening LG-XMB over Recent Input. Other
+models, including the C4, still need physical testing.
+
+`/var/lib/lg-xmb/home-button.json` stores the choice. Reading it is read-only
+and does not start a worker or call the native assignment API. The check mark
+shows this choice; separate worker status explains when it is stopped. Select
+the checked **LG-XMB** choice to retry. Only an explicit choice can clear an old
+native Home assignment to `org.local.openxmb.c5`; other apps' assignments are
+preserved. An active Home replacement blocks this setting until restored.
+
+Recovery recognises both the capture worker and the exact
+`helper-startup.py home-button-worker` process. It checks process identity
+before stopping either and removes only recognised startup hooks.
+
+The bootstrap selects `/usr/bin/python3`, `/usr/bin/python`, then
+`/usr/bin/python2`. Environment, site and script-directory imports are disabled.
+Home routing and capture use the same code on both Python versions.
+The capture process loads installed system packages for its optional crop path
+only after removing its script directory from the import path. Directory operations
+stay anchored to open descriptors through `/proc/self/fd`, including on Python 2.
 
 ## Capture
 
@@ -96,6 +137,13 @@ python3 -B -m unittest discover -s tv-helper -p 'test_*.py'
 python3 -B -m unittest discover -s tv-helper/recovery -p 'test_*.py'
 npm run test:helper
 ```
+
+To check the older Home path, run `python2.7 -E -s -S -B tests/check_home_python.py`
+as root in a local Linux test environment. It uses a temporary directory under
+`/root`; it does not call TV services or open remote devices. The same check runs
+on Python 3. `tests/check_capture_python.py` checks capture, setup and recovery
+in the same local environment. Physical Home, pointer and capture behaviour
+still need a TV test.
 
 Run from the repository root. Ownership tests need an isolated Linux root
 environment and otherwise skip. Test packaged startup, reboot, capture and

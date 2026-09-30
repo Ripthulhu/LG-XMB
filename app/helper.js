@@ -4,9 +4,7 @@
   'use strict';
   var URI = 'luna://org.webosbrew.hbchannel.service/exec';
   var COMMAND =
-    'if [ -x /usr/bin/python3 ]; then /usr/bin/python3 -I -B ' +
-    '/media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-startup.py ensure; ' +
-    'else printf \'%s\\n\' \'{"returnValue":false,"errorCode":"python_missing"}\'; fi';
+    '/bin/sh /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-startup.py ensure';
   var pending = null,
     confirmed = null,
     failure = null,
@@ -16,8 +14,8 @@
       'Homebrew helper execution is unavailable. Check Homebrew Channel, then retry setup.',
     ROOT_REQUIRED:
       'Homebrew ran the helper without root privileges. Check its root status, then retry setup.',
-    PYTHON_MISSING: 'The TV has no usable Python 3 interpreter for the helper.',
-    PYTHON_TOO_OLD: 'The helper needs Python 3.7 or newer on the TV.',
+    PYTHON_MISSING: 'The TV has no usable Python interpreter for the helper.',
+    PYTHON_TOO_OLD: 'Cached input previews need Python 2.7 or newer on the TV.',
     BUNDLE_INCOMPLETE: 'The installed helper is incomplete. Reinstall the lg-xmb IPK.',
     BUNDLE_MISMATCH: 'The installed app and helper do not match. Reinstall the lg-xmb IPK.',
     HELPER_PERMISSIONS:

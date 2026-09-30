@@ -255,7 +255,8 @@ class HomeSoundLinks(unittest.TestCase):
         state = self.root / 'state'; state.mkdir(); logs = self.root / 'logs'; logs.mkdir()
         order = []
         recovery = SimpleNamespace(stop=lambda **kw: order.append('stop'),
-            find_helpers=lambda: [(1, 2, 'known')], helper_argument=lambda args: 'known', HELPER='known')
+            find_helpers=lambda: [(1, 2, 'known')], helper_argument=lambda args: 'known',
+            HELPER='known', BOOTSTRAP='home-button-worker')
         alias_setup = startup.prepare_user_sounds
         def sounds():
             order.append('sounds'); return alias_setup()

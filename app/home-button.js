@@ -8,13 +8,21 @@
   var revision = null;
   var messages = {
     root_required: 'Home button setup needs root access in Homebrew Channel.',
-    python_missing: 'Home button setup needs Python 3 on the TV.',
-    python_too_old: 'Home button setup needs Python 3.7 or newer.',
+    python_missing: 'Home button setup needs Python on the TV.',
+    python_too_old: 'Home button setup needs Python 2.7 or newer.',
     helper_permissions_required: 'The installed helper needs repair. Reinstall LG-XMB.',
     home_overlay_active: 'LG-XMB replaces LG Home. Restore LG Home to change this button.',
     home_mapping_changed: 'The Home button setting changed. Check it again.',
     home_mapping_not_confirmed: 'The change was not confirmed. Check the Home button setting.',
     home_button_busy: 'Home button setup is busy. Check it again shortly.',
+    home_button_unavailable: 'Home button setup is unavailable on this TV.',
+    remote_missing: 'The TV remote was not found.',
+    remote_busy: 'Another app is using the TV remote.',
+    remote_disconnected: 'The TV remote disconnected.',
+    remote_launch_failed: 'The Home button could not open LG-XMB.',
+    remote_start_failed: 'The Home button could not start.',
+    native_unavailable: 'Could not clear the previous Home button assignment. Try again.',
+    native_timeout: 'Clearing the previous Home button assignment timed out. Try again.',
     cancelled: 'Home button check cancelled.',
     timeout: 'The Home button setting was not confirmed. Check it again.',
     unavailable: 'Home button setup is unavailable. Check Homebrew Channel and root access.'
@@ -71,6 +79,15 @@
       value.returnValue !== true ||
       value.available !== true ||
       ['stock', 'xmb', 'other'].indexOf(value.mode) < 0 ||
+      (value.running !== undefined && typeof value.running !== 'boolean') ||
+      (value.reason !== undefined &&
+        [
+          'remote_missing',
+          'remote_busy',
+          'remote_disconnected',
+          'remote_launch_failed',
+          'remote_start_failed'
+        ].indexOf(value.reason) < 0) ||
       typeof value.revision !== 'string' ||
       !/^[0-9a-f]{64}$/.test(value.revision)
     )
@@ -121,7 +138,13 @@
           return;
         }
         revision = value.revision;
-        resolve({ mode: value.mode, available: true });
+        resolve({
+          mode: value.mode,
+          available: true,
+          running: value.running,
+          reason: value.reason,
+          message: messages[value.reason] || ''
+        });
       }
       cancel = function () {
         finish(problem('cancelled'));
@@ -144,12 +167,7 @@
         bridge.call(
           URI,
           JSON.stringify({
-            command:
-              'if [ -x /usr/bin/python3 ]; then /usr/bin/python3 -I -B ' +
-              ENTRY +
-              ' home-button ' +
-              args +
-              '; else printf \'%s\\n\' \'{"returnValue":false,"errorCode":"python_missing"}\'; fi'
+            command: '/bin/sh ' + ENTRY + ' home-button ' + args
           })
         );
       } catch (ignore) {

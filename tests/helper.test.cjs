@@ -21,7 +21,7 @@ test('clean-install setup uses one fixed app-owned command and shares concurrent
   const h=setup(),first=h.helper.ensure(),second=h.helper.ensure();
   assert.equal(first,second);assert.equal(h.calls.length,1);
   assert.equal(h.calls[0].uri,'luna://org.webosbrew.hbchannel.service/exec');
-  assert.match(h.calls[0].command,/python3 -I -B \/media\/developer\/apps\/usr\/palm\/applications\/org\.local\.openxmb\.c5\/helper-startup\.py ensure/);
+  assert.equal(h.calls[0].command,'/bin/sh /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-startup.py ensure');
   assert.doesNotMatch(h.calls[0].command,/\/var\/lib\/openxmb|curl|wget|remote-set|setDefaultApp/);
   h.reply(0,ready);await first;assert.equal(h.helper.isReady(),true);
   await h.helper.ensure();assert.equal(h.calls.length,1);assert.equal(h.calls[0].bridge.cancelled,true);assert.equal(h.timers.size,0);

@@ -4,7 +4,8 @@
 (function () {
   'use strict';
   var probe = document.createElement('div');
-  probe.style.cssText = 'position:absolute;visibility:hidden;display:flex;flex-direction:column;row-gap:1px;';
+  probe.style.cssText =
+    'position:absolute;visibility:hidden;display:flex;flex-direction:column;row-gap:1px;';
   for (var i = 0; i < 2; i++) {
     var child = document.createElement('div');
     child.style.cssText = 'height:1px;flex:none;';

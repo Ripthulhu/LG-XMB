@@ -47,7 +47,7 @@
           title: 'Date & time',
           icon: 'clock',
           type: 'SETTING',
-          description: 'Set the TV date and time.',
+          description: 'Choose clock formats or set the TV date and time.',
           action: 'datetime'
         },
         {

@@ -31,7 +31,7 @@ function fixture(tv = true, environment = {}) {
 test('opening Remote reads one fixed command without running capture setup', async () => {
   const h = fixture(), read = h.api.get();
   assert.equal(h.calls.length, 1);
-  assert.match(h.calls[0].command, /helper-startup\.py home-button get;/);
+  assert.equal(h.calls[0].command, '/bin/sh /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-startup.py home-button get');
   assert.doesNotMatch(h.calls[0].command, /ensure|launch|capture|setDefaultApp/);
   h.reply(0, h.ready());
   assert.equal((await read).mode, 'stock');
@@ -45,10 +45,70 @@ test('setting requires a fresh snapshot and confirmed native reply', async () =>
   assert.equal(h.calls.length, 0);
   const read = h.api.get(); h.reply(0, h.ready()); await read;
   const write = h.api.set('xmb');
-  assert.match(h.calls[1].command, new RegExp('home-button set xmb ' + digest + ';'));
+  assert.match(h.calls[1].command, new RegExp('home-button set xmb ' + digest + '$'));
   await assert.rejects(h.api.set('stock'), {code:'home_button_busy'});
   h.reply(1, h.ready('xmb'));
   assert.equal((await write).mode, 'xmb');
+});
+
+test('Home status preserves optional runtime fields and explains only known reasons', async () => {
+  for (const [reason, message] of [
+    ['remote_missing', 'The TV remote was not found.'],
+    ['remote_busy', 'Another app is using the TV remote.'],
+    ['remote_disconnected', 'The TV remote disconnected.'],
+    ['remote_launch_failed', 'The Home button could not open LG-XMB.'],
+    ['remote_start_failed', 'The Home button could not start.']
+  ]) {
+    const h = fixture(), read = h.api.get();
+    h.reply(0, {...h.ready('xmb'), running:false, reason, message:'untrusted helper text'});
+    const state = await read;
+    assert.equal(state.mode, 'xmb');
+    assert.equal(state.available, true);
+    assert.equal(state.running, false);
+    assert.equal(state.reason, reason);
+    assert.equal(state.message, message);
+    const write = h.api.set('xmb');
+    h.reply(1, {...h.ready('xmb'), running:true});
+    const retried = await write;
+    assert.equal(retried.running, true);
+    assert.equal(retried.reason, undefined);
+    assert.equal(retried.message, '');
+  }
+  const h = fixture(), read = h.api.get(); h.reply(0, h.ready());
+  const legacy = await read;
+  assert.equal(legacy.running, undefined);
+  assert.equal(legacy.reason, undefined);
+  assert.equal(legacy.message, '');
+});
+
+test('invalid optional Home status cannot authorize another write', async () => {
+  for (const patch of [
+    {running:'false'}, {running:0}, {running:null},
+    {reason:'unknown'}, {reason:''}, {reason:null}, {reason:42}, {reason:'root_required'}
+  ]) {
+    const h = fixture(), read = h.api.get();
+    h.reply(0, {...h.ready('xmb'), ...patch});
+    await assert.rejects(read, {code:'unavailable'});
+    await assert.rejects(h.api.set('xmb'), {code:'home_mapping_changed'});
+    assert.equal(h.calls.length, 1);
+  }
+});
+
+test('Home interception and legacy assignment errors have specific explanations', async () => {
+  for (const [code, message] of [
+    ['remote_missing', /remote was not found/],
+    ['remote_busy', /Another app is using/],
+    ['remote_disconnected', /remote disconnected/],
+    ['remote_launch_failed', /could not open LG-XMB/],
+    ['remote_start_failed', /could not start/],
+    ['home_button_unavailable', /unavailable on this TV/],
+    ['native_unavailable', /clear the previous Home button assignment/],
+    ['native_timeout', /previous Home button assignment timed out/]
+  ]) {
+    const h = fixture(), read = h.api.get();
+    h.reply(0, {returnValue:false, errorCode:code}, {returnValue:false});
+    await assert.rejects(read, error => error.code === code && message.test(error.message));
+  }
 });
 
 test('arbitrary targets and shell text cannot reach the command', async () => {

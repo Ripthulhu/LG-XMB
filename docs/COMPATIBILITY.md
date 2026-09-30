@@ -2,11 +2,13 @@
 
 The interface targets **webOS 22–26**, with Chromium 87 as its browser baseline.
 The hardware-tested target is the **LG C5 (OLED42C54LA), webOS 25 / 10.3.1**.
-Native features have only been tested on that TV.
+Native hardware tests have been on that TV. The standalone Home-button listener
+has passed physical Home, arrow and wheel tests on the C5, plus restoration
+after reboot while the TV stayed on Recent Input. The C4 still needs testing.
 
 The **safer, recommended setup** is a normal webOS app alongside stock LG Home.
-On supported rooted TVs, **Settings → Remote → Home button** can assign Home
-to LG-XMB with elevated Homebrew Channel, Python 3.7+ and a working native API.
+On rooted TVs, **Settings → Remote → Home button** can route Home to LG-XMB
+with elevated Homebrew Channel, Python 2.7 or newer and compatible Linux input devices.
 
 Choose by the installed platform, which can change through TV updates, rather
 than the model's purchase year. LG publishes the
@@ -74,9 +76,9 @@ Native-service unit tests use synthetic replies; neither replaces TV testing.
 | Menu and desktop preview | Browser support for the app's JavaScript and CSS |
 | Native app launching | The packaged app must be allowed to call the TV services |
 | Installed apps and input discovery | Standalone reads through elevated Homebrew Channel; Home replacements use native access |
-| Home button assignment | Root, elevated Homebrew Channel, Python 3.7+ and native default-app API; other models need testing |
+| Home button routing | Root, elevated Homebrew Channel, Python 2.7+ and matching Linux remote devices; requires physical testing on each model |
 | Return to last app or input | Access to `com.webos.surfacemanager/getRecentsAppList`; verified under the stock Home identity on the C5; standalone permission is not guaranteed |
-| Cached HDMI pictures | Rooted Homebrew environment, Python and compatible capture behaviour |
+| Cached HDMI pictures | Rooted Homebrew environment, Python 2.7+ and compatible capture behaviour |
 | Live HDMI preview | A working TV media pipeline; starting it can change HDR mode |
 | Home replacement | Optional; only tested on the LG C5, webOS 25 / 10.3.1. See [Home setup](HOME-TAKEOVER.md) |
 | App deletion and clock changes | Native service permission under the app's actual identity |
@@ -87,7 +89,7 @@ The capture worker has C5-specific geometry: a 3840 × 2160 panel and a
 a different model. OpenCV and NumPy are needed for its live-preview crop path,
 not for ordinary full-input PNG capture.
 
-The helper needs Linux, Python 3.7 or newer at `/usr/bin/python3`, root access,
+The capture helper needs Linux, Python 2.7 or newer, root access,
 Homebrew Channel's elevated `exec` service, and the expected app installation
 paths. It uses private capture, video, power and foreground-app APIs. Unexpected
 reply shapes skip capture. Audio recovery under the Home identity uses private media and
@@ -102,11 +104,34 @@ does not grant the private app-list, input-label, capture, clock-write, removal,
 recent-app or audio-routing methods. Test those from the installed app under
 its actual identity; a successful root-shell call is not equivalent.
 
-Normal helper startup does not assign Home or manage background services.
-The separate **Remote → Home button** action uses the native default-app API,
-checks the result and preserves the Power On Screen settings. It does not
-modify startup hooks or mount files over LG Home. The control stays unavailable
-if a Home replacement is active or the TV cannot support the request.
+### Home-button routing
+
+The Home-only Linux input listener follows
+[Magic Mapper's device routing](https://github.com/andrewfraley/magic_mapper/blob/9e4161fecdcf602d3f6c5863d848ce2959b6e2f5/magic_mapper.py).
+It requires `LGE M-RCU - Builtin [0]` for input. Output prefers
+`LGE M-RCU - Builtin [1]` on webOS 10 and newer, then `[2]`, then another
+numbered Builtin device. Through webOS 9 it tries `[2]` first. It discovers event
+paths by name and rejects output aliases of the input device.
+Missing devices or another app's exclusive grab are reported; competing apps
+are not stopped.
+
+Both workers run with Python 2.7 or Python 3. Startup checks the fixed paths
+`/usr/bin/python3`, `/usr/bin/python`, then `/usr/bin/python2`. Home routing does
+not depend on capture support; the saved choice is restored even if capture fails.
+
+An enabled listener consumes Home presses and forwards other events. A Home
+hold opens LG-XMB once and does not retain LG's native long-Home action. The
+saved choice is restored by the existing `60-lg-xmb` bootstrap without opening
+LG-XMB at boot or changing Power On Screen. Normal startup never enables it
+without a saved choice. The setting is unavailable while a Home replacement
+is active.
+
+This route does not depend on the native default-app assignment for routing.
+An explicit Home choice can clear a previous native assignment to this exact
+LG-XMB app, while preserving other apps' assignments. The C5 standalone test
+covered Home, arrows, the wheel and listener startup after reboot. Held Home,
+Back, pointer, standby and disabling the listener still need physical checks.
+Test the full set on other models before claiming support.
 
 Home replacement is a separate root setup tested only on the C5 with
 webOS 25 / 10.3.1. Other TVs need manual investigation of stock Home paths and

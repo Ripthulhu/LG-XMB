@@ -28,6 +28,7 @@ async function load(p){
  await p.addScriptTag({content:fs.readFileSync(path.join(base,'app/app.js'),'utf8')});
  await p.waitForFunction(()=>window.C5App);
  await p.evaluate(()=>{catalogHarness.apps({preview:false,apps:[{id:'org.test.one',title:'Test app'}]});catalogHarness.labels({preview:false,inputs:[]});});
+ await p.waitForFunction(()=>C5Catalog.some(c=>c.items.some(i=>i.id==='org.test.one')));
 }
 async function navigate(p,category,id){
  const indices=await p.evaluate(category=>[C5Catalog.findIndex(c=>c.id===C5App.getState().category),C5Catalog.findIndex(c=>c.id===category)],category);
@@ -35,6 +36,19 @@ async function navigate(p,category,id){
  const rows=await p.evaluate(id=>{const c=C5Catalog.find(c=>c.id===C5App.getState().category);return[c.items.findIndex(i=>i.id===C5App.getState().item),c.items.findIndex(i=>i.id===id)];},id);
  assert.ok(rows[1]>=0);for(let n=0;n<Math.abs(rows[1]-rows[0]);n++)await p.keyboard.press(rows[1]>rows[0]?'ArrowDown':'ArrowUp');
  assert.equal((await state(p)).item,id);
+}
+async function openEditor(p){
+ if(!(await state(p)).modal)await p.keyboard.press('Enter');
+ assert.equal((await state(p)).modal,'datetime');
+ await p.locator('#openDateTimeEditor').click();
+ assert.equal((await state(p)).modal,'datetime-edit');
+}
+async function closeEditor(p){
+ await p.keyboard.press('Escape');
+ assert.equal((await state(p)).modal,'datetime');
+ assert.equal(await p.evaluate(()=>document.activeElement.id),'openDateTimeEditor');
+ await p.keyboard.press('Escape');
+ assert.equal((await state(p)).modal,null);
 }
 (async()=>{
  fs.mkdirSync(out,{recursive:true});
@@ -44,8 +58,22 @@ async function navigate(p,category,id){
  const context=await browser.newContext({viewport:{width,height:width*9/16},bypassCSP:true});const p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));
  try{
   await load(p);await navigate(p,'settings','datetime');await p.keyboard.press('Enter');
+  assert.equal((await state(p)).modal,'datetime');assert.equal(await p.evaluate(()=>document.activeElement.dataset.choice),'24h');
+  assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getSystemTime')).length),0);
+  await p.getByRole('group',{name:'Time format',exact:true}).getByRole('button',{name:'12-hour',exact:true}).click();
+  await p.getByRole('group',{name:'Date format',exact:true}).getByRole('button',{name:'Month first',exact:true}).click();
+  assert.equal((await state(p)).preferences.timeFormat,'12h');assert.equal((await state(p)).preferences.dateFormat,'mdy');
+  assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>/\/(get|set)SystemTime$/.test(c.uri)).length),0);
+  const formats=await p.getByRole('group',{name:'Date format',exact:true}).locator('button').evaluateAll(buttons=>buttons.map(button=>{
+   const box=button.getBoundingClientRect(),label=button.firstElementChild.getBoundingClientRect(),mark=button.lastElementChild.getBoundingClientRect();
+   return {label:button.firstElementChild.textContent,inside:label.left>=box.left&&label.right<=box.right,clearOfMark:label.right<=mark.left,singleLine:label.height<=parseFloat(getComputedStyle(button.firstElementChild).lineHeight)+.5};
+  }));
+  for(const format of formats){assert.equal(format.inside,true,format.label+' fits option');assert.equal(format.clearOfMark,true,format.label+' clears checkmark');assert.equal(format.singleLine,true,format.label+' stays on one line');}
+  await p.screenshot({path:path.join(out,'date-time-formats-'+width+'.png')});
+  checks.push(width+': display formats work without native time access');
+  await openEditor(p);
   await p.waitForFunction(()=>document.querySelector('#applyDateTime').getAttribute('aria-disabled')==='false');
-  assert.equal((await state(p)).modal,'datetime');assert.equal(await p.locator('[data-field=hour]').textContent(),'14');assert.equal(await p.locator('[data-field=minute]').textContent(),'42');assert.match(await p.locator('.date-time-zone').textContent(),/Europe\/Amsterdam/);
+  assert.equal((await state(p)).modal,'datetime-edit');assert.equal(await p.locator('[data-field=hour]').textContent(),'14');assert.equal(await p.locator('[data-field=minute]').textContent(),'42');assert.match(await p.locator('.date-time-zone').textContent(),/Europe\/Amsterdam/);
   assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/setSystemTime')).length),0);checks.push(width+': open reads TV timezone and time without writing');
   assert.equal(await p.evaluate(()=>document.activeElement.dataset.field),'day');
   await p.keyboard.press('ArrowUp');assert.equal(await p.locator('[data-field=day]').textContent(),'19');
@@ -58,17 +86,17 @@ async function navigate(p,category,id){
   assert.equal(await p.evaluate(()=>timeTest.calls.filter(c=>c.uri.endsWith('/getSystemTime')).length),2);checks.push(width+': remote editing, digit entry, explicit Apply, exact UTC seconds and read-back');
   await p.screenshot({path:path.join(out,'date-time-'+width+'.png')});
   await p.evaluate(()=>{timeTest.delayWrites=true;});await p.locator('#applyDateTime').evaluate(b=>{b.click();b.click();});
-  assert.equal(await p.evaluate(()=>timeTest.writes.length),1);await p.keyboard.press('Escape');assert.equal((await state(p)).modal,null);
+  assert.equal(await p.evaluate(()=>timeTest.writes.length),1);await closeEditor(p);
   await p.evaluate(()=>timeTest.writes.shift()());await p.waitForTimeout(20);assert.equal((await state(p)).modal,null);checks.push(width+': pending write is single-shot; closing does not undo it or reopen panel');
-  await p.evaluate(()=>{timeTest.delayWrites=false;timeTest.deny=true;});await p.keyboard.press('Enter');await p.waitForFunction(()=>document.querySelector('#applyDateTime').getAttribute('aria-disabled')==='false');await p.locator('#applyDateTime').click();await p.waitForFunction(()=>document.querySelector('.date-time-status').textContent.includes('Permission denied'));assert.equal(await p.locator('#applyDateTime').getAttribute('aria-disabled'),'false');checks.push(width+': native denial is shown without privileged fallback');
-  await p.keyboard.press('Escape');await p.evaluate(()=>{timeTest.delayReads=true;});await p.keyboard.press('Enter');await p.keyboard.press('Escape');await p.evaluate(()=>timeTest.reads.shift()());await p.waitForTimeout(20);assert.equal((await state(p)).modal,null);checks.push(width+': cancelled time read cannot update a closed panel');
-  await p.evaluate(()=>{timeTest.delayReads=false;});await p.keyboard.press('Enter');await p.evaluate(()=>window.dispatchEvent(new Event('pagehide')));assert.equal((await state(p)).modal,null);await p.evaluate(()=>window.dispatchEvent(new Event('pageshow')));checks.push(width+': standby/pagehide cancels editor and does not send a write');
-  await p.evaluate(()=>{timeTest.delayReads=true;});await p.keyboard.press('Enter');
+  await p.evaluate(()=>{timeTest.delayWrites=false;timeTest.deny=true;});await openEditor(p);await p.waitForFunction(()=>document.querySelector('#applyDateTime').getAttribute('aria-disabled')==='false');await p.locator('#applyDateTime').click();await p.waitForFunction(()=>document.querySelector('.date-time-status').textContent.includes('Permission denied'));assert.equal(await p.locator('#applyDateTime').getAttribute('aria-disabled'),'false');checks.push(width+': native denial is shown without privileged fallback');
+  await closeEditor(p);await p.evaluate(()=>{timeTest.delayReads=true;});await openEditor(p);await closeEditor(p);await p.evaluate(()=>timeTest.reads.shift()());await p.waitForTimeout(20);assert.equal((await state(p)).modal,null);checks.push(width+': cancelled time read cannot update a closed panel');
+  await p.evaluate(()=>{timeTest.delayReads=false;});await openEditor(p);await p.evaluate(()=>window.dispatchEvent(new Event('pagehide')));assert.equal((await state(p)).modal,null);await p.evaluate(()=>window.dispatchEvent(new Event('pageshow')));checks.push(width+': standby/pagehide cancels editor and does not send a write');
+  await p.evaluate(()=>{timeTest.delayReads=true;});await openEditor(p);
   const timeBounds=await p.locator('.date-time-fields').boundingBox();
   await p.evaluate(()=>timeTest.reads.shift()());
   assert.deepEqual(await p.locator('.date-time-fields').boundingBox(),timeBounds);
   assert.equal(await p.locator('.date-time-status').textContent(),'');
-  await p.keyboard.press('Escape');await p.evaluate(()=>{timeTest.delayReads=false;});
+  await closeEditor(p);await p.evaluate(()=>{timeTest.delayReads=false;});
   checks.push(width+': delayed clock data keeps field layout stable and footer quiet');
   await navigate(p,'apps','org.test.one');const launches=await p.evaluate(()=>catalogHarness.launches.length);
   await p.keyboard.down('Enter');await p.waitForTimeout(180);

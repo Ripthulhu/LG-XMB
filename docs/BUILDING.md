@@ -4,8 +4,8 @@ Run these commands from the repository root. Building doesn't connect to a TV.
 
 ## Requirements
 
-Use Node.js 20 or newer and Python 3.10 or newer. The TV helper has a separate
-requirement of Python 3.7 or newer on the TV.
+Use Node.js 20 or newer and Python 3.10 or newer. The helper on the TV supports
+Python 2.7 and Python 3.
 
 `package-lock.json` pins the Node dependencies. The packager uses
 `@webos-tools/cli` 3.2.6; browser tests use Playwright. You don't need a native

@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Keep four recent HDMI thumbnails using the TV's normal protected capture API."""
+import sys
+if __name__ == "__main__" and not getattr(sys.flags, "isolated", 0):
+    del sys.path[0]
+import site
+if __name__ == "__main__" and sys.flags.no_site:
+    # The bootstrap disables user site imports. Enable trusted global site
+    # packages here for the TV's optional OpenCV/NumPy crop dependencies.
+    site.main()
 import argparse
+import errno
 import hashlib
 import json
+import math
 import os
 import re
+import select
 import signal
 import stat
 import struct
@@ -13,10 +24,10 @@ import subprocess
 import threading
 import time
 import zlib
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from contextlib import contextmanager
-from dataclasses import dataclass
-from pathlib import Path
+
+STRING_TYPES = (str, type(u""))
 
 HOME_ID = "org.local.openxmb.c5"
 STOCK_HOME_ID = "com.webos.app.home"
@@ -54,10 +65,31 @@ def require(value, code):
         raise SafeError(code)
 
 
+def at(directory, name):
+    require(name not in ("", ".", "..") and "/" not in name and "\0" not in name,
+            "invalid_filename")
+    return "/proc/self/fd/%d/%s" % (directory, name)
+
+
+def monotonic():
+    if hasattr(time, "monotonic"):
+        return time.monotonic()
+    with open("/proc/uptime", "rb") as stream:
+        raw = stream.read(129)
+    require(len(raw) <= 128, "invalid_monotonic_clock")
+    try:
+        value = float(raw.split()[0])
+    except (ValueError, IndexError):
+        raise SafeError("invalid_monotonic_clock")
+    require(not math.isnan(value) and not math.isinf(value) and value >= 0,
+            "invalid_monotonic_clock")
+    return value
+
+
 def checked_app():
     """Repair only this pinned app's metadata after LG resets modes at boot."""
     import fcntl
-    parts = Path(APPINFO).parts
+    parts = ["/"] + APPINFO.strip("/").split("/")
     directories = []; manifest = None
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     def file_identity(meta):
@@ -67,32 +99,34 @@ def checked_app():
         os.lseek(manifest, 0, os.SEEK_SET)
         raw = os.read(manifest, 65537)
         require(len(raw) <= 65536 and hashlib.sha256(raw).hexdigest() == PIN_APPINFO_SHA256, 'untrusted_app_manifest')
-        value = json.loads(raw)
+        value = json.loads(raw.decode("utf-8"))
         require(isinstance(value, dict) and value.get('id') == HOME_ID, 'invalid_app_manifest')
     def verify_bindings():
         try:
             for index, name in enumerate(parts[1:-1]):
-                named = os.stat(name, dir_fd=directories[index], follow_symlinks=False)
+                named = os.lstat(at(directories[index], name))
                 opened = os.fstat(directories[index + 1])
                 require(stat.S_ISDIR(named.st_mode) and named.st_uid == 0
                         and (named.st_dev, named.st_ino) == (opened.st_dev, opened.st_ino), 'app_path_changed')
-            named = os.stat(parts[-1], dir_fd=directories[-1], follow_symlinks=False)
+            named = os.lstat(at(directories[-1], parts[-1]))
             require(file_identity(named) == file_identity(os.fstat(manifest)), 'app_path_changed')
-        except OSError as error:
-            raise SafeError('app_path_changed') from error
+        except EnvironmentError:
+            raise SafeError('app_path_changed')
     try:
         directories.append(os.open('/', flags))
         for name in parts[1:-1]:
-            fd = os.open(name, flags, dir_fd=directories[-1]); directories.append(fd)
+            fd = os.open(at(directories[-1], name), flags); directories.append(fd)
             meta = os.fstat(fd)
             require(stat.S_ISDIR(meta.st_mode) and meta.st_uid == 0, 'unsafe_app_directory')
-        manifest = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directories[-1])
+        manifest = os.open(at(directories[-1], parts[-1]), os.O_RDONLY | os.O_NOFOLLOW)
         file_identity(os.fstat(manifest))
-        deadline = time.monotonic() + .5
+        deadline = monotonic() + .5
         while True:
             try: fcntl.flock(directories[-1], fcntl.LOCK_EX | fcntl.LOCK_NB); break
-            except BlockingIOError:
-                require(time.monotonic() < deadline, 'app_metadata_busy'); time.sleep(.01)
+            except EnvironmentError as error:
+                if error.errno not in (errno.EAGAIN, errno.EACCES):
+                    raise
+                require(monotonic() < deadline, 'app_metadata_busy'); time.sleep(.01)
         pinned_bytes(); verify_bindings()
         if stat.S_IMODE(os.fstat(directories[-1]).st_mode) != 0o755: os.fchmod(directories[-1], 0o755)
         if stat.S_IMODE(os.fstat(manifest).st_mode) != 0o644: os.fchmod(manifest, 0o644)
@@ -102,11 +136,11 @@ def checked_app():
         require(stat.S_IMODE(os.fstat(directories[-1]).st_mode) == 0o755
                 and stat.S_IMODE(os.fstat(manifest).st_mode) == 0o644, 'app_permissions_not_confirmed')
         return True
-    except FileNotFoundError:
+    except EnvironmentError as error:
         # A missing initial path may be an application mount that is not ready.
-        raise
-    except OSError as error:
-        raise SafeError('unsafe_app_path') from error
+        if error.errno == errno.ENOENT:
+            raise
+        raise SafeError('unsafe_app_path')
     finally:
         if manifest is not None: os.close(manifest)
         for fd in reversed(directories): os.close(fd)
@@ -132,18 +166,20 @@ def inode_identity(metadata):
 
 def content_identity(metadata):
     return (metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_uid,
-            metadata.st_nlink, metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+            metadata.st_nlink, metadata.st_size,
+            metadata.st_mtime_ns if hasattr(metadata, "st_mtime_ns") else metadata.st_mtime,
+            metadata.st_ctime_ns if hasattr(metadata, "st_ctime_ns") else metadata.st_ctime)
 
 
 @contextmanager
 def preview_directory(path, app_path=False):
     """Hold and recheck every directory binding; never repair a capture source."""
-    parts = Path(path).parts
+    parts = ["/"] + path.strip("/").split("/")
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     descriptors = [os.open(parts[0], flags)]
     try:
         for part in parts[1:]:
-            fd = os.open(part, flags, dir_fd=descriptors[-1])
+            fd = os.open(at(descriptors[-1], part), flags)
             descriptors.append(fd)
             info = os.fstat(fd)
             # LG's shared installation parents may be writable. Our actual app
@@ -155,7 +191,7 @@ def preview_directory(path, app_path=False):
         check_directory(os.fstat(descriptors[-1]))
         yield descriptors[-1]
         for index, part in enumerate(parts[1:]):
-            named = os.stat(part, dir_fd=descriptors[index], follow_symlinks=False)
+            named = os.lstat(at(descriptors[index], part))
             opened = os.fstat(descriptors[index + 1])
             require(stat.S_ISDIR(named.st_mode) and
                     inode_identity(named) == inode_identity(opened), "home_preview_path_changed")
@@ -166,7 +202,7 @@ def preview_directory(path, app_path=False):
 
 def read_preview_identity(directory, name, limit=131072, developer_reference=False):
     """Return immutable bytes and a token that also detects file replacement."""
-    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    fd = os.open(at(directory, name), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(fd)
         if developer_reference:
@@ -181,7 +217,13 @@ def read_preview_identity(directory, name, limit=131072, developer_reference=Fal
         with os.fdopen(os.dup(fd), "rb") as stream:
             raw = stream.read(limit + 1)
         require(len(raw) <= limit, "home_preview_identity_oversized")
-        named = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        if not hasattr(before, "st_mtime_ns"):
+            # Python 2 has coarser timestamps. Confirm stable bytes as well;
+            # the hash below also detects edits across capture/crop rechecks.
+            os.lseek(fd, 0, os.SEEK_SET)
+            with os.fdopen(os.dup(fd), "rb") as stream:
+                require(stream.read(limit + 1) == raw, "home_preview_identity_changed")
+        named = os.lstat(at(directory, name))
         require(content_identity(before) == content_identity(os.fstat(fd)) == content_identity(named),
                 "home_preview_identity_changed")
         return raw, (content_identity(before), hashlib.sha256(raw).hexdigest())
@@ -207,7 +249,7 @@ def checked_home_preview():
                     raw_home, home_token = read_preview_identity(payload, "appinfo.json", 65536)
                     require(hashlib.sha256(original).hexdigest() == PIN_APPINFO_SHA256,
                             "untrusted_app_manifest")
-                    app, home = json.loads(original), json.loads(raw_home)
+                    app, home = json.loads(original.decode("utf-8")), json.loads(raw_home.decode("utf-8"))
                     require(isinstance(app, dict) and isinstance(home, dict) and
                             app.get("id") == HOME_ID and home.get("id") == STOCK_HOME_ID and
                             app.get("type") == home.get("type") == "web" and
@@ -222,8 +264,8 @@ def checked_home_preview():
                         tokens.extend((expected_token, actual_token))
                     result = directories, tuple(tokens)
         return result
-    except (OSError, ValueError, TypeError) as error:
-        raise SafeError("home_preview_unavailable") from error
+    except (EnvironmentError, ValueError, TypeError):
+        raise SafeError("home_preview_unavailable")
 
 
 def validate_png(data, width=WIDTH, height=HEIGHT):
@@ -287,7 +329,7 @@ def crop_home_png(data, source, cv=None, np=None):
             import cv2 as cv
         if np is None:
             import numpy as np
-    except (ImportError, OSError):
+    except (ImportError, EnvironmentError):
         raise SafeError("home_crop_unavailable")
     try:
         decoded = cv.imdecode(np.frombuffer(data, dtype=np.uint8), cv.IMREAD_COLOR)
@@ -300,7 +342,7 @@ def crop_home_png(data, source, cv=None, np=None):
         ok, encoded = cv.imencode(".png", resized, [cv.IMWRITE_PNG_COMPRESSION, 3])
         if not ok:
             raise SafeError("home_crop_failed")
-        result = encoded.tobytes()
+        result = (encoded.tobytes if hasattr(encoded, "tobytes") else encoded.tostring)()
         validate_png(result)
         return result
     except SafeError:
@@ -323,8 +365,9 @@ class Cache:
         check_directory(os.lstat("/tmp"), allow_sticky=True)
         try:
             os.mkdir(path, 0o755)
-        except FileExistsError:
-            pass
+        except EnvironmentError as error:
+            if error.errno != errno.EEXIST:
+                raise
         before = os.lstat(path)
         check_directory(before)
         if stat.S_IMODE(before.st_mode) != 0o755:
@@ -337,16 +380,17 @@ class Cache:
             raise SafeError("directory_changed")
         self.lock_fd = None
         try:
-            for name in os.listdir(self.fd):
+            for name in os.listdir("/proc/self/fd/%d" % self.fd):
                 if name not in self.allowed:
                     raise SafeError("unexpected_cache_entry")
-                check_file(os.stat(name, dir_fd=self.fd, follow_symlinks=False))
-            self.lock_fd = os.open(".lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
-                                   0o600, dir_fd=self.fd)
+                check_file(os.lstat(at(self.fd, name)))
+            self.lock_fd = os.open(at(self.fd, ".lock"), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
             check_file(os.fstat(self.lock_fd))
             try:
                 fcntl.flock(self.lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
+            except EnvironmentError as error:
+                if error.errno not in (errno.EAGAIN, errno.EACCES):
+                    raise
                 raise SafeError("already_running")
             self.remove_temp()
             self._remove(".status.tmp")
@@ -366,31 +410,34 @@ class Cache:
         if name not in self.allowed:
             raise SafeError("invalid_filename")
         try:
-            check_file(os.stat(name, dir_fd=self.fd, follow_symlinks=False))
-        except FileNotFoundError:
+            check_file(os.lstat(at(self.fd, name)))
+        except EnvironmentError as error:
+            if error.errno != errno.ENOENT:
+                raise
             if not missing_ok:
                 raise SafeError("missing_file")
 
     def _remove(self, name):
         self._check(name)
         try:
-            os.unlink(name, dir_fd=self.fd)
-        except FileNotFoundError:
-            pass
+            os.unlink(at(self.fd, name))
+        except EnvironmentError as error:
+            if error.errno != errno.ENOENT:
+                raise
 
     def remove_temp(self):
         self._remove(".capture.png")
 
     def prepare(self):
         self.remove_temp()
-        fd = os.open(".capture.png", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                     0o600, dir_fd=self.fd)
+        fd = os.open(at(self.fd, ".capture.png"),
+                     os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         os.close(fd)
         return self.path + "/.capture.png"
 
     def crop_home(self, source):
         self._check(".capture.png", missing_ok=False)
-        fd = os.open(".capture.png", os.O_RDWR | os.O_NOFOLLOW, dir_fd=self.fd)
+        fd = os.open(at(self.fd, ".capture.png"), os.O_RDWR | os.O_NOFOLLOW)
         try:
             metadata = os.fstat(fd)
             check_file(metadata)
@@ -413,7 +460,7 @@ class Cache:
         if type(port) is not int or port not in range(1, 5):
             raise SafeError("invalid_port")
         self._check(".capture.png", missing_ok=False)
-        fd = os.open(".capture.png", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=self.fd)
+        fd = os.open(at(self.fd, ".capture.png"), os.O_RDONLY | os.O_NOFOLLOW)
         try:
             metadata = os.fstat(fd)
             check_file(metadata)
@@ -426,19 +473,19 @@ class Cache:
             os.close(fd)
         destination = "hdmi%d.png" % port
         self._check(destination)
-        os.replace(".capture.png", destination, src_dir_fd=self.fd, dst_dir_fd=self.fd)
+        os.rename(at(self.fd, ".capture.png"), at(self.fd, destination))
 
     def status(self, value):
         data = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("ascii")
         if len(data) > 2048:
             raise SafeError("status_too_large")
         self._remove(".status.tmp")
-        fd = os.open(".status.tmp", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                     0o644, dir_fd=self.fd)
+        fd = os.open(at(self.fd, ".status.tmp"),
+                     os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
         self._check("status.json")
-        os.replace(".status.tmp", "status.json", src_dir_fd=self.fd, dst_dir_fd=self.fd)
+        os.rename(at(self.fd, ".status.tmp"), at(self.fd, "status.json"))
 
 
 class Luna:
@@ -448,19 +495,38 @@ class Luna:
     def __call__(self, method, payload):
         if method not in URIS:
             raise SafeError("unknown_method")
+        child = None
         try:
-            result = subprocess.run(
-                [self.executable, "-n", "1", "-w", "6000", URIS[method],
-                 json.dumps(payload, separators=(",", ":"))],
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL, timeout=8, check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
+            deadline = monotonic() + 8
+            with open(os.devnull, "r+b") as null:
+                child = subprocess.Popen(
+                    [self.executable, "-n", "1", "-w", "6000", URIS[method],
+                     json.dumps(payload, separators=(",", ":"))],
+                    stdin=null, stdout=subprocess.PIPE, stderr=null, close_fds=True)
+            raw = bytearray()
+            while True:
+                remaining = deadline - monotonic()
+                require(remaining > 0 and select.select([child.stdout], [], [], remaining)[0],
+                        "luna_timeout_or_unavailable")
+                part = os.read(child.stdout.fileno(), min(4096, 256 * 1024 + 1 - len(raw)))
+                if not part:
+                    break
+                raw.extend(part)
+                require(len(raw) <= 256 * 1024, "luna_failed")
+            while child.poll() is None:
+                require(monotonic() < deadline, "luna_timeout_or_unavailable")
+                time.sleep(.01)
+            require(child.returncode == 0, "luna_failed")
+        except (EnvironmentError, select.error):
             raise SafeError("luna_timeout_or_unavailable")
-        if result.returncode or len(result.stdout) > 256 * 1024:
-            raise SafeError("luna_failed")
+        finally:
+            if child is not None:
+                if child.poll() is None:
+                    child.kill()
+                    child.wait()
+                child.stdout.close()
         try:
-            value = json.loads(result.stdout)
+            value = json.loads(raw.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             raise SafeError("luna_invalid_reply")
         if not isinstance(value, dict) or value.get("returnValue") is not True:
@@ -474,9 +540,10 @@ def app_installed(path=APPINFO):
         check_file(metadata)
         if metadata.st_size > 65536:
             return False
-        with open(path, "r", encoding="utf-8") as stream:
-            return json.load(stream).get("id") == HOME_ID
-    except (OSError, ValueError, AttributeError, SafeError):
+        with open(path, "rb") as stream:
+            raw = stream.read(65537)
+        return len(raw) <= 65536 and json.loads(raw.decode("utf-8")).get("id") == HOME_ID
+    except (EnvironmentError, ValueError, AttributeError, SafeError):
         return False
 
 
@@ -492,21 +559,26 @@ def ensure_thumbnail_link():
     app_fd = os.open(APP_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         check_directory(os.fstat(app_fd))
-        manifest_fd = os.open("appinfo.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=app_fd)
+        manifest_fd = os.open(at(app_fd, "appinfo.json"), os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(manifest_fd, "rb") as manifest:
             metadata = os.fstat(manifest.fileno())
             check_file(metadata)
             raw = manifest.read(65537)
-            if len(raw) > 65536 or json.loads(raw).get("id") != HOME_ID:
+            if len(raw) > 65536 or json.loads(raw.decode("utf-8")).get("id") != HOME_ID:
                 raise SafeError("invalid_app_manifest")
         try:
-            metadata = os.stat("thumbnails", dir_fd=app_fd, follow_symlinks=False)
-        except FileNotFoundError:
-            os.symlink(CACHE_DIR, "thumbnails", dir_fd=app_fd)
-            metadata = os.stat("thumbnails", dir_fd=app_fd, follow_symlinks=False)
+            metadata = os.lstat(at(app_fd, "thumbnails"))
+        except EnvironmentError as error:
+            if error.errno != errno.ENOENT:
+                raise
+            os.symlink(CACHE_DIR, at(app_fd, "thumbnails"))
+            metadata = os.lstat(at(app_fd, "thumbnails"))
         if not stat.S_ISLNK(metadata.st_mode):
             raise SafeError("foreign_thumbnail_path")
-        check_thumbnail_link(metadata, os.readlink("thumbnails", dir_fd=app_fd))
+        target = os.readlink(at(app_fd, "thumbnails"))
+        check_thumbnail_link(metadata, target)
+        require(content_identity(metadata) == content_identity(os.lstat(at(app_fd, "thumbnails")))
+                and os.readlink(at(app_fd, "thumbnails")) == target, "thumbnail_path_changed")
     finally:
         os.close(app_fd)
 
@@ -516,13 +588,8 @@ def power_is_active(reply):
     return isinstance(reply, dict) and reply.get("returnValue") is True and reply.get("state") == "Active"
 
 
-@dataclass(frozen=True)
-class Source:
-    port: int
-    app_id: str
-    context: str
-    mode: tuple
-    home_identity: tuple = None
+Source = namedtuple("Source", "port app_id context mode home_identity")
+Source.__new__.__defaults__ = (None,)
 
 
 def eligible_source(power, foreground, video, allow_home=False, home_identity=None):
@@ -532,9 +599,9 @@ def eligible_source(power, foreground, video, allow_home=False, home_identity=No
             foreground.get("returnValue") is not True or video.get("returnValue") is not True):
         return None
     app_id = foreground.get("appId")
-    if not isinstance(app_id, str):
+    if not isinstance(app_id, STRING_TYPES):
         return None
-    match = re.fullmatch(r"com\.webos\.app\.hdmi([1-4])", app_id)
+    match = re.match(r"\Acom\.webos\.app\.hdmi([1-4])\Z", app_id)
     home = allow_home and (app_id == HOME_ID or
                           (app_id == STOCK_HOME_ID and home_identity is not None))
     if not match and not home:
@@ -546,12 +613,12 @@ def eligible_source(power, foreground, video, allow_home=False, home_identity=No
         return None
     value = mains[0]
     content_type = value.get("contentType")
-    content = re.fullmatch(r"hdmi([1-4])", content_type) if isinstance(content_type, str) else None
+    content = re.match(r"\Ahdmi([1-4])\Z", content_type) if isinstance(content_type, STRING_TYPES) else None
     context = value.get("context")
     if (not content or (match and match.group(1) != content.group(1))
             or value.get("appId") != app_id or value.get("connected") is not True
             or value.get("connectedSource") != "HDMI" or value.get("muted") is not False
-            or not isinstance(context, str) or not context or context == "unknown"):
+            or not isinstance(context, STRING_TYPES) or not context or context == "unknown"):
         return None
     rectangle = value.get("displayOutput", {})
     info = value.get("videoInfo")
@@ -579,7 +646,7 @@ def eligible_source(power, foreground, video, allow_home=False, home_identity=No
 
 
 class Worker:
-    def __init__(self, luna, cache, installed=app_installed, clock=time.monotonic,
+    def __init__(self, luna, cache, installed=app_installed, clock=monotonic,
                  wall=time.time, stop=None, capture_method="VIDEO", allow_home=False,
                  ensure_link=ensure_thumbnail_link, app_ready=None,
                  verify_home=checked_home_preview):
@@ -604,9 +671,9 @@ class Worker:
         if not isinstance(foreground, dict):
             return None
         app_id = foreground.get("appId")
-        if not isinstance(app_id, str):
+        if not isinstance(app_id, STRING_TYPES):
             return None
-        if not (re.fullmatch(r"com\.webos\.app\.hdmi[1-4]", app_id)
+        if not (re.match(r"\Acom\.webos\.app\.hdmi[1-4]\Z", app_id)
                 or (self.allow_home and app_id in (HOME_ID, STOCK_HOME_ID))):
             return None
         home_identity = self.verify_home() if app_id == STOCK_HOME_ID else None
@@ -664,7 +731,9 @@ class Worker:
                 # Repair only the exact installed app's pinned metadata.
                 if self.app_ready() is not True:
                     raise SafeError("app_metadata_rejected")
-            except FileNotFoundError:
+            except EnvironmentError as error:
+                if error.errno != errno.ENOENT:
+                    raise
                 self.observed = None
                 if self.stop.is_set():
                     return False
@@ -710,15 +779,15 @@ class Worker:
                 self.status("waiting", source)
                 return True
             # Rate-limit attempts as well as successes, including permission refusal.
+            self.attempts.pop(key, None)
             self.attempts[key] = now
-            self.attempts.move_to_end(key)
             while len(self.attempts) > 32:
                 self.attempts.popitem(last=False)
             self.capture(source)
         except SafeError as error:
             self.observed = None
             self.status("skipped", source, str(error))
-        except (OSError, ValueError, TypeError, KeyError):
+        except (EnvironmentError, ValueError, TypeError, KeyError):
             self.observed = None
             self.status("skipped", source, "local_or_reply_error")
         return True
@@ -734,9 +803,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.iterations is not None and not 1 <= args.iterations <= 100000:
         parser.error("iterations must be between 1 and 100000")
-    import shutil
-    executable = shutil.which("luna-send")
-    if not executable:
+    executable = "/usr/bin/luna-send"
+    if not os.access(executable, os.X_OK):
         return 2
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -759,7 +827,7 @@ def main(argv=None):
         if stop.is_set():
             worker.status("stopped")
         return 0
-    except (SafeError, OSError):
+    except (SafeError, EnvironmentError):
         # No raw Luna responses, stack traces, content or unbounded logs.
         return 2
     finally:

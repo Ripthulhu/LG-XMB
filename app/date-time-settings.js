@@ -21,6 +21,41 @@
     this.numberAt = 0;
     this.numberField = '';
   }
+  DateTimeSettings.prototype.openFormats = function (ui) {
+    var self = this;
+    [
+      [
+        'Time format',
+        'timeFormat',
+        [
+          ['24h', '24-hour'],
+          ['12h', '12-hour']
+        ]
+      ],
+      [
+        'Date format',
+        'dateFormat',
+        [
+          ['default', 'Style default'],
+          ['dmy', 'Day first'],
+          ['mdy', 'Month first'],
+          ['ymd', 'Year first']
+        ]
+      ]
+    ].forEach(function (setting) {
+      var group = ui.choiceGroup(
+        setting[0],
+        setting[2],
+        self.options.preferences[setting[1]],
+        function (value) {
+          self.options.preferences[setting[1]] = value;
+          self.options.onFormatChange();
+        }
+      );
+      if (setting[1] === 'dateFormat') group.classList.add('date-format-options');
+    });
+    ui.row('Set TV date & time', null, false, this.options.openEditor).id = 'openDateTimeEditor';
+  };
   DateTimeSettings.prototype.open = function (parent) {
     this.close();
     this.opened = true;

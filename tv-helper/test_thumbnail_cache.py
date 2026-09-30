@@ -5,6 +5,7 @@ import os
 import stat
 import struct
 import subprocess
+import sys
 import threading
 import unittest
 import zlib
@@ -447,26 +448,44 @@ class HomeCropTests(unittest.TestCase):
 
 
 class LunaTests(unittest.TestCase):
+    def call_child(self, script, method="power"):
+        popen = subprocess.Popen
+        def spawn(command, **kwargs):
+            self.command, self.options = command, kwargs
+            self.child = popen([sys.executable, "-c", script], **kwargs)
+            return self.child
+        with patch.object(subprocess, "Popen", side_effect=spawn):
+            return tc.Luna("/usr/bin/luna-send")(method, {})
+
     def test_no_shell_fixed_uri_and_bounded_timeout(self):
-        result = SimpleNamespace(returncode=0, stdout=b'{"returnValue":true,"state":"Active"}')
-        with patch.object(subprocess, "run", return_value=result) as run:
-            tc.Luna("/usr/bin/luna-send")("power", {})
-            args, kwargs = run.call_args
-            self.assertEqual(args[0][-2], "luna://com.webos.service.tvpower/power/getPowerState")
-            self.assertEqual(kwargs["timeout"], 8)
-            self.assertNotIn("shell", kwargs)
+        result = self.call_child('print(\'{"returnValue":true,"state":"Active"}\')')
+        self.assertEqual(result["state"], "Active")
+        self.assertEqual(self.command[-2], "luna://com.webos.service.tvpower/power/getPowerState")
+        self.assertEqual(self.command[1:5], ["-n", "1", "-w", "6000"])
+        self.assertTrue(self.options["close_fds"])
+        self.assertNotIn("shell", self.options)
+        self.assertTrue(self.child.stdout.closed)
         with self.assertRaises(tc.SafeError):
             tc.Luna("luna-send")("launch", {})
 
     def test_timeout_denial_and_malformed_reply_are_normalized(self):
-        for value in (SimpleNamespace(returncode=0, stdout=b'{"returnValue":false,"errorText":"sensitive"}'),
-                      SimpleNamespace(returncode=0, stdout=b'not json')):
-            with patch.object(subprocess, "run", return_value=value), self.assertRaises(tc.SafeError) as raised:
-                tc.Luna("luna-send")("video", {})
+        for output in ('{"returnValue":false,"errorText":"sensitive"}', 'not json'):
+            with self.assertRaises(tc.SafeError) as raised:
+                self.call_child("print(%r)" % output, "video")
             self.assertNotIn("sensitive", str(raised.exception))
-        with patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired("luna", 8)):
+            self.assertTrue(self.child.stdout.closed)
+        with patch.object(tc, "monotonic", side_effect=[0, 0, 9]):
             with self.assertRaisesRegex(tc.SafeError, "luna_timeout_or_unavailable"):
-                tc.Luna("luna-send")("video", {})
+                self.call_child('import sys,time;sys.stdout.write("{}");sys.stdout.flush();time.sleep(30)')
+        self.assertIsNotNone(self.child.poll())
+        self.assertTrue(self.child.stdout.closed)
+
+    def test_oversized_or_failed_child_is_reaped_without_publishing_a_reply(self):
+        for script in ('print("x" * (256 * 1024 + 1))', 'raise SystemExit(1)'):
+            with self.assertRaisesRegex(tc.SafeError, "luna_failed"):
+                self.call_child(script)
+            self.assertIsNotNone(self.child.poll())
+            self.assertTrue(self.child.stdout.closed)
 
 
 class ModuleNameTests(unittest.TestCase):

@@ -24,9 +24,13 @@ A community user has also reported the launcher running on webOS 6; that does no
 See [Compatibility](docs/COMPATIBILITY.md) for the platform details and known limits.
 
 The **safer, recommended setup** is a normal webOS app alongside stock LG Home.
-On supported rooted TVs, **Settings → Remote → Home button** can assign Home
-to LG-XMB. This needs an elevated Homebrew Channel service and Python 3.7 or
-newer, as do cached HDMI pictures. Animated backgrounds need WebGL 2;
+On rooted TVs, **Settings → Remote → Home button** can enable a direct remote
+listener to open LG-XMB. This needs an elevated Homebrew Channel service,
+Python 2.7 or newer and compatible remote devices. Home presses, arrows, wheel
+navigation and restoring the listener after reboot have been tested with the
+standalone app on the C5. Other TV models still need testing.
+Cached HDMI pictures also need elevated Homebrew Channel and Python.
+Animated backgrounds need WebGL 2;
 otherwise the menu uses a static background.
 
 ## Install
@@ -43,14 +47,16 @@ Use [Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel) on y
 3. Return to the app list, select **LG-XMB** and choose **Install**.
 4. Open **Home** from the TV's apps. Test navigation, app launching and HDMI.
 5. Open **Settings → Remote → Home button** and choose **LG-XMB** if you want
-   the Home button to open it. Choose **LG Home** to restore the stock assignment.
+   the Home button to open it. Choose **LG Home** to disable the listener.
 
 Use Homebrew Channel to update LG-XMB too. If you prefer installing an IPK yourself,
 see [Manual installation](docs/INSTALLATION.md#install-over-ssh).
 
 Installing LG-XMB leaves stock LG Home in place. The standalone launcher uses
 elevated Homebrew Channel to read installed apps and physical inputs.
-Home-button assignment does not change the TV's Power On Screen setting.
+The saved Home-button choice is restored after boot without opening LG-XMB or
+changing the TV's Power On Screen setting. While enabled, holding Home opens
+LG-XMB once; LG's native long-Home action is unavailable.
 
 [Replacing LG Home](docs/HOME-TAKEOVER.md) is an optional advanced setup tested
 only on the LG C5 with webOS 25 / 10.3.1. Other TVs need manual investigation
@@ -69,6 +75,9 @@ for adjusting the background load.
 **Screensaver** sets the idle delay and [background dimming](docs/SCREENSAVER.md).
 **Clock** defaults to the PS3-style date/time bar. The plain clock is still available;
 updates preserve your saved choice.
+
+**Settings → Date & time** selects 12/24-hour time and the date order for either
+clock style. It also has the [TV clock editor](docs/DATE-TIME-AND-OPTIONS.md).
 
 Hold OK on an app to change its category, sorting or visibility.
 [Item options](docs/ITEM-OPTIONS.md) covers those controls and restoring hidden apps.

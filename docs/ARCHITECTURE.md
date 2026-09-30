@@ -28,8 +28,8 @@ page structure. Read the controller only when a change crosses feature boundarie
 | Clock display | `app/clock-view.js`, `app/clock.css` | Current and PS3 clock layouts, date formatting and analogue hands |
 | Fonts | `app/fonts.css` | Optional local Rodin faces and system font fallback; see [Fonts](FONTS.md) |
 | Screensaver | `app/screensaver.js`, `app/screensaver-view.js`, `app/screensaver.css` | Idle deadline, layer brightness targets, wake gestures, UI and wallpaper fades |
-| Remote | `app/remote-settings.js`, `app/home-button.js`, `tv-helper/home_button.py` | Home assignment with verified native reads/writes; local Back preference |
-| Other settings panels | `app/date-time-settings.js` | System date/time controls |
+| Remote | `app/remote-settings.js`, `app/home-button.js`, `tv-helper/home_button.py` | Verified saved Home choice and Linux input listener; local Back preference |
+| Other settings panels | `app/date-time-settings.js` | Clock formats and system date/time controls |
 | TV APIs | `app/tv-bridge.js`, `app/app-manager.js`, `app/system-time.js` | Bounded native requests for launch/input/audio, app information/removal and clock settings |
 | HDMI pictures | `app/thumbnail.js`, `app/input-preview.js` | Cached images and optional live video; separate lifecycles |
 | Audio | `app/background-music.js`, `app/menu-sounds.js` | Playback, availability, suspension and recovery |
@@ -130,18 +130,43 @@ status handling remain in the launcher, with playback in the audio modules.
 Keep new feature-specific rendering in a module and let the launcher provide
 its dependencies.
 
-### Home assignment and standalone discovery
+### Home routing and standalone discovery
 
-`app/home-button.js` owns Home-button requests. `tv-helper/home_button.py`
-reads the native assignment and changes only that assignment after checking
-that the settings snapshot is still current. The bootstrap verifies the bundle
-before dispatching the command. This path does not run capture setup or alter
-Home-replacement mounts. A failed or uncertain write requires a fresh read;
-it must never be retried automatically.
+`app/home-button.js` owns verified Home-button requests, including native
+envelope and revision checks. `tv-helper/home_button.py` keeps the choice in
+`/var/lib/lg-xmb/home-button.json`; `get` only reads saved state and worker
+identity. An explicit change checks the revision, starts or stops the separate
+listener and can clear an old native assignment only when it names this exact
+LG-XMB app. Other apps' native assignments are preserved. The bootstrap verifies
+the bundle before dispatch. This path does not run capture setup or alter
+Home-replacement mounts. A failed or uncertain write requires a fresh read
+before another explicit change.
+
+The listener exclusively reads `LGE M-RCU - Builtin [0]` and forwards raw
+non-Home events to `[2]` through webOS 9, preferring `[1]` on webOS 10 and newer.
+It falls back to another numbered Builtin output, excluding the input device.
+It consumes Home down/repeat/up and launches
+once per press; native long-Home behaviour is unavailable while enabled. A
+conflicting grab is reported without stopping the other process. The existing
+`60-lg-xmb` bootstrap restores the saved opt-in listener after boot, without
+launching the app or changing Power On Screen. Recovery recognises both this
+worker and the capture worker.
+
+The bootstrap dispatches to a fixed Python path with environment and site imports
+disabled, then removes the script directory from the import path. Its shared
+bundle verification, Home commands and capture run on Python 2.7 and Python 3.
+Timing uses a monotonic clock, falling back to Linux uptime on Python 2.
+The capture worker retains the startup lock as stdin, which it never reads;
+other setup descriptors are closed before execution. Filesystem operations use
+held directory descriptors through `/proc/self/fd` so Python 2 does not need
+`dir_fd` support.
 
 Remote renders once per opening. Asynchronous reads and writes update existing
 controls without rebuilding the panel or moving focus. Closing it invalidates
-pending replies. Back remains usable when Home assignment is unavailable.
+pending replies. The check mark reflects the saved choice; `running` and an
+allowlisted reason describe runtime failure separately. A selected LG-XMB
+choice can be selected again when `running` is explicitly false. Back remains
+usable when Home routing is unavailable.
 
 `app/tv-discovery.js` owns app and input inventory reads. The standalone app
 uses fixed read-only Homebrew commands directly. A Home replacement uses the

@@ -207,6 +207,22 @@ test('clock style defaults to PS3 and preserves supported saved choices', () => 
   }
 });
 
+test('clock formats preserve defaults and only restore supported strings', () => {
+  for (const [key, choices] of [
+    ['timeFormat', ['24h', '12h']],
+    ['dateFormat', ['default', 'dmy', 'mdy', 'ymd']]
+  ]) {
+    assert.equal(preferences.load({getItem: () => null}, false)[key], choices[0]);
+    for (const value of [...choices, 'invalid', '', null, 12, true, [], ['12h'], {}]) {
+      const state = preferences.load({getItem: () => JSON.stringify({[key]: value})}, false);
+      assert.equal(state[key], choices.includes(value) ? value : choices[0]);
+      let saved;
+      preferences.save({setItem: (_, value) => {saved = value;}}, state);
+      assert.equal(preferences.load({getItem: () => saved}, false)[key], state[key]);
+    }
+  }
+});
+
 test('Appearance opens a Clock panel whose style choices apply and save immediately', () => {
   const vm = require('node:vm'), fs = require('node:fs');
   const state = preferences.load({getItem: () => null}, false);
