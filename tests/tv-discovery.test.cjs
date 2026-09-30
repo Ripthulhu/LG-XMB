@@ -66,7 +66,8 @@ test('standalone app reads its catalog directly through one fixed root command',
 test('Home identity reads native inventory without Homebrew or retries', async () => {
   for (const [method, uri, field] of [
     ['listApps', 'luna://com.webos.applicationManager/listApps', 'apps'],
-    ['listInputs', 'luna://com.webos.service.eim/getAllInputStatus', 'devices']
+    ['listInputs', 'luna://com.webos.service.eim/getAllInputStatus', 'devices'],
+    ['listRecents', 'luna://com.webos.surfacemanager/getRecentsAppList', 'recentsAppList']
   ]) {
     const h = setup({PalmSystem:{identifier:'com.webos.app.home 1'}});
     const result = h.window.LGXMBDiscovery[method]();
@@ -87,6 +88,7 @@ test('unrelated identities never send privileged inventory requests', async () =
     const h = setup({PalmSystem:{identifier}});
     await assert.rejects(h.tv.listApps(), error => error.code === 'EXEC_UNAVAILABLE');
     await assert.rejects(h.window.LGXMBDiscovery.listInputs(), error => error.code === 'EXEC_UNAVAILABLE');
+    await assert.rejects(h.window.LGXMBDiscovery.listRecents(), error => error.code === 'EXEC_UNAVAILABLE');
     assert.equal(h.calls.length, 0);
   }
 });

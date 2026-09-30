@@ -366,13 +366,13 @@
     $('previewPanel').classList.remove('live-preview');
   }
   function syncWavePlayback() {
-    // Page suspension is immediate; a live preview eases the motion to rest.
+    // Page suspension is immediate; the optional preview pause eases motion to rest.
     // Releasing video while hidden must not restart rendering. Neither pause
     // changes the saved animation or quality settings.
     var showingWallpaper = wallpaper && wallpaper.active && !waveOnly;
     document.body.classList.toggle('wallpaper-active', !!showingWallpaper);
     wave.setPaused(!pageActive || document.hidden || showingWallpaper);
-    wave.setMotionHeld(livePreviewActive);
+    wave.setMotionHeld(livePreviewActive && preferences.pauseBackgroundDuringLivePreview);
   }
   function syncInputPreview() {
     var port = currentPort(),
@@ -513,8 +513,7 @@
     focus: LGXMBMenuFocus
   });
   var row = settingsUI.row,
-    choiceGroup = settingsUI.choiceGroup,
-    selectChoice = settingsUI.selectChoice;
+    choiceGroup = settingsUI.choiceGroup;
   var statusText = settingsUI.statusText,
     reserveAction = settingsUI.reserveAction;
   var modalType = '';
@@ -592,19 +591,33 @@
     } else if (type === 'sound') {
       openSoundSettings();
     } else if (type === 'previews') {
-      [
-        ['cached', 'Cached'],
-        ['live', 'Live']
-      ].forEach(function (choice) {
-        var button = row(choice[1], null, preferences.previewMode === choice[0], function () {
-          if (preferences.previewMode === choice[0]) return;
-          preferences.previewMode = choice[0];
+      choiceGroup(
+        'Preview mode',
+        [
+          ['cached', 'Cached'],
+          ['live', 'Live']
+        ],
+        preferences.previewMode,
+        function (value) {
+          if (preferences.previewMode === value) return;
+          preferences.previewMode = value;
           save();
-          selectChoice($('modalContent'), choice[0]);
           updateHelperStatus();
-        });
-        button.setAttribute('data-choice', choice[0]);
-      });
+        }
+      );
+      choiceGroup(
+        'Pause background during live preview',
+        [
+          [true, 'On'],
+          [false, 'Off']
+        ],
+        preferences.pauseBackgroundDuringLivePreview,
+        function (value) {
+          preferences.pauseBackgroundDuringLivePreview = value;
+          syncWavePlayback();
+          save();
+        }
+      );
       helperStatusPanel();
     } else if (type === 'remote') {
       C5RemoteSettings.open({

@@ -168,7 +168,7 @@ allowlisted reason describe runtime failure separately. A selected LG-XMB
 choice can be selected again when `running` is explicitly false. Back remains
 usable when Home routing is unavailable.
 
-`app/tv-discovery.js` owns app and input inventory reads. The standalone app
+`app/tv-discovery.js` owns app, input and recent-app list reads. The standalone app
 uses fixed read-only Homebrew commands directly. A Home replacement uses the
 native services under the Home identity. Each request makes one call through
 the matching transport; neither path retries through the other. Both share

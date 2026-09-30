@@ -1,4 +1,4 @@
-/* Read-only app and input inventory. Standalone uses Homebrew root access;
+/* Read-only app, input and recent-app lists. Standalone uses Homebrew root access;
  * a Home replacement reads native services under the Home identity.
  * SPDX-License-Identifier: GPL-3.0-or-later */
 (function (root) {
@@ -17,6 +17,11 @@
       uri: 'luna://com.webos.service.eim/getAllInputStatus',
       field: 'devices',
       limit: 128
+    },
+    recents: {
+      uri: 'luna://com.webos.surfacemanager/getRecentsAppList',
+      field: 'recentsAppList',
+      limit: 1000
     }
   };
   function command(read) {
@@ -74,7 +79,7 @@
       ) {
         throw problem(
           'EXEC_UNAVAILABLE',
-          'App and input discovery need Homebrew Channel running with root access.'
+          'This read needs Homebrew Channel running with root access.'
         );
       }
       try {
@@ -90,7 +95,7 @@
       if (response.errorCode === 'root_required')
         throw problem(
           'ROOT_REQUIRED',
-          'App and input discovery need Homebrew Channel running with root access.'
+          'This read needs Homebrew Channel running with root access.'
         );
       var failure = problem('SERVICE_ERROR', 'The TV did not allow this inventory read.');
       failure.serviceCode = response.errorCode;
@@ -111,7 +116,7 @@
     var operation = new Promise(function (resolve, reject) {
       var route = transport();
       if (!route) {
-        reject(problem('EXEC_UNAVAILABLE', 'App and input discovery require the packaged TV app.'));
+        reject(problem('EXEC_UNAVAILABLE', 'This read requires the packaged TV app.'));
         return;
       }
       var bridge,
@@ -161,7 +166,7 @@
           problem(
             route === 'root' ? 'EXEC_UNAVAILABLE' : 'BRIDGE_ERROR',
             route === 'root'
-              ? 'App and input discovery need Homebrew Channel running with root access.'
+              ? 'This read needs Homebrew Channel running with root access.'
               : 'The TV connection could not complete this inventory read.'
           )
         );
@@ -179,6 +184,9 @@
     },
     listInputs: function () {
       return request(READS.inputs);
+    },
+    listRecents: function () {
+      return request(READS.recents);
     }
   });
 })(window);

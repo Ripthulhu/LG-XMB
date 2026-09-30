@@ -11,7 +11,6 @@
   var METHODS = Object.freeze({
     getAppLoadStatus: SERVICE + 'getAppLoadStatus',
     launch: SERVICE + 'launch',
-    recentApps: 'luna://com.webos.surfacemanager/getRecentsAppList',
     previewStatus: 'luna://com.webos.service.videooutput/getStatus',
     mediaPipelines: 'luna://com.webos.media/getActivePipelines',
     audioStatus: 'luna://com.webos.service.audio/UMI/getStatus',
@@ -304,7 +303,7 @@
             return true;
           };
     if (!isCurrent()) return Promise.resolve({ ok: true, returned: false, cancelled: true });
-    return request('recentApps', {}).then(function (response) {
+    return root.LGXMBDiscovery.listRecents().then(function (response) {
       if (!isCurrent()) return { ok: true, returned: false, cancelled: true };
       var apps = response.recentsAppList;
       if (

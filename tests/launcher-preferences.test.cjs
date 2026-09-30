@@ -23,6 +23,16 @@ test('Back defaults to the previous app while explicit saved choices survive upd
   }
 });
 
+test('live preview pauses the background by default and preserves an explicit opt-out', () => {
+  for (const value of [undefined, null, true, false, 'false', 0]) {
+    const loaded = preferences.load({getItem: () => JSON.stringify({pauseBackgroundDuringLivePreview:value})}, false);
+    assert.equal(loaded.pauseBackgroundDuringLivePreview, value !== false);
+    let saved;
+    preferences.save({setItem: (_, value) => {saved = value;}}, loaded);
+    assert.equal(preferences.load({getItem: () => saved}, false).pauseBackgroundDuringLivePreview, value !== false);
+  }
+});
+
 test('storage and media-query failures preserve a usable preference snapshot', () => {
   const inaccessible = {getItem() {throw new Error('Storage denied');}};
   assert.equal(preferences.load(inaccessible, false).waveFrameRate, 60);

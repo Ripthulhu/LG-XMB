@@ -113,8 +113,9 @@ replacement is mounted would still open that replacement, so Remote refuses
 this change until stock Home is restored. It does not remove the mount for you.
 
 **Back button** changes Back inside this launcher. **Return to last app or
-input** uses the TV's recent-app list when no panel is open. That private API
-may be denied to a standalone app on some firmware. **Stay in Home** and
+input** reads the TV's recent-app list when no panel is open. The standalone
+app reads it through elevated Homebrew Channel, using the same route as app
+and input discovery. **Stay in Home** and
 **Show exit prompt** remain separate choices. Back closes an open panel first.
 Updating preserves your saved Back setting; new settings use Return by default.
 

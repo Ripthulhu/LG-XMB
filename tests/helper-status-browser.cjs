@@ -18,13 +18,26 @@ const menu = require('./support/menu-navigation.cjs');
       window.PalmSystem = {identifier: 'org.local.openxmb.c5'};
       window.helperFixture = {calls: 0, reads: 0, heartbeat: null};
       window.PalmServiceBridge = class {
-        call(uri) {
+        call(uri, payload) {
           let result = {returnValue: false, errorText: 'Unavailable in fixture'};
           if (uri === 'luna://org.webosbrew.hbchannel.service/exec') {
-            helperFixture.calls++;
-            result = {returnValue: true, stderrString: '', stdoutString: JSON.stringify({
-              returnValue: true, ready: true, captureRunning: helperFixture.calls > 1
-            })};
+            const command = JSON.parse(payload).command;
+            if (command === '/bin/sh /media/developer/apps/usr/palm/applications/org.local.openxmb.c5/helper-startup.py ensure') {
+              helperFixture.calls++;
+              result = {returnValue: true, stderrString: '', stdoutString: JSON.stringify({
+                returnValue: true, ready: true, captureRunning: helperFixture.calls > 1
+              })};
+            } else {
+              for (const [service, field] of [
+                ['com.webos.applicationManager/listApps', 'apps'],
+                ['com.webos.service.eim/getAllInputStatus', 'devices']
+              ]) {
+                if (command === 'if [ "$(id -u)" = "0" ]; then exec /usr/bin/luna-send -n 1 -w 4000 luna://' + service +
+                    ' \'{}\'; else printf \'%s\\n\' \'{"returnValue":false,"errorCode":"root_required"}\'; fi') {
+                  result = {returnValue: true, stderrString: '', stdoutString: JSON.stringify({returnValue: true, [field]: []})};
+                }
+              }
+            }
           } else if (uri.endsWith('/listApps')) result = {returnValue: true, apps: []};
           setTimeout(() => { if (this.onservicecallback) this.onservicecallback(JSON.stringify(result)); }, 0);
         }

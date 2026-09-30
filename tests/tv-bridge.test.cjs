@@ -196,22 +196,66 @@ test('Back stays in Home when there is no previous app and never sends TV calls 
   }
 });
 
-test('Back never launches after Home invalidates either pending read', async () => {
-  for (const stage of ['before', 'recents', 'installed']) {
-    let current = stage !== 'before';
-    const h = setup(), result = h.tv.returnToPrevious(() => current);
-    if (stage !== 'before') {
-      if (stage === 'recents') current = false;
-      h.respond(0, {returnValue: true, ready: true, recentsAppList: ['netflix']});
-      await Promise.resolve();
-      if (stage === 'installed') {
-        current = false;
-        h.respond(1, {returnValue: true, exist: true});
-      }
-    }
-    assert.equal((await result).cancelled, true);
-    assert.ok(h.calls.every(call => !call.uri.endsWith('/launch')));
+test('standalone Back reads recents through Homebrew and launches only through the ordinary app API', async () => {
+  for (const id of ['com.webos.app.hdmi2', 'netflix']) {
+    const h = setup({PalmSystem:{identifier:'org.local.openxmb.c5 42'}});
+    const result = h.tv.returnToPrevious();
+    assert.equal(h.calls[0].uri, 'luna://org.webosbrew.hbchannel.service/exec');
+    assert.equal(h.calls[0].payload.command,
+      'if [ "$(id -u)" = "0" ]; then exec /usr/bin/luna-send -n 1 -w 4000 luna://com.webos.surfacemanager/getRecentsAppList \'{}\'; else printf \'%s\\n\' \'{"returnValue":false,"errorCode":"root_required"}\'; fi');
+    h.respond(0, {returnValue:true, stdoutString:JSON.stringify({
+      returnValue:true, ready:true, recentsAppList:['org.local.openxmb.c5', 'com.webos.app.home', id]
+    })});
+    await Promise.resolve();
+    assert.match(h.calls[1].uri, /\/getAppLoadStatus$/);
+    assert.deepEqual(h.calls[1].payload, {appId:id});
+    h.respond(1, {returnValue:true, exist:true});
+    await Promise.resolve();
+    assert.match(h.calls[2].uri, /\/launch$/);
+    assert.deepEqual(h.calls[2].payload, {id});
+    h.respond(2, {returnValue:true});
+    assert.equal((await result).returned, true);
+    assert.equal(h.calls.length, 3);
     assert.equal(h.timers.size, 0);
+  }
+});
+
+test('standalone Back stops on failed or invalid elevated reads', async () => {
+  for (const response of [
+    {returnValue:false, errorText:'Denied method call'},
+    {returnValue:true, stdoutString:JSON.stringify({returnValue:false, errorCode:'root_required'})},
+    {returnValue:true, stdoutString:JSON.stringify({returnValue:true, ready:false, recentsAppList:['netflix']})},
+    {returnValue:true, stdoutString:JSON.stringify({returnValue:true, ready:true, recentsAppList:['bad/id']})},
+    {returnValue:true, stdoutString:JSON.stringify({returnValue:true, ready:true, recentsAppList:new Array(1001).fill('netflix')})}
+  ]) {
+    const h = setup({PalmSystem:{identifier:'org.local.openxmb.c5'}}), result = h.tv.returnToPrevious();
+    h.respond(0, response);
+    await assert.rejects(result);
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.timers.size, 0);
+  }
+});
+
+test('Back never launches after Home invalidates either pending read', async () => {
+  for (const identifier of ['com.webos.app.home', 'org.local.openxmb.c5']) {
+    for (const stage of ['before', 'recents', 'installed']) {
+      let current = stage !== 'before';
+      const h = setup({PalmSystem:{identifier}}), result = h.tv.returnToPrevious(() => current);
+      if (stage !== 'before') {
+        if (stage === 'recents') current = false;
+        const recents = {returnValue: true, ready: true, recentsAppList: ['netflix']};
+        h.respond(0, identifier === 'org.local.openxmb.c5'
+          ? {returnValue:true, stdoutString:JSON.stringify(recents)} : recents);
+        await Promise.resolve();
+        if (stage === 'installed') {
+          current = false;
+          h.respond(1, {returnValue: true, exist: true});
+        }
+      }
+      assert.equal((await result).cancelled, true);
+      assert.ok(h.calls.every(call => !call.uri.endsWith('/launch')));
+      assert.equal(h.timers.size, 0);
+    }
   }
 });
 

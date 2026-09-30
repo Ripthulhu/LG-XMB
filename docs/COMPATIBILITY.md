@@ -77,7 +77,7 @@ Native-service unit tests use synthetic replies; neither replaces TV testing.
 | Native app launching | The packaged app must be allowed to call the TV services |
 | Installed apps and input discovery | Standalone reads through elevated Homebrew Channel; Home replacements use native access |
 | Home button routing | Root, elevated Homebrew Channel, Python 2.7+ and matching Linux remote devices; requires physical testing on each model |
-| Return to last app or input | Access to `com.webos.surfacemanager/getRecentsAppList`; verified under the stock Home identity on the C5; standalone permission is not guaranteed |
+| Return to last app or input | Standalone reads recents through elevated Homebrew Channel; Home replacement uses native access. Both check installation and launch through the ordinary app API. Older TVs still need testing. |
 | Cached HDMI pictures | Rooted Homebrew environment, Python 2.7+ and compatible capture behaviour |
 | Live HDMI preview | A working TV media pipeline; starting it can change HDR mode |
 | Home replacement | Optional; only tested on the LG C5, webOS 25 / 10.3.1. See [Home setup](HOME-TAKEOVER.md) |

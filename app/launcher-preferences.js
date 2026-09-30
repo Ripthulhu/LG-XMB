@@ -20,6 +20,7 @@
     menuAnimation: 'ps3',
     sound: false,
     previewMode: 'cached',
+    pauseBackgroundDuringLivePreview: true,
     waveSpeed: 'normal',
     backBehavior: 'previous',
     waveSampling: 1.5,
@@ -157,6 +158,8 @@
         preferences.motion = 'reduced';
       preferences.sound = saved.sound === true;
       preferences.previewMode = saved.previewMode === 'live' ? 'live' : 'cached';
+      preferences.pauseBackgroundDuringLivePreview =
+        saved.pauseBackgroundDuringLivePreview !== false;
       if (['slow', 'normal', 'fast'].indexOf(saved.waveSpeed) !== -1)
         preferences.waveSpeed = saved.waveSpeed;
       if (['previous', 'stay', 'lg'].indexOf(saved.backBehavior) !== -1)
