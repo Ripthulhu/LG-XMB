@@ -29,7 +29,7 @@ async function fixture(page) {
       'Display Settings', 'Sound Settings', 'Security Settings', 'Remote Play Settings',
       'Network Settings', 'Accessory Settings', 'Date and Time', 'Power Save Settings'];
     const categories = [['Users', 'application'], ['Settings', 'settings'], ['Photos', 'image'],
-      ['Music', 'music'], ['Video', 'media'], ['Network', 'network']].map(([title, icon], ci) => ({
+      ['Music', 'music'], ['TV', 'live'], ['Network', 'network']].map(([title, icon], ci) => ({
       id: 'category-' + ci, title, icon,
       items: labels.map((title, i) => ({id: 'entry-' + ci + '-' + i, title, icon: 'settings'}))
     }));
@@ -80,6 +80,9 @@ function checkGeometry(data, label) {
   const bar = categories[selected];
   near(bar.icon.x, width * anchor / 100, label + ' category anchor');
   near(bar.icon.y, height * 0.27, label + ' category center');
+  for (const category of categories)
+    near(category.icon.width, width * 0.035 * (category.index === selected ? 1 / 0.7 : 1),
+      label + ' category ' + category.index + ' firmware focus ratio');
   const visible = rows.filter(row => row.visible);
   assert.ok(visible.filter(row => row.offset < 0).length >= 2, label + ' shows two upper rows');
   assert.ok(visible.filter(row => row.offset > 0).length >= 5, label + ' shows five lower rows');
@@ -89,6 +92,8 @@ function checkGeometry(data, label) {
     const center = 47 + row.offset * 7.5 + (row.offset < 0 ? -28.4 : row.offset > 0 ? 8.7 : 0);
     near(row.icon.x, width * anchor / 100, label + ' row ' + row.offset + ' icon anchor');
     near(row.icon.y, height * center / 100, label + ' row ' + row.offset + ' icon center');
+    near(row.icon.width, Math.max(26, width * 0.024) * (row.offset === 0 ? 1 / 0.42 : 1),
+      label + ' row ' + row.offset + ' firmware focus ratio');
     near(row.row.height, height * 0.065, label + ' row height');
     near(row.label.left + row.labelPadding, width * (anchor + 6) / 100, label + ' text start');
     for (const [part, bounds] of Object.entries({row: row.row, icon: row.icon, label: row.label})) {

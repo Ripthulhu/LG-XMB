@@ -17,6 +17,10 @@
   --xmb-upper-gap: 28.4vh;
   --xmb-lower-gap: 8.7vh;
   --xmb-item-icon-size: 2.4vw;
+  /* PS3 3.01: category idle size is 0.7 of focused; ordinary list icons 0.42.
+     Keep our idle sizes and grow around the same icon/particle anchor. */
+  --xmb-category-focus-scale: 1.42857143;
+  --xmb-item-focus-scale: 2.38095238;
   --xmb-label-offset: 6vw;
   --ease: cubic-bezier(0.16, 0.92, 0.34, 1);
   --navigation-duration: 0.4s;
@@ -249,7 +253,7 @@ header {
 }
 .item.selected .item-icon {
   color: white;
-  transform: scale(1.13);
+  transform: scale(var(--xmb-item-focus-scale));
   font-weight: 400;
 }
 .item.selected .item-text {
@@ -805,7 +809,7 @@ header {
 }
 .category .lit .category-icon {
   color: #fff;
-  transform: scale(1.14);
+  transform: scale(var(--xmb-category-focus-scale));
   transition: none;
 }
 .category .lit .category-label {

@@ -65,6 +65,12 @@ Add or edit a named SVG body in `app/icons.js`. `C5Icon(name)` supplies the
 48 × 48 view box, `currentColor`, even-odd filling and accessibility attributes.
 Paths should contain only trusted local markup. Labels are separate text nodes.
 
+The TV outline follows the alpha channel of `icontex.qrc` texture `35n`, with
+the DDS rows reversed for display. It retains the original 128 × 128 origin:
+the screen sits on the icon column and the broadcast arcs extend up and right.
+Its SVG allows that small overhang. Keep this origin when editing the symbol;
+centring its full painted bounds moves the screen away from the label.
+
 The `apps` icon is the controller for the category; `application` is the cube
 for ordinary apps and the fallback for unknown icon names. A catalog shortcut
 can choose its own icon. Discovered-app exceptions are assigned by
@@ -103,6 +109,15 @@ Horizontal category spacing uses `LGXMBCategoryTransition.DISTANCE` in
 `app/category-transition.js`. Gaps around the category bar and selected row
 switch immediately; only the equal row steps animate, so Up and Down retain
 the same motion. Navigation does not measure element bounds or computed styles.
+
+Focus sizes use `--xmb-category-focus-scale` and `--xmb-item-focus-scale`.
+PS3 3.01 uses an unfocused/focused ratio of 0.7 for categories and 0.42 for
+ordinary Settings and shortcut icons. Keeping our unfocused sizes gives selected
+scales of 1/0.7 (1.428571×) and 1/0.42 (2.380952×). These were checked against
+the native size setters and settled objects in a saved firmware memory dump:
+category setter `0x3b5fd0`, item scale defaults `0x3c8324`/`0x3c8350`, and item
+size setter `0x3c0b40`. Media grids can use other ratios. Category icons retain
+the prepainted face swap; list icons use the existing transform transition.
 
 Run `tests/xmb-layout-browser.cjs`, `tests/vertical-navigation-browser.cjs` and
 `tests/launcher-category-work-browser.cjs` after changing geometry. These cover

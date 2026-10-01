@@ -25,16 +25,17 @@
       'M15 16v15h20V16z' +
       'M7.5 15v4h4.5v-4zm0 7v4h4.5v-4zm0 7v4h4.5v-4zm30-14v4H42v-4zm0 7v4H42v-4zm0 7v4H42v-4z" transform="translate(-1 0)"/>',
     live:
-      // Measured from the firmware's 35n outline; keep the screen and signal
-      // proportions together when scaling to the shared category icon size.
+      // Follow the 35n alpha outline from icontex.qrc (DDS rows reversed),
+      // retaining its 128px texture origin and slightly elliptical arcs. Centering
+      // the whole silhouette shifts the screen left of the category label.
       // Frame, outer arc, inner arc and dot share one fill. Matching winding
       // joins the arc to the frame without painting translucent colour twice;
       // only the screen opening winds the other way to cut a hole.
-      '<path transform="translate(2 2) scale(.47) translate(-28.5 -16.5)" fill-rule="nonzero" d="M34.5 37.5h58.5a6 6 0 0 1 6 6v42a6 6 0 0 1-6 6H34.5a6 6 0 0 1-6-6v-42a6 6 0 0 1 6-6z' +
-      'M41 49v31.5h46V49z' +
-      'M115 53a30 30 0 0 1-30-30h6a24 24 0 0 0 24 24z' +
-      'M115 40a17 17 0 0 1-17-17h6a11 11 0 0 0 11 11z' +
-      'M115.5 16.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 1 1 0-11z"/>',
+      '<path transform="translate(24 24) scale(.47) translate(-64 -64)" fill-rule="nonzero" d="M34.5 38.3h58.3a6 6 0 0 1 6 6v41.9a6 6 0 0 1-6 6H34.5a6 6 0 0 1-6-6V44.3a6 6 0 0 1 6-6z' +
+      'M40.7 49.9v31h45.8v-31z' +
+      'M115.3 54a30.5 30.9 0 0 1-30.5-30.9h5.7a24.8 25.2 0 0 0 24.8 25.2z' +
+      'M115.2 40.5a17.1 17.4 0 0 1-17.1-17.4h5.6a11.5 11.7 0 0 0 11.5 11.7z' +
+      'M116.3 17.1a5.2 5.2 0 1 1 0 10.4 5.2 5.2 0 1 1 0-10.4z"/>',
     apps:
       '<path d="' +
       'M12 11c3-1 5 1 8 3h9c3-2 5-4 8-3 4 1 6 6 8 17 1 7 0 10-3 11-4 2-6-1-8-4l-5-7H16l-5 7c-2 3-5 6-9 3-2-2-2-6-1-11 2-10 4-14 7-16 1 0 3-1 4 0z" transform="translate(3 0) scale(.91 1)"/>',
@@ -274,6 +275,7 @@
     return (
       '<svg' +
       (Object.prototype.hasOwnProperty.call(settingsIcons, key) ? ' class="settings-symbol"' : '') +
+      (key === 'live' ? ' overflow="visible"' : '') +
       ' viewBox="0 0 48 48" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" aria-hidden="true" focusable="false">' +
       paths[key] +
       '</svg>'
