@@ -2,29 +2,19 @@
 // Real remote/menu handling with synthetic return requests; no TV connection.
 'use strict';
 const assert = require('node:assert/strict');
-const path = require('node:path');
-const {spawn} = require('node:child_process');
+const createServer = require('../tools/preview.cjs');
 const {chromium} = require('playwright');
 const menu = require('./support/menu-navigation.cjs');
 
 (async () => {
-  const root = path.resolve(__dirname, '..');
-  const port = Number(process.env.OPENXMB_RETURN_TEST_PORT || 8793);
-  const url = 'http://127.0.0.1:' + port + '/';
   const checks = [], errors = [];
-  const server = spawn(process.execPath, ['tools/preview.cjs'], {
-    cwd: root, env: {...process.env, OPENXMB_PREVIEW_PORT: String(port)},
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-  let browser, serverLog = '';
-  server.stdout.on('data', chunk => { serverLog += chunk; });
-  server.stderr.on('data', chunk => { serverLog += chunk; });
-  server.on('error', error => { serverLog += error.message; });
+  const server = createServer();
+  let browser;
   try {
-    for (let i = 0; !serverLog.includes('LG-XMB preview:'); i++) {
-      if (server.exitCode !== null || i === 50) throw Error('Preview server failed: ' + serverLog);
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    await new Promise((resolve, reject) => {
+      server.once('error', reject); server.listen(0, '127.0.0.1', resolve);
+    });
+    const url = 'http://127.0.0.1:' + server.address().port + '/';
     browser = await chromium.launch(menu.launchOptions());
     const page = await browser.newPage({viewport: {width: 1920, height: 1080}});
     page.on('pageerror', error => errors.push(error.message));
@@ -179,6 +169,6 @@ const menu = require('./support/menu-navigation.cjs');
     console.log(JSON.stringify({checks, errors, browser: await browser.version(), testedOnTV: false}, null, 2));
   } finally {
     if (browser) await browser.close();
-    server.kill();
+    await new Promise(resolve => server.close(resolve));
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

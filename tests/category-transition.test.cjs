@@ -211,7 +211,7 @@ test('compositor hints are confined to measured category/list layers and tempora
 });
 
 test('opacity is confined to markers, navigation fades and explicit screensaver layers', () => {
-  assert.match(css, /--fade-duration\s*:\s*0?\.48s\s*;/);
+  assert.match(css, /--fade-duration\s*:\s*0?\.32s\s*;/);
   const allowed = new Set([
     '.detail-emblem',
     '.input-preview-symbol',

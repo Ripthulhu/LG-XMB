@@ -1,25 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 'use strict';
 const assert = require('node:assert/strict');
-const path = require('node:path');
-const {spawn} = require('node:child_process');
+const createServer = require('../tools/preview.cjs');
 const {chromium} = require('playwright');
 const menu = require('./support/menu-navigation.cjs');
 
 (async () => {
-  const server = spawn(process.execPath, ['tools/preview.cjs'], {
-    cwd: path.resolve(__dirname, '..'),
-    env: {...process.env, OPENXMB_PREVIEW_PORT: '8798'},
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-  let log = '', browser;
-  server.stdout.on('data', chunk => {log += chunk;});
-  server.stderr.on('data', chunk => {log += chunk;});
+  const server = createServer();
+  let browser;
   try {
-    for (let i = 0; !log.includes('LG-XMB preview:'); i++) {
-      if (server.exitCode !== null || i === 50) throw Error('Preview failed: ' + log);
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    await new Promise((resolve, reject) => {
+      server.once('error', reject); server.listen(0, '127.0.0.1', resolve);
+    });
     browser = await chromium.launch(menu.launchOptions());
     const errors = [], checks = [];
     for (const [width, height] of [[1920, 1080], [1280, 720]]) {
@@ -31,7 +23,7 @@ const menu = require('./support/menu-navigation.cjs');
           return /webgl/.test(type) ? null : original.call(this, type, ...args);
         };
       });
-      await page.goto('http://127.0.0.1:8798/');
+      await page.goto('http://127.0.0.1:' + server.address().port + '/');
       await page.waitForFunction(() => window.C5App);
       await page.evaluate(() => {
         window.remoteTest = {reads: [], writes: [], cancelled: 0};
@@ -167,6 +159,6 @@ const menu = require('./support/menu-navigation.cjs');
     console.log(JSON.stringify({checks, errors, testedOnTV: false}, null, 2));
   } finally {
     if (browser) await browser.close();
-    server.kill();
+    await new Promise(resolve => server.close(resolve));
   }
 })().catch(error => {console.error(error); process.exitCode = 1;});

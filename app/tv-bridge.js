@@ -201,13 +201,6 @@
     return result;
   }
 
-  function localIcon(value) {
-    // Do not introduce online tracking requests through icons returned by another app.
-    if (typeof value !== 'string' || value.length > 1024 || /[\u0000-\u001f\\]/.test(value))
-      return '';
-    return /^\/(?!\/)/.test(value) || /^file:\/\/\//.test(value) ? value : '';
-  }
-
   function listApps() {
     if (!isTV()) {
       var result = previewResult('listApps');
@@ -227,9 +220,7 @@
         seen[app.id] = true;
         apps.push({
           id: app.id,
-          title: text(app.title, 120) || app.id,
-          icon: localIcon(app.icon),
-          type: text(app.type, 30)
+          title: text(app.title, 120) || app.id
         });
       });
       return { ok: true, preview: false, apps: apps };

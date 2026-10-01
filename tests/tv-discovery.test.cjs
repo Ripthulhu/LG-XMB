@@ -56,9 +56,10 @@ test('standalone app reads its catalog directly through one fixed root command',
   const response = await result;
   assert.equal(response.ok, true);
   assert.equal(response.preview, false);
-  assert.equal(response.apps.length, 2);
-  assert.equal(response.apps[0].title, 'Plex');
-  assert.equal(response.apps[1].icon, '');
+  assert.deepEqual(JSON.parse(JSON.stringify(response.apps)), [
+    {id: 'plex.app', title: 'Plex'},
+    {id: 'netflix', title: 'netflix'}
+  ]);
   assert.ok(h.bridges.every(bridge => bridge.cancelled));
   assert.equal(h.timers.size, 0);
 });

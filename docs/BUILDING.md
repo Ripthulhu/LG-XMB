@@ -157,11 +157,11 @@ use installed Edge and others use downloaded Chromium.
 | `npm run test:helper` | Not needed |
 | `npm run test:browser` | Start `npm run preview` first |
 | `npm run test:music` | Start `npm run preview` first |
-| `npm run test:menu` | Starts its own server; stop the preview first |
+| `npm run test:menu` | Starts its own server on an available port |
 | `node tests/appearance-browser.cjs` | Starts its own server on an available port |
 | `node tests/screensaver-browser.cjs` | Starts its own server on an available port |
 | `node tests/clock-style-browser.cjs` | Starts its own server on an available port |
-| `node tests/remote-settings-browser.cjs` | Starts its own server on port 8798 |
+| `node tests/remote-settings-browser.cjs` | Starts its own server on an available port |
 | `node tests/wave-performance-browser.cjs` | Starts its own server on an available port |
 
 The preview uses port 8765. Run the tests from the same checkout as the server.

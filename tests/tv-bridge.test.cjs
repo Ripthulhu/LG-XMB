@@ -50,7 +50,7 @@ test('PalmSystem plus LinuxSmartTV is recognized without webOSTV.js', () => {
   assert.equal(setup({ navigator: { userAgent: 'LinuxSmartTV' } }).tv.isTV(), true);
 });
 
-test('app enumeration is a single read, strips unsafe metadata and does not persist it', async () => {
+test('app enumeration is a single read and returns only valid IDs and sanitized titles', async () => {
   const h = setup();
   const result = h.tv.listApps();
   assert.equal(h.calls[0].uri, 'luna://com.webos.applicationManager/listApps');
@@ -63,9 +63,10 @@ test('app enumeration is a single read, strips unsafe metadata and does not pers
   ] });
   const got = await result;
   assert.equal(got.preview, false);
-  assert.equal(got.apps.length, 2);
-  assert.equal(got.apps[0].title, 'YouTube');
-  assert.equal(got.apps[1].icon, '');
+  assert.deepEqual(JSON.parse(JSON.stringify(got.apps)), [
+    { id: 'youtube.leanback.v4', title: 'YouTube' },
+    { id: 'netflix', title: 'Netflix' }
+  ]);
   assert.equal(h.bridges[0].cancelled, true);
   assert.equal(h.timers.size, 0);
 });

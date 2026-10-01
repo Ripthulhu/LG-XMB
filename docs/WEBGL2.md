@@ -139,10 +139,10 @@ regular themes, custom RGB and monthly presets through the final compositor.
 It uses the [shared browser settings](BUILDING.md#browser-tests) and needs no
 preview server or private fixtures.
 
-The Python tools `tests/ps3-native-browser.py` and
-`tests/ps3-native-launcher-browser.py` exercise WebGL rendering and launcher
-integration. Their capture comparisons need private research fixtures and the
-Python NumPy/Playwright packages. Use each script's `--help` for its paths and
+`node tests/appearance-browser.cjs` and `node tests/wave-performance-browser.cjs`
+check the current appearance menus and rendering controls through the launcher.
+The Python tool `tests/ps3-native-browser.py` compares rendering with private
+research fixtures using NumPy and Playwright. Use its `--help` for paths and
 browser options. Those fixtures aren't needed to build or run the app.
 
 `tools/import-ps3-reference.py` regenerates native seed data from the original
