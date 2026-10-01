@@ -25,11 +25,11 @@ TV feature. Community reports also describe Homebrew Channel issues on webOS 26.
 See [Compatibility](docs/COMPATIBILITY.md) for the platform details and known limits.
 
 The **safer, recommended setup** is a normal webOS app alongside stock LG Home.
-On rooted TVs, **Settings → Remote → Home button** can enable a direct remote
-listener to open LG-XMB. This needs an elevated Homebrew Channel service,
-Python 2.7 or newer and compatible remote devices. Home presses, arrows, wheel
-navigation and restoring the listener after reboot have been tested with the
-standalone app on the C5. Other models haven't had the same full test.
+On rooted TVs, **Settings → Remote → Home button** can enable a native Home
+hook to open LG-XMB. This needs an elevated Homebrew Channel service,
+Python 2.7 or newer and supported 32-bit ARM input services. Physical IR and
+Logitech Harmony Home presses have been tested on our C5 with stock LG Home
+restored. See [Home-button compatibility](docs/COMPATIBILITY.md#home-button-routing).
 Cached HDMI pictures also need elevated Homebrew Channel and Python.
 Animated backgrounds need WebGL 2;
 otherwise the menu uses a static background.

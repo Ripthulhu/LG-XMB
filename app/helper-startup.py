@@ -50,6 +50,9 @@ SETUP_WAIT_SECONDS = 30  # Below the frontend RPC deadline; never wait indefinit
 CAPTURE_MODULE = "thumbnail_cache.py"
 RECOVERY_MODULE = "stop_thumbnail_helper.py"
 HOME_BUTTON_MODULE = "home_button.py"
+HOME_HOOK_MODULE = "home_hook.py"
+NATIVE_FILES = {"ezinject": 16 * 1024 * 1024, "lgxmb-home-hook.so": 16 * 1024 * 1024,
+                "build.json": 65536}
 BUNDLE_SHA256 = "@BUNDLE_SHA256@"  # Replaced by the packager, not read from helper/.
 LEGACY_HELPER_OWNER = (1001, 1001)  # CI runner IDs shipped in the early 0.1.12 IPKs.
 
@@ -213,9 +216,10 @@ def read_bundle(app, directory, repair_permissions=True):
             "invalid_helper_bundle")
     hashes = manifest.get("files")
     # The build pin authenticates the complete inventory, including any future
-    # modules. Entry points remain explicit; paths can only be flat Python names.
-    require(isinstance(hashes, dict) and {CAPTURE_MODULE, RECOVERY_MODULE, HOME_BUTTON_MODULE}.issubset(hashes)
-            and all(re.match(r"\A[a-z][a-z0-9_]*\.py\Z", name) for name in hashes),
+    # modules. Native payloads have exact names and are never executed here.
+    required = {CAPTURE_MODULE, RECOVERY_MODULE, HOME_BUTTON_MODULE, HOME_HOOK_MODULE} | set(NATIVE_FILES)
+    require(isinstance(hashes, dict) and required.issubset(hashes)
+            and all(name in NATIVE_FILES or re.match(r"\A[a-z][a-z0-9_]*\.py\Z", name) for name in hashes),
             "invalid_helper_bundle")
     require(all(isinstance(h, type(u"")) and re.match(r"\A[0-9a-f]{64}\Z", h)
                 for h in list(hashes.values()) + [manifest.get("appinfoSha256")]),
@@ -224,7 +228,8 @@ def read_bundle(app, directory, repair_permissions=True):
                         repair_permissions=repair_permissions)
     require(hashlib.sha256(appinfo).hexdigest() == manifest["appinfoSha256"],
             "untrusted_app_manifest")
-    sources = {name: read_file(directory, name, repair_permissions=repair_permissions) for name in hashes}
+    sources = {name: read_file(directory, name, limit=NATIVE_FILES.get(name, 131072),
+                               repair_permissions=repair_permissions) for name in hashes}
     require(all(hashlib.sha256(sources[name]).hexdigest() == hashes[name]
                 for name in hashes), "helper_bundle_mismatch")
     return manifest, raw, appinfo, sources
@@ -844,6 +849,9 @@ def home_modules(allow_repair=False):
     recovery = load_module("lg_xmb_home_recovery", sources[RECOVERY_MODULE],
                            APP_DIR + "/helper/" + RECOVERY_MODULE)
     module.monotonic = recovery.monotonic
+    module.hook = load_module("lg_xmb_home_hook", sources[HOME_HOOK_MODULE],
+                              APP_DIR + "/helper/" + HOME_HOOK_MODULE)
+    module.hook.artifacts = {name: sources[name] for name in NATIVE_FILES}
     return module, recovery, hashlib.sha256(raw).hexdigest()
 
 

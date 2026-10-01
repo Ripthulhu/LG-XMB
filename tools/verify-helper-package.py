@@ -13,11 +13,37 @@ from ipk_archive import read_ipk
 ROOT = Path(__file__).resolve().parents[1]
 APP = 'usr/palm/applications/org.local.openxmb.c5/'
 SOURCES = json.loads((ROOT / 'tv-helper/bundle-sources.json').read_text(encoding='utf-8'))
+NATIVE_FILES = {'ezinject', 'lgxmb-home-hook.so', 'build.json'}
+NATIVE_SOURCES = {'tv-helper/native/home-hook.c', 'tv-helper/native/CMakeLists.txt',
+                  'tv-helper/native/dependencies.json', 'tools/build-home-hook.sh'}
+
+
+def verify_native_build():
+    directory = ROOT / 'tv-helper/native/prebuilt'
+    build = json.loads((directory / 'build.json').read_bytes())
+    if (build.get('schema') != 1 or build.get('protocol') != 1
+            or build.get('architecture') != 'arm-linux-gnueabi'
+            or set(build.get('sources', {})) != NATIVE_SOURCES
+            or set(build.get('files', {})) != NATIVE_FILES - {'build.json'}):
+        raise ValueError('Invalid native Home build metadata')
+    for source in NATIVE_SOURCES:
+        if hashlib.sha256((ROOT / source).read_bytes()).hexdigest() != build['sources'][source]:
+            raise ValueError('Native Home build is stale: ' + source)
+    identity = ''.join(name + ' ' + build['sources'][name] + '\n' for name in sorted(NATIVE_SOURCES))
+    if hashlib.sha256(identity.encode()).hexdigest() != build.get('buildId'):
+        raise ValueError('Native Home build ID does not match its sources')
+    for name in NATIVE_FILES - {'build.json'}:
+        payload = (directory / name).read_bytes()
+        if not payload or len(payload) > 16 * 1024 * 1024 or hashlib.sha256(payload).hexdigest() != build['files'][name]:
+            raise ValueError('Native Home payload differs from its build: ' + name)
 
 
 def verify(filename):
-    if not {'thumbnail_cache.py', 'stop_thumbnail_helper.py', 'home_button.py'}.issubset(SOURCES):
+    if not ({'thumbnail_cache.py', 'stop_thumbnail_helper.py', 'home_button.py', 'home_hook.py'} | NATIVE_FILES).issubset(SOURCES):
         raise ValueError('Helper inventory is missing a required entry point')
+    if any(SOURCES[name] != 'tv-helper/native/prebuilt/' + name for name in NATIVE_FILES):
+        raise ValueError('Unexpected native Home source path')
+    verify_native_build()
     members = read_ipk(Path(filename).read_bytes())
     with tarfile.open(fileobj=io.BytesIO(members['data.tar.gz']), mode='r:gz') as archive:
         entries = {}

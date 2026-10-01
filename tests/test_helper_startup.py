@@ -393,7 +393,7 @@ class SetupFixture(unittest.TestCase):
 
     def test_pinned_inventory_cannot_read_outside_the_helper_directory(self):
         manifest = json.loads((self.bundle / 'bundle.json').read_text())
-        for name in ('../foreign.py', '/foreign.py', 'nested/module.py'):
+        for name in ('../foreign.py', '/foreign.py', 'nested/module.py', 'foreign.so', 'ezinject.old'):
             with self.subTest(name=name), patch.object(startup, 'load_module') as load:
                 invalid = dict(manifest, files=dict(manifest['files'], **{name: '0' * 64}))
                 self.write_manifest(invalid)
@@ -401,9 +401,9 @@ class SetupFixture(unittest.TestCase):
                     startup.load_bundle()
                 load.assert_not_called()
 
-    def test_pinned_inventory_still_requires_both_entry_points(self):
+    def test_pinned_inventory_requires_all_entry_points_and_native_payloads(self):
         manifest = json.loads((self.bundle / 'bundle.json').read_text())
-        for name in ('thumbnail_cache.py', 'stop_thumbnail_helper.py'):
+        for name in HELPER_SOURCES:
             with self.subTest(name=name), patch.object(startup, 'load_module') as load:
                 invalid = dict(manifest, files={key: value for key, value in manifest['files'].items()
                                                if key != name})
@@ -411,6 +411,39 @@ class SetupFixture(unittest.TestCase):
                 with self.assertRaisesRegex(startup.SetupError, 'invalid_helper_bundle'):
                     startup.load_bundle()
                 load.assert_not_called()
+
+    def test_home_modules_receive_only_authenticated_native_bytes(self):
+        home, hook = SimpleNamespace(), SimpleNamespace()
+        recovery = SimpleNamespace(monotonic=lambda: 1)
+        modules = {'lg_xmb_home_button': home, 'lg_xmb_home_hook': hook,
+                   'lg_xmb_home_recovery': recovery}
+        # Native libraries exceed the old Python module limit, but remain bounded.
+        payload = b'\x7fELF' + b'x' * 131072
+        (self.bundle / 'lgxmb-home-hook.so').write_bytes(payload)
+        self.update_manifest()
+        with patch.object(startup, 'load_module', side_effect=lambda name, raw, path: modules[name]):
+            module, _, _ = startup.home_modules()
+        self.assertIs(module.hook, hook)
+        self.assertIs(module.monotonic, recovery.monotonic)
+        self.assertEqual(set(hook.artifacts), set(startup.NATIVE_FILES))
+        self.assertEqual(hook.artifacts['lgxmb-home-hook.so'], payload)
+        for name in startup.NATIVE_FILES:
+            original = (self.bundle / name).read_bytes()
+            (self.bundle / name).write_bytes(b'changed')
+            with patch.object(startup, 'load_module') as load:
+                with self.assertRaisesRegex(startup.SetupError, 'helper_bundle_mismatch'):
+                    startup.home_modules()
+                load.assert_not_called()
+            (self.bundle / name).write_bytes(original)
+
+    def test_native_payload_size_limit_is_enforced(self):
+        with (self.bundle / 'lgxmb-home-hook.so').open('wb') as stream:
+            stream.truncate(startup.NATIVE_FILES['lgxmb-home-hook.so'] + 1)
+        self.update_manifest()
+        with patch.object(startup, 'load_module') as load:
+            with self.assertRaisesRegex(startup.SetupError, 'oversized_helper_file'):
+                startup.home_modules()
+            load.assert_not_called()
 
     def test_changed_app_manifest_is_rejected(self):
         (self.app / 'appinfo.json').write_text('{"id":"foreign"}')

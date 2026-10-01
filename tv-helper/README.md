@@ -14,7 +14,9 @@ The helper ships inside the IPK. See
 | --- | --- |
 | `app/helper-startup.py` | Verify the bundle, prepare paths and restore enabled workers |
 | `tv-helper/thumbnail_cache.py` | Poll eligible HDMI sources and capture thumbnails |
-| `tv-helper/home_button.py` | Read/save the Home choice and intercept only Home on the Magic Remote |
+| `tv-helper/home_button.py` | Read/save the Home choice and launch LG-XMB on Home |
+| `tv-helper/home_hook.py` | Verify, load and monitor the native Home hook |
+| `tv-helper/native/` | Home-only input hook, pinned dependencies and ARM32 build artifacts |
 | `tv-helper/recovery/stop_thumbnail_helper.py` | Stop recognised workers and remove recognised startup hooks |
 | `tv-helper/bundle-sources.json` | Shared source inventory for packaging and verification |
 | `tools/stage-helper.mjs` | Copy helper sources and generate package hashes |
@@ -32,33 +34,36 @@ Home choice after boot without launching LG-XMB or changing Power On Screen.
 
 ## Home button
 
-`home_button.py` follows
-[Magic Mapper's device routing](https://github.com/andrewfraley/magic_mapper/blob/9e4161fecdcf602d3f6c5863d848ce2959b6e2f5/magic_mapper.py).
-It discovers the exact `LGE M-RCU - Builtin [0]` input name and exclusively
-grabs that device. Non-Home events are forwarded unchanged to
-`LGE M-RCU - Builtin [2]` through webOS 9, preferring `[1]` on webOS 10 and newer.
-If those outputs are missing, another numbered Builtin device is used. The input
-device is never used as output. Event node numbers are discovered. Missing
-devices, disconnects and conflicting grabs are reported; another grabber is
-never killed. Device failures release the grab and allow a later reconnect.
+The native hook observes Home inside LG's input services. It replaces the old
+exclusive remote-device grab; other buttons, pointer movement and wheel events
+stay on LG's input path. It handles infrared and Magic Remote Home events; see
+[Compatibility](../docs/COMPATIBILITY.md#home-button-routing) for the tested TVs
+and remotes.
 
-Home opens LG-XMB once per press, including a hold. Its down, repeat and up
-events are consumed, so LG's native long-Home action is unavailable while the
-listener is enabled. Choosing **LG Home** disables the listener. Physical Home,
-arrow and wheel tests passed with the standalone app on the C5. The listener
-also started after reboot without opening LG-XMB over Recent Input. Other
-models, including the C4, still need physical testing.
+The shipped payload supports 32-bit ARM input processes. Other process
+architectures are reported as unsupported. The Python controller verifies the
+payload before copying it to `/var/lib/lg-xmb/native/<build-id>/`, then loads it
+without restarting an LG service. An older LG-XMB hook already loaded into the
+process requires a TV restart. Other input hooks are reported as conflicts;
+hooks are not stacked.
+
+Home opens LG-XMB once per press, including a hold. LG's native long-Home action
+is unavailable while enabled. Choosing **LG Home** removes the controller's
+lease immediately. The hook also stops intercepting when its lease expires
+after two seconds or it cannot deliver a Home event. Its code can remain loaded
+until the LG process exits, but without a valid lease Home follows the stock path.
 
 `/var/lib/lg-xmb/home-button.json` stores the choice. Reading it is read-only
 and does not start a worker or call the native assignment API. The check mark
-shows this choice; separate worker status explains when it is stopped. Select
+shows this choice; running status also requires a live native lease. Select
 the checked **LG-XMB** choice to retry. Only an explicit choice can clear an old
 native Home assignment to `org.local.openxmb.c5`; other apps' assignments are
 preserved. An active Home replacement blocks this setting until restored.
 
 Recovery recognises both the capture worker and the exact
 `helper-startup.py home-button-worker` process. It checks process identity
-before stopping either and removes only recognised startup hooks.
+before stopping either and removes only recognised startup hooks. Stopping the
+Home worker removes its lease; it never kills or restarts an LG input service.
 
 The bootstrap selects `/usr/bin/python3`, `/usr/bin/python`, then
 `/usr/bin/python2`. Environment, site and script-directory imports are disabled.
@@ -114,6 +119,9 @@ closed or hidden. Recovery refreshes the selected cached picture once.
 To add a packaged helper module, update `bundle-sources.json`. The packager
 generates the hashes and pins the complete manifest into the bootstrap. The
 bootstrap verifies every listed file before loading its named entry points.
+Native files and their build metadata use the same pinned inventory. The
+packager rejects native artifacts whose source or binary hashes have changed;
+see [rebuilding the Home hook](../docs/BUILDING.md#rebuild-the-native-home-hook).
 
 ## Audio links
 

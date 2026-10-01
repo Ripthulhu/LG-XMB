@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "protocol": 1,
+  "buildId": "18653f56f66b8ee059103a5369bc09cf2ba0900aaa54abe0895aa140072fdca0",
+  "architecture": "arm-linux-gnueabi",
+  "sources": {
+    "tools/build-home-hook.sh": "516063f4d7a41bfd4586b727c2e27cd7eb4c4fc544f080aaf73cabd05f6871c4",
+    "tv-helper/native/CMakeLists.txt": "789d053645d23b238eb1dfbb3b92a1288cb00c1117a9cb75711be69266452e82",
+    "tv-helper/native/dependencies.json": "8325858613ebb18a484f9abe2c05856ec19836d8c092230465f8d63e06b55954",
+    "tv-helper/native/home-hook.c": "8f0606e765e1669fa274c0e83b9771269e557fbf69f8591aaba04c559fd36124"
+  },
+  "files": {
+    "ezinject": "fac601764ca4c5daea158677832abe8eb6d2d1e408d761e34597e93092a26254",
+    "lgxmb-home-hook.so": "cea74c481d774d25174595d18a5baa6c2daf0c2e1bbd088f7418357bd6e3cbe3"
+  }
+}

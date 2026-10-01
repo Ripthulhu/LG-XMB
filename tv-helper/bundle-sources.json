@@ -1,5 +1,9 @@
 {
   "thumbnail_cache.py": "tv-helper/thumbnail_cache.py",
   "stop_thumbnail_helper.py": "tv-helper/recovery/stop_thumbnail_helper.py",
-  "home_button.py": "tv-helper/home_button.py"
+  "home_button.py": "tv-helper/home_button.py",
+  "home_hook.py": "tv-helper/home_hook.py",
+  "ezinject": "tv-helper/native/prebuilt/ezinject",
+  "lgxmb-home-hook.so": "tv-helper/native/prebuilt/lgxmb-home-hook.so",
+  "build.json": "tv-helper/native/prebuilt/build.json"
 }

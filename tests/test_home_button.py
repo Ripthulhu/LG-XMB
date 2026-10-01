@@ -20,10 +20,6 @@ home = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(home)
 
 
-def event(kind, code, value):
-    return home.EVENT.pack(123, 456, kind, code, value)
-
-
 class HomeButtonTests(unittest.TestCase):
     def setUp(self):
         self.fixture = bootstrap_tests.SetupFixture()
@@ -36,7 +32,9 @@ class HomeButtonTests(unittest.TestCase):
         self.recovery.find_helpers = lambda: list(self.identities.values())
         self.recovery.process_identity = self.identities.get
         self.recovery.stop_one = lambda identity: self.identities.pop(identity[0], None)
-        self.patch = patch.multiple(home, os=startup.os, APP_DIR=str(self.app),
+        self.hook = SimpleNamespace(healthy=Mock(return_value=True), disarm=Mock(),
+                                    HookError=home.HomeButtonError, Controller=Mock())
+        self.patch = patch.multiple(home, os=startup.os, hook=self.hook, APP_DIR=str(self.app),
                                     HOME_PAYLOAD=str(self.fixture.root / 'absent'),
                                     STOCK_HOME=str(self.fixture.root / 'stock'))
         self.patch.start()
@@ -60,7 +58,7 @@ class HomeButtonTests(unittest.TestCase):
         identity = (111, 222, self.recovery.BOOTSTRAP)
         self.identities[111] = identity
         (self.base / home.STATUS).write_text(json.dumps({'pid': 111, 'birth': 222,
-             'bundle': bundle, 'state': 'running'}))
+             'bundle': bundle, 'state': 'running', 'nativeBuild': 'b' * 64}))
         (self.base / home.STATUS).chmod(0o600)
         return identity
 
@@ -71,6 +69,10 @@ class HomeButtonTests(unittest.TestCase):
         self.assertFalse(self.state()['running'])
         self.ready()
         self.assertTrue(self.state()['running'])
+        self.hook.healthy.assert_called_with(startup, 'b' * 64)
+        self.hook.healthy.return_value = False
+        self.assertFalse(self.state()['running'], 'A live process without a valid lease is not ready')
+        self.hook.healthy.return_value = True
         self.identities[111] = (111, 999, self.recovery.BOOTSTRAP)
         self.assertFalse(self.state()['running'])
         self.ready('old-bundle')
@@ -101,12 +103,19 @@ class HomeButtonTests(unittest.TestCase):
         self.assertEqual(list(self.identities), [333])
         self.assertTrue(hook.is_symlink())
 
-    def test_disable_releases_grab_even_when_legacy_cleanup_fails(self):
+    def test_disable_disarms_before_stopping_even_when_legacy_cleanup_fails(self):
         self.save('xmb')
         self.ready()
+        actions = []
+        self.hook.disarm.side_effect = lambda: actions.append('disarm')
+        def stop(identity):
+            actions.append('stop')
+            self.identities.pop(identity[0], None)
+        self.recovery.stop_one = stop
         with patch.object(home, 'clear_legacy_assignment', side_effect=home.HomeButtonError('native_timeout')):
             reply = self.command('set', 'stock', self.state()['revision'])
         self.assertEqual(reply['errorCode'], 'native_timeout')
+        self.assertEqual(actions, ['disarm', 'stop'])
         self.assertFalse(self.identities)
         self.assertEqual(self.state()['mode'], 'stock')
         self.native_mock.return_value = {'settings': {'defaultApps': {'home': home.APPS['xmb']}}}
@@ -145,6 +154,15 @@ class HomeButtonTests(unittest.TestCase):
         with patch.object(home, 'overlay_active', return_value=True):
             self.assertEqual(self.command('get')['errorCode'], 'home_overlay_active')
 
+    def test_native_disable_error_reaches_remote_settings(self):
+        class HookError(Exception):
+            pass
+        self.save('xmb')
+        self.hook.HookError = HookError
+        self.hook.disarm.side_effect = HookError('hook_conflict')
+        self.assertEqual(self.command('set', 'stock', self.state()['revision']),
+                         {'returnValue': False, 'errorCode': 'hook_conflict'})
+
     def test_legacy_cleanup_preserves_other_defaults_and_never_assigns_xmb(self):
         before = {'home': home.APPS['xmb'], 'browser': 'another.browser'}
         self.native_mock.side_effect = [
@@ -173,73 +191,9 @@ class HomeButtonTests(unittest.TestCase):
             self.assertTrue(home.ensure(startup, self.recovery, 'bundle', base)['running'])
             self.assertTrue(stat.S_ISDIR(os.fstat(base).st_mode), 'ensure must not close a borrowed descriptor')
 
-    def test_home_press_launches_once_and_all_other_input_is_byte_exact(self):
-        output, launches = [], []
-        relay = home.InputRelay(output.append, lambda: launches.append(1))
-        other = [event(1, 103, 1), event(1, 103, 2), event(2, 8, -1),
-                 event(3, 0, 100), event(1, 1198, 1), event(0, 0, 0), event(1, 103, 0)]
-        relay.feed(b''.join([event(1, home.HOME_KEY, 1), event(1, home.HOME_KEY, 2)] + other +
-                           [event(1, home.HOME_KEY, 0)]))
-        self.assertEqual(launches, [1])
-        self.assertEqual(output, other)
-        relay.release()
-        self.assertEqual(output[-2:], [home.EVENT.pack(0,0,1,1198,0), home.EVENT.pack(0,0,0,0,0)])
-        for invalid in (b'', b'x', event(0, 3, 0)):
-            with self.assertRaisesRegex(home.HomeButtonError, 'remote_disconnected'):
-                relay.feed(invalid)
-
-    def test_device_discovery_uses_names_and_version_specific_output(self):
-        raw = '\n\n'.join('N: Name="LGE M-RCU - Builtin [%d]"\nH: Handlers=kbd event%d ' % (i, n)
-                            for i, n in [(0, 7), (1, 4), (2, 9)])
-        self.assertEqual(home.device_paths(raw, 9), ('/dev/input/event7', '/dev/input/event9'))
-        self.assertEqual(home.device_paths(raw, 10), ('/dev/input/event7', '/dev/input/event4'))
+    def test_launch_flags_follow_webos_version(self):
         self.assertEqual(home.launch_command(9)[1:3], ['-n', '1'])
         self.assertEqual(home.launch_command(10)[1:3], ['-t', '1'])
-
-    def test_device_fallback_stays_with_unambiguous_builtin_outputs(self):
-        def device(index, handlers):
-            return 'I: Bus=0019\nN: Name="LGE M-RCU - Builtin [%s]"\nH: Handlers=kbd %s' % (index, handlers)
-        source = device(0, 'event7')
-        cases = [
-            (9, [device(1, 'event4')], '/dev/input/event4'),  # Older target without [2].
-            (10, [device(2, 'event9')], '/dev/input/event9'),  # Newer target without [1].
-            (9, [device(3, 'event12')], '/dev/input/event12'),
-            (10, [device(3, 'event12')], '/dev/input/event12'),
-            (10, [device(1, 'event7'), device(2, 'event9')], '/dev/input/event9'),
-            (9, [device(2, 'event7')], None),  # Another name for the source is never an output.
-            (9, [], None),
-            (9, ['N: Name="USB keyboard"\nH: Handlers=kbd event9'], None),
-            (9, [device('not-a-number', 'event9')], None),
-            (9, [device(2, 'event9/invalid')], None),
-            (9, [device(2, 'event9 event10')], None),
-            (9, [device(2, 'event9'), device(2, 'event10')], None),
-            (9, [device(2, 'event9'), device(2, 'event10'), device(3, 'event12')], '/dev/input/event12'),
-            (9, [device(0, 'event8'), device(2, 'event9')], None),
-        ]
-        for major, outputs, expected in cases:
-            with self.subTest(major=major, outputs=outputs):
-                # Kernel blocks may be separated by a blank line or just the next I: line.
-                for separator in ('\n\n', '\n'):
-                    raw = separator.join([source] + outputs)
-                    if expected is None:
-                        with self.assertRaisesRegex(home.HomeButtonError, 'remote_missing'):
-                            home.device_paths(raw, major)
-                    else:
-                        self.assertEqual(home.device_paths(raw, major), ('/dev/input/event7', expected))
-
-    def test_grab_conflict_closes_both_devices_without_touching_other_mapper(self):
-        from unittest.mock import mock_open
-        with patch('builtins.open', mock_open(read_data=b'devices')), \
-             patch.object(home, 'device_paths', return_value=('/dev/input/event7', '/dev/input/event9')), \
-             patch.object(home.os, 'open', side_effect=[7, 9]) as opened, \
-             patch.object(home.os, 'fstat', return_value=SimpleNamespace(st_mode=stat.S_IFCHR)), \
-             patch.object(home.os, 'close') as closed, \
-             patch.object(home.fcntl, 'ioctl', side_effect=OSError(errno.EBUSY, 'busy')) as grab:
-            with self.assertRaisesRegex(home.HomeButtonError, 'remote_busy'):
-                home.open_remote(9)
-        self.assertEqual(opened.call_count, 2)
-        grab.assert_called_once_with(7, home.EVIOCGRAB, 1)
-        self.assertEqual([call.args[0] for call in closed.call_args_list], [7, 9])
 
     def test_launch_drains_reply_written_between_eagain_and_process_exit(self):
         launch = home.AppLaunch(10)
@@ -317,28 +271,54 @@ class HomeButtonTests(unittest.TestCase):
         child.kill.assert_called_once()
         child.wait.assert_called_once()
 
-    def test_worker_relays_and_releases_held_keys_when_disabled(self):
+    def test_worker_reports_controller_health_and_closes_on_disable_or_removal(self):
+        for running, exit_kind in [(True, 'disable'), (False, 'disable'), (True, 'uninstall')]:
+            with self.subTest(running=running, exit_kind=exit_kind):
+                self.save('xmb')
+                (self.app / 'appinfo.json').write_text('{}')
+                self.identities[os.getpid()] = (os.getpid(), 123, self.recovery.BOOTSTRAP)
+                controller = SimpleNamespace(build='b' * 64, last_input=None, running=running,
+                    reason='' if running else 'hook_unavailable', close=Mock())
+                def step(launch):
+                    if running:
+                        controller.last_input = {'source': 'lginput2', 'code': 125}
+                        launch()
+                    if exit_kind == 'uninstall':
+                        (self.app / 'appinfo.json').unlink()
+                    else:
+                        self.save('stock')
+                controller.step = Mock(side_effect=step)
+                self.hook.Controller.return_value = controller
+                launcher, reports = Mock(), []
+                original_write = startup.write_file
+                def write(directory, name, raw):
+                    if name == home.STATUS:
+                        reports.append(json.loads(raw))
+                    return original_write(directory, name, raw)
+                with patch.object(home, 'webos_major', return_value=9), \
+                     patch.object(home, 'AppLaunch', return_value=launcher), \
+                     patch.object(home.signal, 'signal'), patch.object(startup, 'write_file', side_effect=write):
+                    home.run(startup, self.recovery, 'bundle')
+                self.assertEqual(reports[0]['state'], 'running' if running else 'waiting')
+                self.assertEqual(reports[0]['nativeBuild'], 'b' * 64)
+                self.assertEqual(reports[-1]['state'], 'stopped')
+                self.assertEqual(launcher.start.call_count, 1 if running else 0)
+                controller.close.assert_called_once()
+                launcher.close.assert_called_once()
+
+    def test_controller_failure_closes_and_records_failure(self):
         self.save('xmb')
         self.identities[os.getpid()] = (os.getpid(), 123, self.recovery.BOOTSTRAP)
-        reader, sender = os.pipe()
-        path = self.fixture.root / 'forwarded'
-        writer = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
-        os.write(sender, event(1, 103, 1) + event(1, home.HOME_KEY, 1) + event(2, 8, -1))
-        launcher = Mock()
-        launcher.check.side_effect = lambda: self.save('stock')
-        try:
-            with patch.object(home, 'webos_major', return_value=9), \
-                 patch.object(home, 'open_remote', return_value=(reader, writer)), \
-                 patch.object(home, 'AppLaunch', return_value=launcher), \
-                 patch.object(home.signal, 'signal'):
-                home.run(startup, self.recovery, 'bundle')
-        finally:
-            os.close(sender)
-        self.assertEqual(path.read_bytes(), event(1,103,1) + event(2,8,-1) +
-                         home.EVENT.pack(0,0,1,103,0) + home.EVENT.pack(0,0,0,0,0))
-        launcher.start.assert_called_once()
-        launcher.close.assert_called_once()
-        self.assertEqual(json.loads((self.base / home.STATUS).read_text())['state'], 'stopped')
+        controller = SimpleNamespace(build='b' * 64, last_input=None,
+            step=Mock(side_effect=home.HomeButtonError('hook_conflict')), close=Mock())
+        self.hook.Controller.return_value = controller
+        with patch.object(home, 'webos_major', return_value=9), \
+             patch.object(home, 'AppLaunch') as launch, patch.object(home.signal, 'signal'):
+            home.run(startup, self.recovery, 'bundle')
+        controller.close.assert_called_once()
+        launch.return_value.close.assert_called_once()
+        state = json.loads((self.base / home.STATUS).read_text())
+        self.assertEqual((state['state'], state['reason']), ('stopped', 'hook_conflict'))
 
     def test_bootstrap_get_verifies_bundle_without_capture_setup(self):
         module = SimpleNamespace(command=Mock(return_value={'returnValue': True}))

@@ -1,0 +1,8 @@
+{
+  "toolchainUrl": "https://github.com/sundermann/buildroot-nc4/releases/download/2025.02-03/linux-intel-lgtv-sdk.tar.gz",
+  "toolchainSha256": "8453e05a2e334cac891f41faa8582e43263c711b491256500d126f442c231749",
+  "toolchainDirectory": "arm-lgtv-linux-gnueabi_sdk-buildroot",
+  "toolchainSourceCommit": "93adce888212c31ff2a89f5ea9260961c64fc6c5",
+  "ezinjectCommit": "607055c06b037eadc3992008940d99bdc4a14f53",
+  "inputhookReferenceCommit": "9dc3cf140cb1ae1dbe059525c72710deea7ecf7d"
+}

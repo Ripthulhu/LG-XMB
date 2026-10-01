@@ -9,20 +9,46 @@ export const helperSources = Object.freeze(JSON.parse(
   fs.readFileSync(new URL('../tv-helper/bundle-sources.json', import.meta.url), 'utf8')
 ));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+const nativeFiles = ['ezinject', 'lgxmb-home-hook.so', 'build.json'];
+const nativeSources = ['tv-helper/native/home-hook.c', 'tv-helper/native/CMakeLists.txt',
+  'tv-helper/native/dependencies.json', 'tools/build-home-hook.sh'];
+
+export function validateNativeBuild(projectDir) {
+  const directory = path.join(projectDir, 'tv-helper/native/prebuilt');
+  const build = JSON.parse(fs.readFileSync(path.join(directory, 'build.json'), 'utf8'));
+  if (build.schema !== 1 || build.protocol !== 1 || build.architecture !== 'arm-linux-gnueabi' ||
+      JSON.stringify(Object.keys(build.sources || {}).sort()) !== JSON.stringify([...nativeSources].sort()) ||
+      JSON.stringify(Object.keys(build.files || {}).sort()) !== JSON.stringify(nativeFiles.slice(0, 2).sort()))
+    throw new Error('Invalid native Home build metadata. Rebuild the Home hook.');
+  for (const source of nativeSources)
+    if (sha256(fs.readFileSync(path.join(projectDir, source))) !== build.sources[source])
+      throw new Error(`Native Home build is stale: ${source}. Rebuild the Home hook.`);
+  const identity = Object.keys(build.sources).sort().map(name => `${name} ${build.sources[name]}\n`).join('');
+  if (build.buildId !== sha256(identity)) throw new Error('Native Home build ID does not match its sources.');
+  for (const name of nativeFiles.slice(0, 2)) {
+    const bytes = fs.readFileSync(path.join(directory, name));
+    if (!bytes.length || bytes.length > 16 * 1024 * 1024 || sha256(bytes) !== build.files[name])
+      throw new Error(`Native Home payload differs from its build: ${name}`);
+  }
+}
 
 export function validateHelperSources(sources) {
   if (!sources || typeof sources !== 'object' || Array.isArray(sources) ||
-      !['thumbnail_cache.py', 'stop_thumbnail_helper.py', 'home_button.py'].every(name => Object.hasOwn(sources, name)))
+      !['thumbnail_cache.py', 'stop_thumbnail_helper.py', 'home_button.py', 'home_hook.py', ...nativeFiles]
+        .every(name => Object.hasOwn(sources, name)))
     throw new Error('Helper inventory must include the capture, recovery and Home button entry points.');
   for (const [name, relative] of Object.entries(sources)) {
-    if (!/^[a-z][a-z0-9_]*\.py$/.test(name) || typeof relative !== 'string' ||
-        !/^tv-helper\/(?:[a-z][a-z0-9_-]*\/)*[a-z][a-z0-9_]*\.py$/.test(relative))
+    const valid = nativeFiles.includes(name) ? relative === `tv-helper/native/prebuilt/${name}` :
+      /^[a-z][a-z0-9_]*\.py$/.test(name) && typeof relative === 'string' &&
+      /^tv-helper\/(?:[a-z][a-z0-9_-]*\/)*[a-z][a-z0-9_]*\.py$/.test(relative);
+    if (!valid)
       throw new Error(`Invalid helper source entry: ${name}`);
   }
 }
 
 export function stageHelper(projectDir, appDir) {
   validateHelperSources(helperSources);
+  validateNativeBuild(projectDir);
   const appinfo = fs.readFileSync(path.join(appDir, 'appinfo.json'));
   const manifest = {schema: 1, appinfoSha256: sha256(appinfo), files: {}};
   const destination = path.join(appDir, 'helper');

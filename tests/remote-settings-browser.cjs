@@ -62,6 +62,11 @@ const menu = require('./support/menu-navigation.cjs');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => remoteTest.reads.length === 1);
       assert.equal(await page.locator('#modalTitle').textContent(), 'Remote');
+      assert.deepEqual(await page.locator('#modalContent [role="group"]').evaluateAll(nodes =>
+        nodes.map(node => node.getAttribute('aria-label'))), ['Home button', 'Back button']);
+      assert.deepEqual(await page.getByRole('group', {name: 'Home button', exact: true})
+        .locator('[data-remote-choice]').evaluateAll(nodes => nodes.map(node => node.firstChild.textContent)),
+        ['LG Home', 'LG-XMB']);
       assert.equal(await page.evaluate(() => remoteTest.writes.length), 0);
       assert.equal(await home('stock').isDisabled(), true);
       assert.equal(await active(), 'Back button:previous');
@@ -142,10 +147,18 @@ const menu = require('./support/menu-navigation.cjs');
       await page.keyboard.press('Escape');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => remoteTest.reads.length === 6);
+      await settle('reads', 5, {mode: 'xmb', available: true, running: false,
+        reason: 'hook_reboot_required', message: 'Restart the TV to finish changing the Home button setting.'});
+      assert.match(await page.locator('#modalContent').textContent(), /Restart the TV/);
+      assert.doesNotMatch(await page.locator('#modalContent').textContent(), /Select LG-XMB to retry/);
+      assert.equal(await home('stock').isDisabled(), false, 'LG Home remains available when a reboot is needed');
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => remoteTest.reads.length === 7);
       await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
       assert.equal(await page.evaluate(() => remoteTest.cancelled), 2);
       assert.equal(await page.evaluate(() => C5App.getState().modal), null);
-      await page.evaluate(() => remoteTest.reads[5].resolve({mode: 'xmb', available: true}));
+      await page.evaluate(() => remoteTest.reads[6].resolve({mode: 'xmb', available: true}));
       assert.equal(await page.evaluate(() => C5RemoteSettings.getState().home), null);
       checks.push(height + 'p: Remote focus, guarded writes, retry, stale replies, unavailable Home and working Back');
       await page.close();

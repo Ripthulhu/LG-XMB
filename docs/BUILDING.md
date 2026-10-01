@@ -8,8 +8,9 @@ Use Node.js 20 or newer and Python 3.10 or newer. The helper on the TV supports
 Python 2.7 and Python 3.
 
 `package-lock.json` pins the Node dependencies. The packager uses
-`@webos-tools/cli` 3.2.6; browser tests use Playwright. You don't need a native
-webOS SDK for this HTML/JavaScript app.
+`@webos-tools/cli` 3.2.6; browser tests use Playwright. Normal packaging uses the
+prebuilt Home hook under `tv-helper/native/prebuilt/`, so it doesn't need a
+native webOS SDK.
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
@@ -49,6 +50,27 @@ verification. Don't edit files under `.build/`; rebuild from their sources.
 The app ID remains `org.local.openxmb.c5`. Version values in `package.json`,
 `app/appinfo.json` and `tools/package.mjs` must agree. A manifest edit also needs
 the matching `PIN_APPINFO_SHA256` in `tv-helper/thumbnail_cache.py`.
+
+## Rebuild the native Home hook
+
+This is only needed after changing the native source, build script or pinned
+dependencies. Run on Linux or WSL with Git, curl, CMake 3.24+, make and Python 3:
+
+```sh
+sh tools/build-home-hook.sh
+npm run package
+```
+
+The script downloads the pinned webOS toolchain, builds ezinject and the Home
+hook, and writes `ezinject`, `lgxmb-home-hook.so` and `build.json` under
+`tv-helper/native/prebuilt/`. Downloads and build files stay in
+`/tmp/lg-xmb-home-hook-build`; set `HOME_HOOK_BUILD_DIR` to use another directory.
+No TV connection is used.
+
+The output targets 32-bit ARM LG input processes. It does not provide a 64-bit
+or x86 hook. Packaging checks the source hashes, build ID and binary hashes;
+stale artifacts must be rebuilt rather than updating their metadata by hand.
+Keep the source and matching prebuilt artifacts together when sharing a build.
 
 ## Included runtime data
 

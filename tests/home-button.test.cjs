@@ -53,11 +53,14 @@ test('setting requires a fresh snapshot and confirmed native reply', async () =>
 
 test('Home status preserves optional runtime fields and explains only known reasons', async () => {
   for (const [reason, message] of [
-    ['remote_missing', 'The TV remote was not found.'],
-    ['remote_busy', 'Another app is using the TV remote.'],
-    ['remote_disconnected', 'The TV remote disconnected.'],
     ['remote_launch_failed', 'The Home button could not open LG-XMB.'],
-    ['remote_start_failed', 'The Home button could not start.']
+    ['remote_start_failed', 'The Home button could not start.'],
+    ['hook_missing', 'Home button support is not installed. Reinstall LG-XMB.'],
+    ['hook_unsupported', 'Home button remapping is not supported on this TV.'],
+    ['hook_conflict', 'The Home button is already managed by another app.'],
+    ['hook_reboot_required', 'Restart the TV to finish changing the Home button setting.'],
+    ['hook_start_failed', 'Home button remapping could not start.'],
+    ['hook_unavailable', 'Home button remapping is unavailable on this TV.']
   ]) {
     const h = fixture(), read = h.api.get();
     h.reply(0, {...h.ready('xmb'), running:false, reason, message:'untrusted helper text'});
@@ -96,18 +99,33 @@ test('invalid optional Home status cannot authorize another write', async () => 
 
 test('Home interception and legacy assignment errors have specific explanations', async () => {
   for (const [code, message] of [
-    ['remote_missing', /remote was not found/],
-    ['remote_busy', /Another app is using/],
-    ['remote_disconnected', /remote disconnected/],
     ['remote_launch_failed', /could not open LG-XMB/],
     ['remote_start_failed', /could not start/],
     ['home_button_unavailable', /unavailable on this TV/],
     ['native_unavailable', /clear the previous Home button assignment/],
-    ['native_timeout', /previous Home button assignment timed out/]
+    ['native_timeout', /previous Home button assignment timed out/],
+    ['hook_missing', /not installed\. Reinstall LG-XMB/],
+    ['hook_unsupported', /not supported on this TV/],
+    ['hook_conflict', /already managed by another app/],
+    ['hook_reboot_required', /Restart the TV/],
+    ['hook_start_failed', /remapping could not start/],
+    ['hook_unavailable', /remapping is unavailable on this TV/]
   ]) {
     const h = fixture(), read = h.api.get();
     h.reply(0, {returnValue:false, errorCode:code}, {returnValue:false});
     await assert.rejects(read, error => error.code === code && message.test(error.message));
+  }
+});
+
+test('failed native hook changes require a fresh read and never retry the write', async () => {
+  for (const errorCode of ['hook_missing', 'hook_unsupported', 'hook_conflict',
+    'hook_reboot_required', 'hook_start_failed', 'hook_unavailable']) {
+    const h = fixture(), read = h.api.get(); h.reply(0, h.ready()); await read;
+    const write = h.api.set('xmb');
+    h.reply(1, {returnValue:false, errorCode}, {returnValue:false});
+    await assert.rejects(write, {code:errorCode});
+    await assert.rejects(h.api.set('xmb'), {code:'home_mapping_changed'});
+    assert.equal(h.calls.length, 2);
   }
 });
 

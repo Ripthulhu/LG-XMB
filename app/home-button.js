@@ -16,11 +16,14 @@
     home_mapping_not_confirmed: 'The change was not confirmed. Check the Home button setting.',
     home_button_busy: 'Home button setup is busy. Check it again shortly.',
     home_button_unavailable: 'Home button setup is unavailable on this TV.',
-    remote_missing: 'The TV remote was not found.',
-    remote_busy: 'Another app is using the TV remote.',
-    remote_disconnected: 'The TV remote disconnected.',
     remote_launch_failed: 'The Home button could not open LG-XMB.',
     remote_start_failed: 'The Home button could not start.',
+    hook_missing: 'Home button support is not installed. Reinstall LG-XMB.',
+    hook_unsupported: 'Home button remapping is not supported on this TV.',
+    hook_conflict: 'The Home button is already managed by another app.',
+    hook_reboot_required: 'Restart the TV to finish changing the Home button setting.',
+    hook_start_failed: 'Home button remapping could not start.',
+    hook_unavailable: 'Home button remapping is unavailable on this TV.',
     native_unavailable: 'Could not clear the previous Home button assignment. Try again.',
     native_timeout: 'Clearing the previous Home button assignment timed out. Try again.',
     cancelled: 'Home button check cancelled.',
@@ -82,11 +85,14 @@
       (value.running !== undefined && typeof value.running !== 'boolean') ||
       (value.reason !== undefined &&
         [
-          'remote_missing',
-          'remote_busy',
-          'remote_disconnected',
           'remote_launch_failed',
-          'remote_start_failed'
+          'remote_start_failed',
+          'hook_missing',
+          'hook_unsupported',
+          'hook_conflict',
+          'hook_reboot_required',
+          'hook_start_failed',
+          'hook_unavailable'
         ].indexOf(value.reason) < 0) ||
       typeof value.revision !== 'string' ||
       !/^[0-9a-f]{64}$/.test(value.revision)

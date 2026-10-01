@@ -65,6 +65,10 @@ try {
       if (fs.existsSync(sourcePath)) fs.copyFileSync(sourcePath, path.join(licenseDir, name));
     }
     fs.copyFileSync(path.join(projectDir, 'docs', 'WEBGL2-NOTICES.md'), path.join(licenseDir, 'WEBGL2-NOTICES.md'));
+    const hookNotices = path.join(projectDir, 'tv-helper', 'native');
+    fs.mkdirSync(path.join(licenseDir, 'home-hook'), {recursive: true});
+    fs.copyFileSync(path.join(hookNotices, 'NOTICE.md'), path.join(licenseDir, 'home-hook', 'NOTICE.md'));
+    fs.cpSync(path.join(hookNotices, 'licenses'), path.join(licenseDir, 'home-hook', 'licenses'), {recursive: true});
   }
   for (const relativeName of [appinfo.main, appinfo.icon, 'ps3-particle-birth.js', 'ps3-native-core.js', 'ps3-native-shaders.js', 'ps3-native-renderer.js', 'ps3-background-clock.js', 'background-music.js', 'category-transition.js', 'wave-colors.js', 'wave-color-settings.js', 'wallpaper.js', 'clock-view.js', 'clock.css', 'screensaver.js', 'screensaver-view.js', 'screensaver.css', 'licenses/LICENSE', 'licenses/THIRD-PARTY-NOTICES.md', 'licenses/WEBGL2-NOTICES.md', 'licenses/PARTICLE-BIRTH-MIT.txt', 'licenses/PS3-XMB-MIT.txt', 'licenses/THREE-FXAA-MIT.txt']) {
     requireCondition(typeof relativeName === 'string' && relativeName.length > 0, 'App entry and icon paths are required.');

@@ -28,7 +28,7 @@ page structure. Read the controller only when a change crosses feature boundarie
 | Clock display | `app/clock-view.js`, `app/clock.css` | Current and PS3 clock layouts, date formatting and analogue hands |
 | Fonts | `app/fonts.css` | Optional local Rodin faces and system font fallback; see [Fonts](FONTS.md) |
 | Screensaver | `app/screensaver.js`, `app/screensaver-view.js`, `app/screensaver.css` | Idle deadline, layer brightness targets, wake gestures, UI and wallpaper fades |
-| Remote | `app/remote-settings.js`, `app/home-button.js`, `tv-helper/home_button.py` | Verified saved Home choice and Linux input listener; local Back preference |
+| Remote | `app/remote-settings.js`, `app/home-button.js`, `tv-helper/home_button.py`, `tv-helper/home_hook.py` | Verified saved Home choice and native Home hook; local Back preference |
 | Other settings panels | `app/date-time-settings.js` | Clock formats and system date/time controls |
 | TV APIs | `app/tv-bridge.js`, `app/app-manager.js`, `app/system-time.js` | Bounded native requests for launch/input/audio, app information/removal and clock settings |
 | HDMI pictures | `app/thumbnail.js`, `app/input-preview.js` | Cached images and optional live video; separate lifecycles |
@@ -141,27 +141,33 @@ its dependencies.
 `app/home-button.js` owns verified Home-button requests, including native
 envelope and revision checks. `tv-helper/home_button.py` keeps the choice in
 `/var/lib/lg-xmb/home-button.json`; `get` only reads saved state and worker
-identity. An explicit change checks the revision, starts or stops the separate
-listener and can clear an old native assignment only when it names this exact
-LG-XMB app. Other apps' native assignments are preserved. The bootstrap verifies
+identity and native lease. An explicit change checks the revision, starts or
+stops the separate worker and can clear an old native assignment only when it
+names this exact LG-XMB app. Other apps' native assignments are preserved. The bootstrap verifies
 the bundle before dispatch. This path does not run capture setup or alter
 Home-replacement mounts. A failed or uncertain write requires a fresh read
 before another explicit change.
 
-The listener exclusively reads `LGE M-RCU - Builtin [0]` and forwards raw
-non-Home events to `[2]` through webOS 9, preferring `[1]` on webOS 10 and newer.
-It falls back to another numbered Builtin output, excluding the input device.
-It consumes Home down/repeat/up and launches
-once per press; native long-Home behaviour is unavailable while enabled. A
-conflicting grab is reported without stopping the other process. The existing
-`60-lg-xmb` bootstrap restores the saved opt-in listener after boot, without
-launching the app or changing Power On Screen. Recovery recognises both this
-worker and the capture worker.
+`home_hook.py` copies the bootstrap's verified native bytes into
+`/var/lib/lg-xmb/native/<build-id>/` and loads the hook into supported 32-bit ARM
+LG input processes. It authenticates their events over a root-only Unix socket
+and maintains a short lease. The hook handles Home only while that lease is
+valid and event delivery succeeds; other input stays on LG's path. Disabling
+removes the lease before stopping the worker. An older LG-XMB hook requires a
+TV restart; other input hooks are reported as conflicts. The helper never
+restarts LG services or stacks hooks.
+
+Home launches once per press; native long-Home behaviour is unavailable while
+enabled. The existing `60-lg-xmb` bootstrap restores the saved choice after
+boot, without launching the app or changing Power On Screen. Recovery recognises
+both this worker and the capture worker.
 
 The bootstrap dispatches to a fixed Python path with environment and site imports
 disabled, then removes the script directory from the import path. Its shared
 bundle verification, Home commands and capture run on Python 2.7 and Python 3.
-Timing uses a monotonic clock, falling back to Linux uptime on Python 2.
+Capture timing uses a monotonic clock, falling back to Linux uptime on Python 2.
+The native hook lease uses `CLOCK_BOOTTIME`, through `librt` on Python 2, so
+time spent in standby counts toward expiry.
 The capture worker retains the startup lock as stdin, which it never reads;
 other setup descriptors are closed before execution. Filesystem operations use
 held directory descriptors through `/proc/self/fd` so Python 2 does not need

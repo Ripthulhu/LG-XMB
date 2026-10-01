@@ -55,7 +55,14 @@
     error.hidden = !message;
   }
   function showHome(message, canRetry) {
-    if (!busy && home && home.available && home.mode === 'xmb' && home.running === false)
+    if (
+      !busy &&
+      home &&
+      home.available &&
+      home.mode === 'xmb' &&
+      home.running === false &&
+      home.reason !== 'hook_reboot_required'
+    )
       message = (message ? message + ' ' : '') + 'Select LG-XMB to retry.';
     selection(homeSection, 'Home button', home && home.mode);
     [].forEach.call(homeSection.querySelectorAll('button'), function (button) {

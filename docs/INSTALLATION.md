@@ -4,7 +4,7 @@ The **safer, recommended setup** is to install LG-XMB as a normal webOS app,
 keeping stock LG Home. The IPK adds a launcher named **Home** without changing
 the Home button. After testing the app, rooted TVs can enable a Home-button
 listener in **Settings → Remote** with elevated Homebrew Channel, Python 2.7+
-and compatible remote devices. This route needs testing on each TV model.
+and a supported 32-bit ARM LG input service. This route needs testing on each TV model.
 
 [Replacing LG Home](HOME-TAKEOVER.md) is a separate, optional procedure tested
 only on the LG C5 with webOS 25 / 10.3.1. Other TVs need manual investigation
@@ -89,18 +89,25 @@ These native install commands have been used on the C5 with webOS 10.3.1. Read
 ## Remote settings and standalone use
 
 Open **Settings → Remote**. Under **Home button**, choose **LG-XMB** to enable
-the direct remote listener or **LG Home** to disable it. The listener opens
-LG-XMB once per Home press, including a hold, and forwards other remote events.
+Home remapping or **LG Home** to disable it. The native hook opens
+LG-XMB once per Home press, including a hold, and leaves other input on LG's path.
 LG's native long-Home action is unavailable while it is enabled.
+
+This replaces the old Magic Remote device grab and handles infrared and Magic
+Remote Home events. The shipped hook supports 32-bit ARM LG input processes;
+other process architectures are not supported. See the
+[Home-button test results](COMPATIBILITY.md#home-button-routing) before relying
+on it for your TV.
 
 Reading the setting is read-only. The check mark shows the saved choice, not
 proof that the listener is running. A stopped listener shows an explanation;
 select the checked **LG-XMB** choice to retry. After an uncertain change, use
-**Retry** to read the saved state before trying again. If another app has
-exclusive control of the remote, LG-XMB reports the conflict without stopping it.
+**Retry** to read the saved state before trying again. An older LG-XMB hook
+requires a TV restart. Disable other input mappers before enabling this one;
+the helper reports conflicts instead of loading another hook on top.
 
 This requires root, an elevated Homebrew Channel service, Python 2.7 or newer
-and the remote devices listed in [Compatibility](COMPATIBILITY.md#home-button-routing).
+and a supported LG input service. See [Compatibility](COMPATIBILITY.md#home-button-routing).
 The choice is saved in `/var/lib/lg-xmb/home-button.json`. The existing
 `60-lg-xmb` bootstrap restores an enabled listener after boot; it does not
 launch the app at boot or change Power On Screen. An old native Home assignment
@@ -168,8 +175,9 @@ Its package ID, `org.local.openxmb.c5`, stays unchanged for in-place upgrades.
 The IPK updates the helper files too; there is no separate helper to copy over
 SSH. Opening Home verifies the new bundle and restarts the capture worker if
 the bundle changed. An unchanged worker is reused, and an enabled Home-button
-listener is restored. Your music, sounds,
-wallpaper and fonts remain in `/media/internal/lg-xmb/`.
+listener is restored. If the native hook changed while an older copy is still
+loaded, Remote settings will ask for a TV restart before enabling the new hook.
+Your music, sounds, wallpaper and fonts remain in `/media/internal/lg-xmb/`.
 
 Unknown hooks, foreign links and untrusted files are left alone. Don't delete
 persistent state to get past a failed check.
@@ -186,6 +194,8 @@ Update it separately from the same build, following
 | `/var/lib/lg-xmb/` | Helper setup record and lock |
 | `/var/lib/lg-xmb/home-button.json` | Saved Home-button choice |
 | `/var/lib/lg-xmb/home-button-status.json` | Home-button listener status |
+| `/var/lib/lg-xmb/native/<build-id>/` | Verified native Home-hook files |
+| `/tmp/lg-xmb-home-button/` | Root-only Home-hook socket and short-lived lease |
 | `/tmp/lg-xmb-thumbnails/` | Cached pictures and capture status |
 | `/var/lib/webosbrew/init.d/60-lg-xmb` | Link to the packaged helper bootstrap |
 | `/var/lib/webosbrew/lg-xmb-startup.log` | Bounded helper setup log |
@@ -205,6 +215,7 @@ From an existing root shell, read:
 ```sh
 cat /var/lib/webosbrew/lg-xmb-startup.log
 cat /tmp/lg-xmb-thumbnails/status.json
+cat /var/lib/lg-xmb/home-button-status.json
 ```
 
 The setup log is root-only and limited to 16 KiB. It records setup errors, not
@@ -244,6 +255,10 @@ Developer Mode installation can be removed normally without the root command.
 
 Recovery stops recognised workers and removes recognised startup hooks. It
 does not restore native settings or remove another app's Home assignment.
+Stopping the Home worker removes its lease. If the worker dies unexpectedly,
+the lease expires within two seconds and Home follows the stock path. Loaded
+hook code stays inactive until the LG input process exits; removal does not
+restart that service.
 Keep any earlier recovery records until you've checked the TV's configuration.
 
 ## Audio

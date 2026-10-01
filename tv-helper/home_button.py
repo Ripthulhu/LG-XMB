@@ -1,10 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Persist an opt-in Home-only Magic Remote mapping; leave other input intact.
-
-Device routing follows Magic Mapper (see THIRD-PARTY-NOTICES.md). No input
-device is opened until the user enables mapping, or restores that saved choice.
-"""
+"""Persist the opt-in Home mapping and launch the standalone app on a press."""
 import errno
 from contextlib import contextmanager
 import fcntl
@@ -14,8 +10,6 @@ import os
 import re
 import select
 import signal
-import stat
-import struct
 import subprocess
 import time
 
@@ -27,9 +21,7 @@ HOME_PAYLOAD = "/var/lib/lg-xmb-home"
 APPS = {"stock": "com.webos.app.home", "xmb": "org.local.openxmb.c5"}
 CONFIG = "home-button.json"
 STATUS = "home-button-status.json"
-EVENT = struct.Struct("@llHHi")
-HOME_KEY = 773
-EVIOCGRAB = 0x40044590
+hook = None  # Authenticated native controller supplied by helper-startup.py.
 URLS = {
     "get": "luna://com.webos.settingsservice/getSystemSettings",
     "set": "luna://com.webos.applicationManager/setDefaultApp",
@@ -134,11 +126,14 @@ def public(setup, recovery, bundle, legacy=False):
         identity = recovery.process_identity(status["pid"])
         running = (identity is not None and identity[1] == status.get("birth")
                    and recovery.helper_argument(identity[2]) == recovery.BOOTSTRAP
-                   and status.get("bundle") == bundle and status.get("state") == "running")
+                   and status.get("bundle") == bundle and status.get("state") == "running"
+                   and hook is not None and hook.healthy(setup, status.get("nativeBuild")))
     result = {"returnValue": True, "mode": value["mode"], "available": True,
               "revision": revision(value), "running": running}
     if value["mode"] == "xmb" and not running:
         result["reason"] = status.get("reason") or "remote_start_failed"
+    if status.get("lastInput") is not None:
+        result["lastInput"] = status["lastInput"]
     if legacy and value["mode"] == "stock":
         # Report the old implementation on upgrade, but never turn a native
         # assignment into opt-in interception during automatic startup.
@@ -194,89 +189,13 @@ def overlay_active():
 def webos_major():
     with open("/etc/starfish-release", "rb") as stream:
         match = re.search(r"\b(\d+)\.\d+\.\d+\b", stream.read(4096).decode("ascii"))
-    require(match is not None, "remote_missing")
+    require(match is not None, "hook_unsupported")
     return int(match.group(1))
-
-
-def device_paths(raw, major):
-    devices = {}
-    for block in re.split(r"\n\s*\n|\n(?=I:)", raw.strip()):
-        name = re.search(r'^N: Name="LGE M-RCU - Builtin \[([0-9]+)\]"$', block, re.M)
-        handlers = re.search(r"^H: Handlers=(.*)$", block, re.M)
-        if name and handlers:
-            events = [token for token in handlers.group(1).split()
-                      if re.match(r"\Aevent(?:0|[1-9][0-9]*)\Z", token)]
-            index = int(name.group(1))
-            # Duplicate names or multiple event handlers are ambiguous.
-            devices[index] = ("/dev/input/" + events[0]
-                              if len(events) == 1 and index not in devices else None)
-    source = devices.get(0)
-    require(source, "remote_missing")
-    # Magic Mapper prefers [1] on webOS 10+, then [2], then another Builtin.
-    for index in ([1] if major >= 10 else []) + [2] + sorted(devices):
-        target = devices.get(index)
-        if index != 0 and target and target != source:
-            return source, target
-    raise HomeButtonError("remote_missing")
-
-
-def open_remote(major):
-    with open("/proc/bus/input/devices", "rb") as stream:
-        source, target = device_paths(stream.read(65536).decode("utf-8", "replace"), major)
-    reader = writer = None
-    try:
-        reader = os.open(source, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-        writer = os.open(target, os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-        require(all(stat.S_ISCHR(os.fstat(fd).st_mode) for fd in (reader, writer)), "remote_missing")
-        fcntl.ioctl(reader, EVIOCGRAB, 1)
-        return reader, writer
-    except BaseException as error:
-        for fd in (reader, writer):
-            if fd is not None:
-                os.close(fd)
-        if isinstance(error, (OSError, IOError)) and error.errno == errno.EBUSY:
-            raise HomeButtonError("remote_busy")
-        raise
-
-
-class InputRelay:
-    """One Home launch per press; every other event retains its raw bytes."""
-    def __init__(self, write, launch):
-        self.write, self.launch = write, launch
-        self.home_down = False
-        self.pressed = set()
-
-    def feed(self, data):
-        require(data and len(data) % EVENT.size == 0, "remote_disconnected")
-        for offset in range(0, len(data), EVENT.size):
-            raw = data[offset:offset + EVENT.size]
-            _, _, kind, code, value = EVENT.unpack(raw)
-            require((kind, code) != (0, 3), "remote_disconnected")  # SYN_DROPPED
-            if kind == 1 and code == HOME_KEY:
-                if value == 1 and not self.home_down:
-                    self.home_down = True
-                    self.launch()
-                elif value == 0:
-                    self.home_down = False
-                continue
-            self.write(raw)
-            if kind == 1:
-                if value == 1:
-                    self.pressed.add(code)
-                elif value == 0:
-                    self.pressed.discard(code)
-
-    def release(self):
-        for code in sorted(self.pressed):
-            self.write(EVENT.pack(0, 0, 1, code, 0))
-        if self.pressed:
-            self.write(EVENT.pack(0, 0, 0, 0, 0))
-        self.pressed.clear()
 
 
 def launch_command(major):
     # Magic Mapper found -n to be a silent no-op on webOS 10. -t sends once;
-    # neither branch retries a launch. This child must not block input relay.
+    # neither branch retries a launch. This child must not block input handling.
     return ["/usr/bin/luna-send", "-t" if major >= 10 else "-n", "1", "-w", "3000",
             "luna://com.webos.service.applicationmanager/launch",
             json.dumps({"id": APPS["xmb"]})]
@@ -353,8 +272,7 @@ class AppLaunch:
 
 def run(setup, recovery, bundle):
     base = setup.open_directory(setup.BASE)
-    lock = reader = writer = None
-    relay = launcher = None
+    lock = controller = launcher = identity = None
     worker = {"stopped": False, "last_report": None}
     reason = "remote_start_failed"
     def stop(signum, frame):
@@ -362,11 +280,14 @@ def run(setup, recovery, bundle):
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     def report(state, reason=""):
-        if worker["last_report"] == (state, reason):
+        last_input = controller.last_input if controller else None
+        if worker["last_report"] == (state, reason, last_input):
             return
         setup.write_file(base, STATUS, json.dumps({"pid": os.getpid(), "birth": identity[1],
-                         "bundle": bundle, "state": state, "reason": reason}).encode())
-        worker["last_report"] = (state, reason)
+                         "bundle": bundle, "state": state, "reason": reason,
+                         "nativeBuild": controller.build if controller else None,
+                         "lastInput": last_input}).encode())
+        worker["last_report"] = (state, reason, last_input)
     try:
         lock = os.open(setup.at(base, "home-button-worker.lock"),
                        os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -376,57 +297,33 @@ def run(setup, recovery, bundle):
         require(identity is not None, "remote_start_failed")
         major = webos_major()
         launcher = AppLaunch(major)
+        require(hook is not None, "hook_missing")
+        controller = hook.Controller(setup, base)
         while not worker["stopped"] and read_config(setup, base)["mode"] == "xmb" and not overlay_active():
-            # Releasing on uninstall also restores the physical remote. Do not
-            # keep intercepting for an app that can no longer be launched.
             if not os.path.isfile(APP_DIR + "/appinfo.json"):
                 break
-            try:
-                reader, writer = open_remote(major)
-                def write(raw):
-                    require(os.write(writer, raw) == len(raw), "remote_disconnected")
-                relay = InputRelay(write, launcher.start)
-                report("running")
-                checked = monotonic()
-                while not worker["stopped"]:
-                    if select.select([reader], [], [], .5)[0]:
-                        relay.feed(os.read(reader, EVENT.size * 64))
-                    now = monotonic()
-                    launcher.check()
-                    if now - checked >= 1:
-                        checked = now
-                        if (read_config(setup, base)["mode"] != "xmb"
-                                or not os.path.isfile(APP_DIR + "/appinfo.json") or overlay_active()):
-                            worker["stopped"] = True
-            except (OSError, IOError, select.error, HomeButtonError) as error:
-                reason = str(error) if isinstance(error, HomeButtonError) else "remote_disconnected"
-                report("waiting", reason)
-                # A launch failure or competing mapper needs an explicit retry;
-                # do not keep reclaiming input or hide the failure after 5 s.
-                worker["stopped"] = worker["stopped"] or reason in ("remote_launch_failed", "remote_busy")
-            finally:
-                if relay is not None:
-                    try:
-                        relay.release()
-                    except (OSError, IOError, HomeButtonError):
-                        pass
-                for fd in (reader, writer):
-                    if fd is not None:
-                        os.close(fd)
-                reader = writer = relay = None
-            # Remote nodes may appear late during boot or disappear at standby.
-            # Slow reconnects are independent of capture and never launch Home.
-            for _ in range(10):
-                if worker["stopped"]:
-                    break
-                time.sleep(.5)
-        report("stopped", reason)
+            controller.step(launcher.start)
+            launcher.check()
+            report("running" if controller.running else "waiting", controller.reason)
+    except Exception as error:
+        if isinstance(error, HomeButtonError) or (hook is not None and isinstance(error, hook.HookError)):
+            reason = str(error)
+        else:
+            setup.record_startup("home_button_worker_failed", error)
     finally:
-        if launcher is not None:
-            launcher.close()
-        if lock is not None:
-            os.close(lock)
-        os.close(base)
+        try:
+            if controller is not None:
+                controller.close()
+        finally:
+            try:
+                if identity is not None:
+                    report("stopped", reason)
+                if launcher is not None:
+                    launcher.close()
+            finally:
+                if lock is not None:
+                    os.close(lock)
+                os.close(base)
 
 
 def ensure(setup, recovery, bundle, base=None):
@@ -441,6 +338,8 @@ def ensure(setup, recovery, bundle, base=None):
     previous = json.loads(raw.decode("utf-8")) if raw is not None else {}
     active = workers(recovery)
     if active and previous.get("bundle") not in (None, bundle):
+        if hook is not None:
+            hook.disarm()
         for identity in active:
             recovery.stop_one(identity)
         deadline = monotonic() + 3
@@ -451,7 +350,7 @@ def ensure(setup, recovery, bundle, base=None):
         with open(os.devnull, "r+b") as null:
             subprocess.Popen(setup.python_command() + [APP_DIR + "/helper-startup.py", "home-button-worker"],
                              stdin=null, stdout=null, stderr=null, preexec_fn=os.setsid, close_fds=True)
-    deadline = monotonic() + 3
+    deadline = monotonic() + 8
     while monotonic() < deadline:
         state = public(setup, recovery, bundle)
         if state["running"]:
@@ -467,6 +366,8 @@ def apply(mode, expected, setup, recovery, bundle, base):
         setup.startup_link(recovery)
     setup.write_file(base, CONFIG, json.dumps({"mode": mode}).encode())
     if mode == "stock":
+        if hook is not None:
+            hook.disarm()
         active = workers(recovery)
         for identity in active:
             recovery.stop_one(identity)
@@ -474,7 +375,7 @@ def apply(mode, expected, setup, recovery, bundle, base):
         while any(recovery.process_identity(item[0]) == item for item in active):
             require(monotonic() < deadline, "home_mapping_not_confirmed")
             time.sleep(.05)
-        # Always release our grab first, even if the old native API fails.
+        # Always disarm the hook first, even if the old native API fails.
         clear_legacy_assignment()
         return public(setup, recovery, bundle)
     # Native calls only retire our earlier implementation. A missing read API
@@ -500,3 +401,7 @@ def command(args, setup, recovery, bundle):
         return {"returnValue": False, "errorCode": str(error)}
     except (OSError, IOError, select.error, ValueError, TypeError):
         return {"returnValue": False, "errorCode": "home_button_unavailable"}
+    except Exception as error:
+        if hook is None or not isinstance(error, hook.HookError):
+            raise
+        return {"returnValue": False, "errorCode": str(error)}

@@ -8,6 +8,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -56,6 +57,32 @@ def package(helper_mode=0o777, extra=()):
 
 
 class PackagePermissionsTests(unittest.TestCase):
+    def setUp(self):
+        # Packaging checks use a source/build pair without requiring an ARM toolchain.
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        project = Path(temporary.name)
+        original = ROOT
+        for relative in ['app/appinfo.json', 'app/helper-startup.py', *verifier.SOURCES.values(),
+                         *verifier.NATIVE_SOURCES]:
+            target = project / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source = original / relative
+            target.write_bytes(source.read_bytes() if source.is_file() else b'# fixture\n')
+        directory = project / 'tv-helper/native/prebuilt'
+        build = {'schema': 1, 'protocol': 1, 'architecture': 'arm-linux-gnueabi',
+                 'sources': {name: hashlib.sha256((project / name).read_bytes()).hexdigest()
+                             for name in verifier.NATIVE_SOURCES},
+                 'files': {name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
+                           for name in verifier.NATIVE_FILES - {'build.json'}}}
+        identity = ''.join(name + ' ' + build['sources'][name] + '\n' for name in sorted(build['sources']))
+        build['buildId'] = hashlib.sha256(identity.encode()).hexdigest()
+        (directory / 'build.json').write_text(json.dumps(build))
+        for module in (sys.modules[__name__], verifier):
+            patched = patch.object(module, 'ROOT', project)
+            patched.start()
+            self.addCleanup(patched.stop)
+
     def verify(self, raw):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'test.ipk'
@@ -70,8 +97,9 @@ class PackagePermissionsTests(unittest.TestCase):
         self.verify(normalize_permissions(package()))
 
     def test_only_app_owned_metadata_changes_and_all_payloads_survive(self):
-        before = read_ipk(package())
-        after = read_ipk(normalize_permissions(package()))
+        original = package()
+        before = read_ipk(original)
+        after = read_ipk(normalize_permissions(original))
         self.assertEqual(before['control.tar.gz'], after['control.tar.gz'])
         def inventory(raw):
             with tarfile.open(fileobj=io.BytesIO(raw), mode='r:gz') as archive:
@@ -83,6 +111,29 @@ class PackagePermissionsTests(unittest.TestCase):
         for name in old:
             self.assertEqual(old[name][3], new[name][3], name)
         self.assertEqual(new[APP + '/helper'][:3], (0o755, 0, 0))
+        for name in verifier.NATIVE_FILES:
+            self.assertEqual(new[APP + '/helper/' + name][:3], (0o644, 0, 0))
+
+    def test_changed_packaged_native_payload_is_rejected(self):
+        for name in verifier.NATIVE_FILES:
+            raw = read_ipk(normalize_permissions(package()))
+            with tarfile.open(fileobj=io.BytesIO(raw['data.tar.gz']), mode='r:gz') as archive:
+                entries = []
+                for item in archive:
+                    payload = archive.extractfile(item).read() if item.isfile() else b''
+                    if item.name == APP + '/helper/' + name:
+                        payload += b'changed'
+                        item.size = len(payload)
+                    entries.append((item, payload))
+            raw['data.tar.gz'] = tar_bytes(entries)
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'differs from source'):
+                self.verify(write_ipk(raw))
+
+    def test_stale_native_source_build_is_rejected(self):
+        raw = normalize_permissions(package())
+        (ROOT / 'tv-helper/native/home-hook.c').write_bytes(b'changed native source')
+        with self.assertRaisesRegex(ValueError, 'build is stale'):
+            self.verify(raw)
 
     def test_non_root_packaged_owner_is_rejected(self):
         raw = read_ipk(package(helper_mode=0o755))

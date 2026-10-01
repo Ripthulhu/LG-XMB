@@ -38,10 +38,25 @@ wave or particle renderer.
 Source: https://github.com/andrewfraley/magic_mapper
 Revision: `9e4161fecdcf602d3f6c5863d848ce2959b6e2f5`.
 
-`tv-helper/home_button.py` adapts Magic Mapper's Linux input-device routing
-and webOS-version-specific launch approach for a Home-only listener.
+`tv-helper/home_button.py` adapts Magic Mapper's webOS-version-specific
+launch approach. The earlier Linux input-device relay has been removed.
 Copyright (c) 2022 Andy Fraley. MIT licence, reproduced in
 `app/licenses/MAGIC-MAPPER-MIT.txt`.
+
+## Native Home button hook
+
+The Home-only hook in `tv-helper/native/home-hook.c` adapts LG input function
+signatures and injection entry points from
+[sundermann/inputhookpp](https://github.com/sundermann/inputhookpp), revision
+`9dc3cf140cb1ae1dbe059525c72710deea7ecf7d`, under GPL-3.0.
+[Syspoke/lginputhook](https://github.com/Syspoke/lginputhook), revision
+`82f356f2ea6919c8bb50081ae436df4cefd5dfca`, documents the input services used
+by Magic and infrared remotes.
+
+The package includes ezinject and a native library built with Frida Gum.
+Their pinned sources, build instructions and component licences are listed
+in `tv-helper/native/NOTICE.md` and `tv-helper/native/licenses/`. The same
+notices ship in the IPK under `licenses/home-hook/`.
 
 ## FXAA
 
