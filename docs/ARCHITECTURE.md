@@ -112,12 +112,23 @@ the same motion. Navigation does not measure element bounds or computed styles.
 
 Focus sizes use `--xmb-category-focus-scale` and `--xmb-item-focus-scale`.
 PS3 3.01 uses an unfocused/focused ratio of 0.7 for categories and 0.42 for
-ordinary Settings and shortcut icons. Keeping our unfocused sizes gives selected
-scales of 1/0.7 (1.428571×) and 1/0.42 (2.380952×). These were checked against
+ordinary Settings and shortcut icons. The selected scale multipliers are
+1/0.7 (1.428571×) and 1/0.42 (2.380952×). These were checked against
 the native size setters and settled objects in a saved firmware memory dump:
 category setter `0x3b5fd0`, item scale defaults `0x3c8324`/`0x3c8350`, and item
 size setter `0x3c0b40`. Media grids can use other ratios. Category icons retain
-the prepainted face swap; list icons use the existing transform transition.
+the prepainted face swap and animate both SVG copies with the bar's transform
+timing. Swapping colours therefore keeps the current scale, including during
+reversals. Simple animations keep the instant size change. List icons use their
+existing transform transition.
+
+The horizontal bar also uses `--category-icon-scale` to account for different
+padding in our 48px SVGs and the native 128px textures. The category rules in
+`style.css` match visible symbol widths to the stock screenshot: at 4K, selected
+Settings is 224px wide, Photo 134px, Music 121px, Video 166px, Apps 161px and
+Browser 128px. This adjustment leaves the icon anchors, labels and vertical
+list unchanged. Keep it separate from the focused/unfocused multiplier.
+`tests/category-focus-browser.cjs` checks the visible sizes, zoom and reversals.
 
 Run `tests/xmb-layout-browser.cjs`, `tests/vertical-navigation-browser.cjs` and
 `tests/launcher-category-work-browser.cjs` after changing geometry. These cover

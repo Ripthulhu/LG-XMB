@@ -30,7 +30,7 @@ async function fixture(page) {
       'Network Settings', 'Accessory Settings', 'Date and Time', 'Power Save Settings'];
     const categories = [['Users', 'application'], ['Settings', 'settings'], ['Photos', 'image'],
       ['Music', 'music'], ['TV', 'live'], ['Network', 'network']].map(([title, icon], ci) => ({
-      id: 'category-' + ci, title, icon,
+      id: ['users', 'settings', 'photo', 'music', 'tv', 'network'][ci], title, icon,
       items: labels.map((title, i) => ({id: 'entry-' + ci + '-' + i, title, icon: 'settings'}))
     }));
     const selections = categories.map(() => 4);
@@ -58,7 +58,7 @@ async function geometry(page) {
     }
     const categories = Array.from(document.querySelectorAll('#categories > .category')).map((button, i) => {
       const face = button.querySelector(i === state.selected ? '.lit' : '.dim');
-      return {id: 'c' + i, index: i, face: rect(face), icon: rect(face.querySelector('.category-icon'))};
+      return {id: 'c' + i, index: i, face: rect(face), icon: rect(face.querySelector('.category-icon > svg'))};
     });
     const rows = Array.from(document.querySelectorAll('#items > .rows:not(.parked) > .item'))
       .map((button, i) => ({id: 'r' + state.selected + ':' + i,
@@ -81,7 +81,8 @@ function checkGeometry(data, label) {
   near(bar.icon.x, width * anchor / 100, label + ' category anchor');
   near(bar.icon.y, height * 0.27, label + ' category center');
   for (const category of categories)
-    near(category.icon.width, width * 0.035 * (category.index === selected ? 1 / 0.7 : 1),
+    near(category.icon.width, width * 0.035 * [1.4, 1.4, 1.26, 1.26, 1.4, 1.14][category.index] *
+      (category.index === selected ? 1 / 0.7 : 1),
       label + ' category ' + category.index + ' firmware focus ratio');
   const visible = rows.filter(row => row.visible);
   assert.ok(visible.filter(row => row.offset < 0).length >= 2, label + ' shows two upper rows');

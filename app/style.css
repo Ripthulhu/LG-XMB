@@ -18,7 +18,7 @@
   --xmb-lower-gap: 8.7vh;
   --xmb-item-icon-size: 2.4vw;
   /* PS3 3.01: category idle size is 0.7 of focused; ordinary list icons 0.42.
-     Keep our idle sizes and grow around the same icon/particle anchor. */
+     Category artwork has its own padding correction below. */
   --xmb-category-focus-scale: 1.42857143;
   --xmb-item-focus-scale: 2.38095238;
   --xmb-label-offset: 6vw;
@@ -145,6 +145,7 @@ header {
 /* Item dimming uses instant colour changes. Category icons swap painted faces;
    only the selected category's name has a short opacity fade. */
 .category {
+  --category-icon-scale: 1.4;
   position: absolute;
   top: 0;
   left: var(--anchor);
@@ -154,6 +155,19 @@ header {
   background: none;
   transform: translateX(-50%);
   text-align: center;
+}
+/* Match the native category silhouettes despite our tighter SVG view boxes.
+   Keep the slots, labels and vertical-list artwork at their existing sizes. */
+.category[data-category='photo'],
+.category[data-category='music'] {
+  --category-icon-scale: 1.26;
+}
+.category[data-category='video'] {
+  --category-icon-scale: 1.44;
+}
+.category[data-category='browser'],
+.category[data-category='network'] {
+  --category-icon-scale: 1.14;
 }
 .category .category-icon {
   display: block;
@@ -727,6 +741,7 @@ header {
 #categories.categories-instant,
 #categories.categories-instant .category,
 #categories.categories-instant .category-icon,
+#categories.categories-instant .category-icon > svg,
 #categories.categories-instant .category-label,
 #categories.categories-instant ~ .cross-content .rows {
   transition: none !important;
@@ -738,7 +753,8 @@ header {
    Each bar entry has dim and lit icons, painted once and swapped by
    transform, since recolouring two entries per step was most of what a category
    change cost the C5. The 3D transforms are what make the layers.
-   The lit icon is drawn at its full size, so it no longer grows into place. */
+   Both icon faces share the same scale transition, so swapping their colour
+   does not interrupt growth or shrinkage when navigation reverses. */
 .rows {
   position: absolute;
   top: 0;
@@ -809,7 +825,18 @@ header {
 }
 .category .lit .category-icon {
   color: #fff;
-  transform: scale(var(--xmb-category-focus-scale));
+  transform: none;
+  transition: none;
+}
+.category .category-icon > svg {
+  transform: scale(var(--category-icon-scale));
+  will-change: transform;
+  transition: transform var(--navigation-duration) var(--ease);
+}
+.category.active .category-icon > svg {
+  transform: scale(calc(var(--category-icon-scale) * var(--xmb-category-focus-scale)));
+}
+.simple-menu-animations .category-icon > svg {
   transition: none;
 }
 .category .lit .category-label {
