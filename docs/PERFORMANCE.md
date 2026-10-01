@@ -68,13 +68,16 @@ in the same frame as every key press. Preview lifecycle changes remain immediate
 
 Options prepare their reusable nodes during the OK hold, open without animation,
 and defer metadata until after opening. Closed panels are hidden rather than permanently promoted.
-Keep individual text opacity at 1; dim text through colour alpha without
-animating that colour. Category lists stay opaque and park offscreen. Only the
-incoming list moves, using a transform-only animation; the outgoing list parks
-immediately. Direction uses a local attribute rather than an inherited CSS
-variable. On the C5, two rapid-scrolling runs improved from 44 to 51 fps with
-the same background settings. Don't add `will-change` across the interface as
-a blanket fix.
+Animate opacity rather than text colour. In PS3 animation mode, retained lists
+fade as groups, and item text fades between dim and selected states.
+The item track and category bar use the same absolute transform target and CSS
+timing. Each list keeps a fixed offset beneath its category, including during
+reversals and frame delays. No animation-frame callbacks or layout reads drive
+the movement. Simple mode switches lists immediately without moving or fading
+them. The retained category groups and small category highlights keep their
+opacity layers ready; C5 measurements showed fewer paints than repeatedly
+promoting them or fading every piece of artwork separately. Don't add
+`will-change` across the interface as a blanket fix.
 
 Held arrows share a 100 ms minimum interval in every direction, with one pending
 event. Dropping every event that arrives too soon turns an 80 ms remote cadence
@@ -82,9 +85,10 @@ into 160 ms navigation; the pending event instead runs at the next deadline.
 There is no backlog or repeat without incoming input. Release, reversal, blur,
 suspension and menu changes cancel pending movement. Separate taps remain immediate.
 
-Main-list rows and icons settle over 240 ms rather than the category bar's
-400 ms. This reduces visual lag during repeated Up/Down presses; it does not
-change the renderer's frame rate or the particle simulation.
+Main-list rows and category movement settle over 400 ms in PS3 mode; fades finish
+at 320 ms, before movement ends. These are independent of the 100 ms held-button repeat interval.
+Simple mode keeps the same row movement and switches lists immediately. Wheel
+scrolling uses the faster 90 ms row movement in either mode.
 
 Settings and options focus with `preventScroll`, then reveal the nearest edge.
 Default browser focus can recenter a partly hidden row and jump several rows.

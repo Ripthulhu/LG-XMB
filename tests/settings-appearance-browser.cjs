@@ -33,7 +33,7 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors,
     while ((await state()).modal) await page.keyboard.press('Escape');
     await page.keyboard.press('ArrowRight');
     return page.evaluate(() => ({
-      entry: getComputedStyle(document.querySelector('#items > .rows:not(.parked)')).animationName,
+      list: getComputedStyle(document.getElementById('items')).transitionDuration,
       bar: getComputedStyle(document.getElementById('categories')).transitionDuration,
       label: getComputedStyle(document.querySelector('.category .dim .category-label')).transitionDuration,
       row: getComputedStyle(document.querySelector('#items > .rows:not(.parked) > .item')).transitionDuration
@@ -136,8 +136,8 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors,
     assert.equal(await page.evaluate(() => document.activeElement.closest('[role="group"]').getAttribute('aria-label')), 'Speed');
     await page.keyboard.press('ArrowUp');
     assert.equal(await page.evaluate(() => document.activeElement.dataset.choice), 'simple');
-    assert.deepEqual(await categoryMotion(), {entry: 'none', bar: '0.4s', label: '0.12s', row: '0.24s'},
-      'Simple disables entry motion without changing the bar, labels or vertical rows');
+    assert.deepEqual(await categoryMotion(), {list: '0s', bar: '0.4s', label: '0.32s', row: '0.4s'},
+      'Simple keeps the list still without changing the bar, labels or vertical rows');
     await panel('openAppearanceAdvanced');
     await selected('Speed', 'Fast');
     await selected('Animation', 'Off');
@@ -217,11 +217,10 @@ module.exports = async function checkSettingsAppearance(browser, checks, errors,
     await panel('openAppearanceAdvanced');
     await selected('Menu animations', 'PS3');
     assert.equal((await state()).preferences.motion, 'reduced');
-    assert.equal((await categoryMotion()).entry, 'none', 'Global reduced motion overrides PS3 menu entries');
+    assert.equal((await categoryMotion()).list, '0s', 'Global reduced motion overrides PS3 list movement');
     await panel('openAppearanceAdvanced');
     await selected('Animation', 'On');
-    assert.match((await categoryMotion()).entry, /^category-entry-(right|left)$/,
-      'Returning to PS3 restores category entry motion');
+    assert.equal((await categoryMotion()).list, '0.4s', 'Returning to PS3 restores category list movement');
     await panel('openAppearanceAdvanced');
     await selected('Animation', 'Off');
     checks.push('Simple menu animation is keyboard accessible and persists; PS3 restores entries while global reduced motion still wins');

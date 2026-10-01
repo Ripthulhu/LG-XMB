@@ -117,14 +117,14 @@ test('destroy is idempotent; an absent bar never prevents the selection update',
   empty.destroy();
   assert.equal(f.updates(), 2);
 });
-test('vertical rows use 240 ms while categories keep 400 ms', () => {
+test('vertical rows share the native 400 ms category duration', () => {
   assert.match(css, /--navigation-duration\s*:\s*0?\.4s\s*;/);
-  assert.match(css, /--row-navigation-duration\s*:\s*0?\.24s\s*;/);
-  for (const selector of ['#categories', '.item', '.item-icon', '.category .category-icon']) {
+  assert.match(css, /--row-navigation-duration\s*:\s*var\(--navigation-duration\)\s*;/);
+  for (const selector of ['#categories', '#items', '.item', '.item-icon', '.category .category-icon']) {
     const blocks = css
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('}')
-      .filter((b) => b.slice(0, b.indexOf('{')).trim() === selector);
+      .filter((b) => b.slice(0, b.indexOf('{')).split(',').some((part) => part.trim() === selector));
     const variable =
       selector === '.item' || selector === '.item-icon'
         ? '--row-navigation-duration'
@@ -191,7 +191,7 @@ function screensaverLayers(filename, selector, phase) {
     new RegExp('^\\.screensaver-' + phase + ' (?:#screen|#modalBackdrop|\\.item-options|#toast|#screensaverDim)$').test(part.trim()));
 }
 
-test('compositor hints are confined to category labels and temporary screensaver fades', () => {
+test('compositor hints are confined to measured category/list layers and temporary screensaver fades', () => {
   const files = stylesheets(path.join(__dirname, '../app'));
   assert.ok(files.some((name) => name.endsWith('item-options.css')));
   for (const filename of files) {
@@ -199,14 +199,19 @@ test('compositor hints are confined to category labels and temporary screensaver
     for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       if (!/\bwill-change\s*:/i.test(rule[2])) continue;
       const selector = rule[1].trim();
-      const label = path.basename(filename) === 'style.css' && selector === '.category .dim .category-label';
-      assert.ok(label || screensaverLayers(filename, selector, 'transition'), filename + ': ' + selector);
-      assert.match(rule[2], /\bwill-change\s*:\s*opacity\s*;/);
+      const fade = path.basename(filename) === 'style.css' &&
+        ['.category .dim .category-label', '.category .lit', '.rows'].includes(selector);
+      const icon = path.basename(filename) === 'style.css' && selector === '.category .category-icon > svg';
+      const simpleRows = path.basename(filename) === 'style.css' && selector === '.simple-menu-animations .rows';
+      assert.ok(fade || icon || simpleRows || screensaverLayers(filename, selector, 'transition'), filename + ': ' + selector);
+      assert.match(rule[2], simpleRows ? /\bwill-change\s*:\s*auto\s*;/ :
+        icon ? /\bwill-change\s*:\s*transform\s*;/ : /\bwill-change\s*:\s*opacity\s*;/);
     }
   }
 });
 
-test('opacity is confined to markers, category labels and explicit screensaver layers', () => {
+test('opacity is confined to markers, navigation fades and explicit screensaver layers', () => {
+  assert.match(css, /--fade-duration\s*:\s*0?\.48s\s*;/);
   const allowed = new Set([
     '.detail-emblem',
     '.input-preview-symbol',
@@ -219,14 +224,20 @@ test('opacity is confined to markers, category labels and explicit screensaver l
     for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       const selector = rule[1].trim(),
         body = rule[2],
-        categoryLabel = path.basename(filename) === 'style.css' &&
-          ['.category .dim .category-label', '.category.active .dim .category-label'].includes(selector);
+        categoryFace = path.basename(filename) === 'style.css' &&
+          ['.category .dim .category-label', '.category.active .dim .category-label',
+            '.category .lit', '.category.active .lit'].includes(selector),
+        categoryRows = path.basename(filename) === 'style.css' &&
+          ['.rows', '.rows:not(.parked)'].includes(selector),
+        rowText = path.basename(filename) === 'style.css' &&
+          ['.item-text', '.item:hover .item-text'].includes(selector);
       if (/\btransition\s*:[^;]*\bopacity\b/i.test(body)) {
-        assert.ok(categoryLabel || screensaverLayers(filename, selector, 'transition'), filename + ': ' + selector);
-        if (categoryLabel) assert.match(body, /\btransition\s*:\s*opacity 120ms ease-out\s*;/);
+        assert.ok(categoryFace || categoryRows || rowText || screensaverLayers(filename, selector, 'transition'), filename + ': ' + selector);
+        if (categoryFace || categoryRows || rowText)
+          assert.match(body, /\btransition\s*:\s*opacity var\(--fade-duration\) var\(--ease\)\s*;/);
       }
       if (/(?:^|;)\s*opacity\s*:/i.test(body))
-        assert.ok(allowed.has(selector) || categoryLabel || screensaverLayers(filename, selector, 'active') ||
+        assert.ok(allowed.has(selector) || categoryFace || categoryRows || rowText || screensaverLayers(filename, selector, 'active') ||
           (path.basename(filename) === 'screensaver.css' &&
             ['#screensaverDim', '.screensaver-active.wallpaper-active #screensaverDim'].includes(selector)),
           filename + ': text opacity is not allowed on ' + selector);

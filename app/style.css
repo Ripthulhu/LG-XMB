@@ -24,17 +24,19 @@
   --xmb-label-offset: 6vw;
   --ease: cubic-bezier(0.16, 0.92, 0.34, 1);
   --navigation-duration: 0.4s;
-  --row-navigation-duration: 0.24s;
+  /* Finish fading before the movement settles, so no stationary ghost remains. */
+  --fade-duration: 0.32s;
+  --row-navigation-duration: var(--navigation-duration);
   --settings-icon-scale: 1.4;
 }
 /* Category motion is the PS3's position curve. The 3.01 firmware moves the bar and
    the lists with a per-frame approach to the target, p += (1 - p) * 0.2206 at
    60 Hz for its 200 ms setting: 53% at 50 ms, 95% at 200 ms, 99.7% at 400 ms,
    and it retargets from wherever the widget is. This bezier over 400 ms stays
-   within 0.4% of that, and a CSS transition retargets the same way. It runs on
-   the compositor, so it costs the main thread nothing per frame. Don't drive
-   it from JavaScript. Vertical rows use a shorter 240 ms version so they
-   follow rapid Up/Down input more closely. Particle physics stays unchanged. */
+   within 0.4% on an uninterrupted step. CSS preserves current positions when
+   retargeting, but shortens reversals rather than restarting the native timer.
+   It runs on the compositor, so it costs the main thread nothing per frame. Don't drive
+   it from JavaScript. Vertical rows use the same curve. Particle physics stays unchanged. */
 * {
   box-sizing: border-box;
 }
@@ -142,8 +144,7 @@ header {
   width: 100%;
   isolation: isolate;
 }
-/* Item dimming uses instant colour changes. Category icons swap painted faces;
-   only the selected category's name has a short opacity fade. */
+/* Keep artwork colours fixed; focus and category changes use opacity fades. */
 .category {
   --category-icon-scale: 1.4;
   position: absolute;
@@ -237,7 +238,7 @@ header {
   height: var(--xmb-item-icon-size);
   margin: 0 calc(var(--xmb-label-offset) - var(--xmb-item-icon-size) / 2) 0
     calc(3vw - var(--xmb-item-icon-size) / 2);
-  color: rgba(255, 255, 255, calc(var(--item-alpha, 0.24) * 0.74));
+  color: #fff;
   transition: transform var(--row-navigation-duration) var(--ease);
 }
 /* Composite settings artwork needs more room than a single symbol. Keep the
@@ -260,10 +261,12 @@ header {
   max-width: calc(21vw + 0.4em);
   overflow: hidden;
   text-overflow: ellipsis;
-  color: rgba(255, 255, 255, var(--item-alpha, 0.24));
+  color: #fff;
+  opacity: var(--item-alpha, 0.45);
+  transition: opacity var(--fade-duration) var(--ease);
 }
 .item:hover .item-text {
-  color: white;
+  opacity: 1;
 }
 .item.selected .item-icon {
   color: white;
@@ -733,8 +736,11 @@ header {
   margin: 0.6em 0;
 }
 
-/* The bar and incoming list share the recovered position curve. */
-#categories {
+/* The two tracks share absolute targets and timing, including CSS reversal
+   shortening. A list keeps its category's offset instead of restarting an entry
+   animation every time selection changes. */
+#categories,
+#items {
   transform: translateX(0);
   transition: transform var(--navigation-duration) var(--ease);
 }
@@ -743,53 +749,52 @@ header {
 #categories.categories-instant .category-icon,
 #categories.categories-instant .category-icon > svg,
 #categories.categories-instant .category-label,
-#categories.categories-instant ~ .cross-content .rows {
+#categories.categories-instant .lit,
+#categories.categories-instant ~ .cross-content #items,
+#categories.categories-instant ~ .cross-content .rows,
+#categories.categories-instant ~ .cross-content .item,
+#categories.categories-instant ~ .cross-content .item-icon,
+#categories.categories-instant ~ .cross-content .item-text {
   transition: none !important;
   animation: none !important;
 }
 
-/* Park retained lists offscreen without hiding or fading their text layers.
-   Only the incoming list moves; the old list parks immediately to avoid overlap.
-   Each bar entry has dim and lit icons, painted once and swapped by
-   transform, since recolouring two entries per step was most of what a category
-   change cost the C5. The 3D transforms are what make the layers.
-   Both icon faces share the same scale transition, so swapping their colour
-   does not interrupt growth or shrinkage when navigation reverses. */
+/* Native ShowItems/HideItems fade the retained group from its current alpha.
+   Keep those few surfaces ready: promoting them on every press costs TV frames.
+   Category icons similarly fade a white face over their fixed dim artwork;
+   both faces share the same scale, without repainting colours each frame. */
 .rows {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  transform: translate3d(100vw, 0, 0);
-  transition: none;
+  transform: translate3d(var(--category-offset), 0, 0);
+  opacity: 0;
+  will-change: opacity;
+  transition: opacity var(--fade-duration) var(--ease);
 }
 .rows:not(.parked) {
-  transform: translate3d(0, 0, 0);
-  animation: category-entry-right var(--navigation-duration) var(--ease);
+  opacity: 1;
 }
-.rows:not(.parked)[data-entry='left'] {
-  animation-name: category-entry-left;
+.rows.parked,
+.rows.parked .item {
+  pointer-events: none;
+}
+.simple-menu-animations #items {
+  transform: none !important;
+  transition: none;
+}
+.simple-menu-animations .rows {
+  transform: translate3d(100vw, 0, 0);
+  will-change: auto;
+  transition: none;
 }
 .simple-menu-animations .rows:not(.parked) {
-  animation: none;
+  transform: translate3d(0, 0, 0);
 }
-/* Keep the entry distance in step with CategoryTransition.DISTANCE. */
-@keyframes category-entry-right {
-  from {
-    transform: translate3d(10.6vw, 0, 0);
-  }
-  to {
-    transform: translate3d(0, 0, 0);
-  }
-}
-@keyframes category-entry-left {
-  from {
-    transform: translate3d(-10.6vw, 0, 0);
-  }
-  to {
-    transform: translate3d(0, 0, 0);
-  }
+.simple-menu-animations .item-text {
+  transition: none;
 }
 .category .face {
   display: block;
@@ -800,25 +805,24 @@ header {
   top: 0;
   left: 0;
   width: 100%;
-  transform: translate3d(0, -100vh, 0);
+  opacity: 0;
+  will-change: opacity;
+  transition: opacity var(--fade-duration) var(--ease);
 }
 .category.active .lit {
-  transform: translate3d(0, 0, 0);
-}
-.category.active .dim .category-icon {
-  transform: translate3d(0, -100vh, 0);
+  opacity: 1;
 }
 .category .dim .category-icon {
-  color: rgba(255, 255, 255, 0.39);
+  color: rgba(255, 255, 255, 0.7);
   transform: none;
   transition: none;
 }
 .category .dim .category-label {
   color: #fff;
   opacity: 0;
-  /* Keep this small fading label ready between category changes. */
+  /* The native category name follows the same focus curve as its icon. */
   will-change: opacity;
-  transition: opacity 120ms ease-out;
+  transition: opacity var(--fade-duration) var(--ease);
 }
 .category.active .dim .category-label {
   opacity: 1;
@@ -837,6 +841,9 @@ header {
   transform: scale(calc(var(--category-icon-scale) * var(--xmb-category-focus-scale)));
 }
 .simple-menu-animations .category-icon > svg {
+  transition: none;
+}
+.simple-menu-animations .category .lit {
   transition: none;
 }
 .category .lit .category-label {

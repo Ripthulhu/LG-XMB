@@ -30,8 +30,8 @@ const navigation = require('./support/menu-navigation.cjs');
       return {row: duration(row), icon: duration(row.querySelector('.item-icon')),
         category: duration(document.querySelector('#categories'))};
     });
-    assert.deepEqual(timing, {row: 240, icon: 240, category: 400});
-    checks.push('Rows and icons use 240 ms; the category bar keeps 400 ms');
+    assert.deepEqual(timing, {row: 400, icon: 400, category: 400});
+    checks.push('Rows, icons and the category bar share 400 ms movement');
 
     const taps = await page.evaluate(() => {
       const selected = () => C5App.getState().item;
@@ -44,7 +44,7 @@ const navigation = require('./support/menu-navigation.cjs');
       return [press('ArrowDown'), press('ArrowDown'), press('ArrowUp'), press('ArrowDown')];
     });
     assert.deepEqual(taps, ['sound', 'previews', 'sound', 'previews']);
-    await page.waitForTimeout(280);
+    await page.waitForTimeout(450);
     const settled = await page.evaluate(() => {
       const row = document.querySelector('#items>.rows:not(.parked)>.selected');
       return {id: row.dataset.item, y: new DOMMatrix(getComputedStyle(row).transform).m42};
@@ -62,7 +62,7 @@ const navigation = require('./support/menu-navigation.cjs');
         }));
         const immediate = [], times = [], start = performance.now();
         for (let step = 1; step < expected.length; step++) {
-          if (step > 1) await new Promise(resolve => setTimeout(resolve, 80));
+          if (step > 1) await new Promise(resolve => setTimeout(resolve, 110));
           send('keydown', flagged && step > 1);
           immediate.push(C5App.getState().item); times.push(performance.now() - start);
         }
@@ -70,14 +70,15 @@ const navigation = require('./support/menu-navigation.cjs');
         await new Promise(resolve => setTimeout(resolve, 150));
         return {immediate, expected: expected.slice(1), settled: C5App.getState().item, times};
       }, flagged);
-      assert.deepEqual(held.immediate, held.expected, 'Every 80 ms main-list press should apply immediately');
+      assert.deepEqual(held.immediate, held.expected, 'Presses beyond the 100 ms repeat interval apply immediately');
       assert.equal(held.settled, held.expected.at(-1), 'Release must not leave queued movement');
       cadences.push({repeatFlag: flagged, moves: held.immediate.length, times: held.times});
     }
-    checks.push('Every 80 ms main-list input applies immediately, with and without repeat flags');
+    checks.push('110 ms main-list input applies immediately, with and without repeat flags');
 
     await settings();
     await page.keyboard.press('Enter');
+    await page.locator('#openAppearanceAdvanced').click();
     const modal = await page.evaluate(async () => {
       const times = [], start = performance.now();
       const content = document.querySelector('#modalContent');

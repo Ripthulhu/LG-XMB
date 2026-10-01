@@ -32,11 +32,7 @@ const {launchOptions} = require('./support/menu-navigation.cjs');
           view.buildCategories(); view.buildItems(); view.render();
           const snapshots = [], work = [];
           function snapshot() {
-            // Entry direction is animation state, not catalog content.
             const copy = document.body.cloneNode(true);
-            copy.querySelectorAll('.rows').forEach(rows => {
-              rows.removeAttribute('data-entry');
-            });
             // Chromium can serialize lazily updated style attributes after id.
             // Compare their values, not the order attributes were inserted.
             copy.querySelectorAll('*').forEach(element => {

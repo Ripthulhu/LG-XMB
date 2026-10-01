@@ -69,23 +69,25 @@ const { launchOptions } = require('./support/menu-navigation.cjs');
             selected = rows[selections[0]];
           const animations = document.getAnimations();
           animations.forEach((animation) => animation.pause());
+          const alpha = [];
           const points = samples.map((time) => {
             animations.forEach((animation) => {
               animation.currentTime = time;
             });
+            alpha.push(Number(getComputedStyle(selected.querySelector('.item-text')).opacity));
             return selected.getBoundingClientRect().top - anchor;
           });
           return {
             points,
-            duration: selected
-              .getAnimations()
+            alpha,
+            duration: animations
               .find((a) => a.effect.target === selected && a.transitionProperty === 'transform')
               ?.effect.getTiming().duration
           };
         }
         const directions = [-1, 1].map((delta) => {
           settle(7);
-          const single = move(delta, [0, 30, 60, 120, 240]);
+          const single = move(delta, [0, 40, 80, 160, 240, 320, 400]);
           settle(7);
           const held = Array.from({ length: 4 }, () => move(delta, [0, 40, 80]));
           const reversed = move(-delta, [0, 40, 80]);
@@ -119,7 +121,16 @@ const { launchOptions } = require('./support/menu-navigation.cjs');
         );
       }
       mirrored(up.single, down.single, 'Single step');
+      assert.equal(up.single.duration, 400, 'Up/Down follows the full category movement duration');
       assert.ok(Math.abs(Math.abs(up.single.points[0]) - height * 0.075) < 0.2);
+      assert.ok(Math.abs(up.single.points[4]) > 0.2, 'The row is still moving at the old 240 ms endpoint');
+      assert.ok(Math.abs(up.single.points[6]) < 0.2, 'The row settles at 400 ms');
+      for (const direction of [up, down]) {
+        assert.ok(Math.abs(direction.single.alpha[0] - 0.45) < 0.001, 'Incoming text starts at 45% alpha');
+        assert.ok(direction.single.alpha[4] > 0.45 && direction.single.alpha[4] < 1,
+          'Incoming text fades through an intermediate alpha');
+        assert.equal(direction.single.alpha[5], 1, 'Incoming text settles at full brightness before movement ends');
+      }
       up.held.forEach((step, i) => mirrored(step, down.held[i], 'Held step ' + i));
       mirrored(up.reversed, down.reversed, 'Direction reversal');
       for (const row of up.geometry) {
@@ -133,6 +144,7 @@ const { launchOptions } = require('./support/menu-navigation.cjs');
       );
       checks.push({
         width,
+        duration: up.single.duration,
         singleStepDistance: Math.abs(up.single.points[0]),
         heldSteps: up.held.length,
         matchingUpDownMotion: true

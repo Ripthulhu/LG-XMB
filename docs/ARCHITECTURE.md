@@ -106,7 +106,11 @@ values for row offsets, visibility and particle positions. A layout adjustment
 therefore does not need a second set of coordinates in JavaScript.
 
 Horizontal category spacing uses `LGXMBCategoryTransition.DISTANCE` in
-`app/category-transition.js`. Gaps around the category bar and selected row
+`app/category-transition.js`. The bar and item track receive the same absolute
+position in one render. Each retained list has a fixed category offset, so it
+stays under its icon during repeats, reversals and jumps. Do not restart a
+separate entry animation on the list: it would lose the bar's current position.
+Gaps around the category bar and selected row
 switch immediately; only the equal row steps animate, so Up and Down retain
 the same motion. Navigation does not measure element bounds or computed styles.
 
@@ -116,9 +120,9 @@ ordinary Settings and shortcut icons. The selected scale multipliers are
 1/0.7 (1.428571×) and 1/0.42 (2.380952×). These were checked against
 the native size setters and settled objects in a saved firmware memory dump:
 category setter `0x3b5fd0`, item scale defaults `0x3c8324`/`0x3c8350`, and item
-size setter `0x3c0b40`. Media grids can use other ratios. Category icons retain
-the prepainted face swap and animate both SVG copies with the bar's transform
-timing. Swapping colours therefore keeps the current scale, including during
+size setter `0x3c0b40`. Media grids can use other ratios. Category icons blend
+their prepainted faces and animate both SVG copies with the bar's transform
+timing. Both copies therefore keep the same current scale, including during
 reversals. Simple animations keep the instant size change. List icons use their
 existing transform transition.
 
@@ -135,9 +139,19 @@ Run `tests/xmb-layout-browser.cjs`, `tests/vertical-navigation-browser.cjs` and
 720p, 1080p and 4:3 placement, resizing, particle coordinates, matching Up/Down
 motion and retained category rows.
 
-Only the selected category shows its name. Its existing label fades through
-opacity over 120 ms; icon changes still use the retained faces. CSS owns this
-timing, and reduced motion disables the fade.
+Category names, icon highlights and incoming/outgoing lists retain their fades
+when interrupted. The firmware uses focus and ShowItems/HideItems channels for
+these changes. Our 400 ms movement curve approximates the native 200 ms approach
+setting; `--fade-duration` is 320 ms so outgoing columns disappear while still
+moving. CSS also shortens reversals, unlike the native timer.
+Simple animations switch lists immediately. Reduced motion disables the fades
+and movement. Fading-out lists ignore pointer input and are hidden from assistive
+technology as soon as selection changes.
+
+Vertical rows use the same 400 ms movement curve. Their text fades between
+0.45 and 1, while ordinary icons stay opaque, matching the recovered Settings
+item renderer. Horizontal icons blend a white copy over a fixed 0.7-alpha copy;
+changing opacity avoids repainting their colour on every animation frame.
 
 ### Settings
 

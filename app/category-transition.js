@@ -26,7 +26,7 @@
       steps !== 0 &&
       Math.abs(steps) <= 64;
     if (this.bar) this.bar.classList.toggle('categories-instant', !allowed);
-    // Selection changes immediately. CSS moves the bar and incoming list,
+    // Selection changes immediately. CSS moves both tracks and fades the lists,
     // without frame callbacks or cleanup timers.
     try {
       update();

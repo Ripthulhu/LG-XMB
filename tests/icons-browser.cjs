@@ -91,7 +91,7 @@ for (const name of newIcons) assert.ok(choices.some(choice => choice.id === name
         assert.ok(Math.abs(check.frameY - 24.6) <= 0.6, label + ' retains the native TV screen height');
         assert.ok(check.width >= 43, label + ' retains the broadcast arcs');
       }
-      if (newIcons.includes(check.name)) {
+      if (newIcons.includes(check.name) || check.name === 'network') {
         assert.ok(Math.max(check.width, check.height) >= 39, label + ' matches the XMB icon scale');
         assert.ok(Math.max(check.width, check.height) <= 44, label + ' leaves room around its silhouette');
         assert.ok(Math.abs(check.centerX - 24) <= 1, label + ' is horizontally centered');

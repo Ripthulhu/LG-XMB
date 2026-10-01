@@ -510,8 +510,14 @@
       )
     );
     if (next === selections[selectedCategory]) return;
-    selections[selectedCategory] = next;
-    render(true);
+    categoryTransition.change(
+      next - selections[selectedCategory],
+      function () {
+        selections[selectedCategory] = next;
+        render(true);
+      },
+      preferences.motion === 'full'
+    );
     wave.navigated(direction);
     tick();
   }

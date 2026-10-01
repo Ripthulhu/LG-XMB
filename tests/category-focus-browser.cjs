@@ -48,13 +48,16 @@ const near = (actual, expected, message) =>
               const svg = icon.firstElementChild, box = svg.getBoundingClientRect();
               const wrapper = icon.getBoundingClientRect();
               const style = getComputedStyle(svg), matrix = new DOMMatrix(style.transform);
-              const visible = button.classList.contains('active') === icon.parentNode.classList.contains('lit');
+              const face = icon.parentNode;
               return {scale: matrix.a / baseScale, scaleY: matrix.d / baseScale, colour: style.color,
                 wrapperScale: new DOMMatrix(getComputedStyle(icon).transform).a,
+                opacity: Number(getComputedStyle(face).opacity),
                 centreX: box.x + box.width / 2 - (wrapper.x + wrapper.width / 2),
                 centreY: box.y + box.height / 2 - (wrapper.y + wrapper.height / 2),
-                anchorX: visible ? box.x + box.width / 2 - (anchor.x + anchor.width / 2) : 0,
-                anchorY: visible ? box.y + box.height / 2 - innerHeight * 0.27 : 0,
+                anchorX: box.x + box.width / 2 - (anchor.x + anchor.width / 2),
+                anchorY: box.y + box.height / 2 - innerHeight * 0.27,
+                faceEffects: face.getAnimations().map(animation => ({property: animation.transitionProperty,
+                  duration: animation.effect.getTiming().duration})),
                 effects: svg.getAnimations().map(animation => ({property: animation.transitionProperty,
                   duration: animation.effect.getTiming().duration}))};
             });
@@ -65,9 +68,12 @@ const near = (actual, expected, message) =>
       assert.equal(state.retained, true, 'Navigation retains the painted faces and SVG nodes');
       state.icons.forEach(copies => {
         near(copies[0].scale, copies[1].scale, 'Dim and lit copies share the current focus scale');
+        near(copies[0].opacity, 1, 'The dim base remains painted beneath the white overlay');
+        assert.equal(copies[0].colour, 'rgba(255, 255, 255, 0.7)', 'Native idle icon brightness is 70%');
+        assert.equal(copies[1].colour, 'rgb(255, 255, 255)', 'The overlay is prepainted white');
         copies.forEach(icon => {
           near(icon.scaleY, icon.scale, 'Uniform SVG zoom');
-          near(icon.wrapperScale, 1, 'Face swapping must not scale the icon wrapper');
+          near(icon.wrapperScale, 1, 'Brightness fades must not scale the icon wrapper');
           for (const key of ['centreX', 'centreY', 'anchorX', 'anchorY'])
             assert.ok(Math.abs(icon[key]) < 0.1, `${key} stays anchored: ${icon[key]}`);
         });
@@ -75,8 +81,10 @@ const near = (actual, expected, message) =>
     }
     function settled(state) {
       geometry(state);
-      state.icons.forEach((copies, index) => copies.forEach(icon =>
-        near(icon.scale, index === state.selected ? focused : 1, 'Settled focus size')));
+      state.icons.forEach((copies, index) => {
+        near(copies[1].opacity, index === state.selected ? 1 : 0, 'Settled white overlay alpha');
+        copies.forEach(icon => near(icon.scale, index === state.selected ? focused : 1, 'Settled focus size'));
+      });
     }
     const initial = await page.evaluate(() => sampleFocus());
     settled(initial);
@@ -84,8 +92,12 @@ const near = (actual, expected, message) =>
     geometry(start);
     near(start.icons[0][0].scale, focused, 'Outgoing icon starts at focused size');
     near(start.icons[1][0].scale, 1, 'Incoming icon starts at idle size');
+    near(start.icons[0][1].opacity, 1, 'Outgoing icon starts at full brightness');
+    near(start.icons[1][1].opacity, 0, 'Incoming icon starts at idle brightness');
     for (const copies of start.icons.slice(0, 2)) for (const icon of copies)
       assert.deepEqual(icon.effects, [{property: 'transform', duration: 400}]);
+    for (const copies of start.icons.slice(0, 2))
+      assert.deepEqual(copies[1].faceEffects, [{property: 'opacity', duration: 320}]);
     const middle = await page.evaluate(() => sampleFocus(200));
     geometry(middle);
     for (const copies of middle.icons.slice(0, 2)) for (const icon of copies)
@@ -93,6 +105,10 @@ const near = (actual, expected, message) =>
         'Both incoming growth and outgoing shrinkage must have an intermediate frame');
     near(middle.icons[0][0].scale + middle.icons[1][0].scale, focused + 1,
       'Incoming and outgoing focus use the same curve');
+    for (const copies of middle.icons.slice(0, 2))
+      assert.ok(copies[1].opacity > 0 && copies[1].opacity < 1, 'Brightness fades have intermediate frames');
+    near(middle.icons[0][1].opacity + middle.icons[1][1].opacity, 1,
+      'Incoming and outgoing brightness use the same curve');
     await page.evaluate(() => finishMotion());
     settled(await page.evaluate(() => sampleFocus()));
 
@@ -103,8 +119,10 @@ const near = (actual, expected, message) =>
       return {before, after: sampleFocus(0)};
     });
     geometry(reversal.before); geometry(reversal.after);
-    reversal.before.icons.forEach((copies, index) => copies.forEach((icon, face) =>
-      near(reversal.after.icons[index][face].scale, icon.scale, 'Reversal preserves current scale')));
+    reversal.before.icons.forEach((copies, index) => copies.forEach((icon, face) => {
+      near(reversal.after.icons[index][face].scale, icon.scale, 'Reversal preserves current scale');
+      near(reversal.after.icons[index][face].opacity, icon.opacity, 'Reversal preserves current brightness');
+    }));
     await page.evaluate(() => finishMotion());
     settled(await page.evaluate(() => sampleFocus()));
 
@@ -116,7 +134,10 @@ const near = (actual, expected, message) =>
         return sampleFocus();
       }, mode);
       settled(state);
-      state.icons.flat().forEach(icon => assert.deepEqual(icon.effects, [], `${mode} settles immediately`));
+      state.icons.flat().forEach(icon => {
+        assert.deepEqual(icon.effects, [], `${mode} settles size immediately`);
+        assert.deepEqual(icon.faceEffects, [], `${mode} settles brightness immediately`);
+      });
       await page.evaluate(() => {selectCategory(1, false); sampleFocus(); document.body.className = '';});
       if (mode === 'system-reduced') await page.emulateMedia({reducedMotion: 'no-preference'});
     }
@@ -136,7 +157,7 @@ const near = (actual, expected, message) =>
         `4K ${index ? 'idle Photo' : 'focused Settings'} silhouette width: ${widths[index]} vs ${expected}`);
     settled(await page.evaluate(() => sampleFocus()));
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({checks: ['incoming/outgoing SVG zoom', 'paired painted faces',
+    console.log(JSON.stringify({checks: ['incoming/outgoing SVG zoom', '70%-100% brightness fades', 'paired painted faces',
       'anchored centres', 'continuous reversal', 'immediate reduced/simple/cancelled motion',
       'retained nodes', '4K Settings/Photo silhouette sizes'], testedOnTV: false}, null, 2));
   } finally { await browser.close(); }

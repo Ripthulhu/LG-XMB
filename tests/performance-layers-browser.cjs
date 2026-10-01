@@ -48,13 +48,13 @@ const base=path.resolve(__dirname,'..'), out=path.join(base,'artifacts/performan
    const style=await page.locator('.item-options-panel').evaluate(el=>({will:getComputedStyle(el).willChange,transform:getComputedStyle(el).transitionProperty}));
    assert.deepEqual(style,{will:'auto',transform:'none'});
    const text=await page.evaluate(()=>{
-    const nodes=[...document.querySelectorAll('.category-label,.item-text,.detail h1,.detail p,#time,.item-options-heading,.item-options-button')];
+    const nodes=[...document.querySelectorAll('.detail h1,.detail p,#time,.item-options-heading,.item-options-button')];
     return nodes.filter(n=>n.getClientRects().length).map(n=>{let p=n,bad=[];while(p){if(getComputedStyle(p).opacity!=='1')bad.push(p.className||p.id);p=p.parentElement;}return {text:n.textContent,bad};});
    });
-   assert.ok(text.length>=7);assert.deepEqual(text.filter(t=>t.bad.length),[],'text and its ancestors have no opacity layers');
+   assert.ok(text.length>=7);assert.deepEqual(text.filter(t=>t.bad.length),[],'Options, detail and clock text do not acquire navigation opacity layers');
    await page.evaluate(()=>options.close('back'));await closed();
   }
-  checks.push(width+': three open/close cycles release layers, avoid all menu motion and avoid text opacity');
+  checks.push(width+': three open/close cycles release options layers without fading options, detail or clock text');
   await page.evaluate(()=>{options.open(item,category);options.close('lifecycle');});await closed();
   assert.equal(await page.evaluate(()=>options.opening),false);checks.push(width+': instant lifecycle close drops layers without queued opening frames');
   await page.evaluate(()=>options.open(item,category));await page.waitForFunction(()=>!options.opening);

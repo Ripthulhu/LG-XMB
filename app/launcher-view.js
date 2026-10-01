@@ -106,6 +106,7 @@
           wrap.className = 'rows';
           wrap.setAttribute('role', 'none');
           wrap.setAttribute('data-category', cat.id);
+          wrap.style.setProperty('--category-offset', ci * LGXMBCategoryTransition.DISTANCE + 'vw');
           list.appendChild(wrap);
           itemLists[ci] = wrap;
         }
@@ -173,8 +174,6 @@
       if (next === activeCategory) return;
       var previous = itemLists[activeCategory],
         current = itemLists[next];
-      // A local attribute avoids invalidating inherited styles on every row.
-      current.setAttribute('data-entry', next > activeCategory ? 'right' : 'left');
       if (previous) {
         previous.classList.add('parked');
         previous.setAttribute('aria-hidden', 'true');
@@ -201,8 +200,13 @@
       // Up/down does not change the horizontal bar. Leave its styles, accessibility
       // attributes and any in-flight CSS transition alone.
       if (renderedCategory !== selectedCategory) {
-        $('categories').style.transform =
+        // Move both tracks to the same absolute target in this style update.
+        // Fixed category offsets keep each list under its icon through repeats
+        // and reversals, without reading the current animated position.
+        var position =
           'translate3d(' + -selectedCategory * LGXMBCategoryTransition.DISTANCE + 'vw,0,0)';
+        $('categories').style.transform = position;
+        $('items').style.transform = position;
         [].forEach.call($('categories').children, function (button, i) {
           var offset = i - selectedCategory;
           button.classList.toggle('active', offset === 0);
@@ -277,7 +281,7 @@
           button.style.visibility = visible ? 'visible' : 'hidden';
           button.setAttribute('aria-hidden', visible ? 'false' : 'true');
         }
-        var itemAlpha = !visible ? '0' : offset === 0 ? '1' : '.5';
+        var itemAlpha = !visible ? '0' : offset === 0 ? '1' : '.45';
         if (button.style.getPropertyValue('--item-alpha') !== itemAlpha)
           button.style.setProperty('--item-alpha', itemAlpha);
         itemOffsets.set(button, offset);
